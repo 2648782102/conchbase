@@ -10,7 +10,7 @@ This records the initial implementation choices. Revisit a choice through a shor
 | Runtime events | Resumable SSE with stable event IDs | Planned |
 | Tool protocol | MCP TypeScript SDK v2 | Planned |
 | Agent orchestration | Conchbase-owned task state machine; provider SDK behind an adapter | Planned |
-| Operational state | SQLite behind a storage interface | Planned; select the Node driver after a focused compatibility check |
+| Operational state | SQLite behind a storage interface | Planned; local driver compatibility evidence in [ADR 0008](decisions/0008-sqlite-driver-compatibility-proposal.md), production driver not selected |
 | Configuration and Skills | Portable profile files and Markdown Skills, validated by versioned schemas | Planned |
 
 The runtime is primarily I/O orchestration. A separate language is not justified by model inference, which is performed by model providers or external local-model processes. The public API remains language-neutral for non-TypeScript clients.
@@ -18,6 +18,6 @@ The runtime is primarily I/O orchestration. A separate language is not justified
 ## Deferred choices
 
 - Provider SDK: evaluate provider coverage, streaming, structured tool calls, cancellation, and checkpoint behavior before choosing an adapter.
-- SQLite driver: Node's built-in `node:sqlite` is not the initial production dependency; keep storage behind a narrow interface.
+- SQLite driver: all candidates remain outside runtime dependencies. [ADR 0008](decisions/0008-sqlite-driver-compatibility-proposal.md) records a single-machine spike and recommends a built-in-module prototype only after product direction and supported-platform checks; keep storage behind a narrow interface.
 - Plugin execution: defer arbitrary code loading until isolation and capability grants are specified.
 - Remote access and desktop packaging: defer until pairing, authentication, and supported operating systems are defined.

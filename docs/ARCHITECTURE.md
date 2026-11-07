@@ -27,7 +27,7 @@ ACP clients ───────── optional adapter ───────�
 ## State and configuration
 
 - User-authored profile, policy, and Skill files are portable configuration inputs.
-- Runtime operational state (sessions, tasks, approvals, and events) belongs to a transactional local store.
+- Runtime operational state (sessions, tasks, approvals, and events) belongs to a future transactional local store. [ADR 0008](decisions/0008-sqlite-driver-compatibility-proposal.md) records local driver evidence; no store or driver is implemented.
 - Artifacts live as files referenced from runtime records.
 - Secrets are referenced by name and resolved by the runtime from an operating-system credential store or explicitly configured environment.
 - Each task is pinned to a configuration revision. Applying a new revision affects new tasks.
