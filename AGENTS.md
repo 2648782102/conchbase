@@ -1,6 +1,8 @@
 # Instructions for coding agents
 
-Read `docs/AI_HANDOFF.md` first, then the linked architecture, API, and technology documents. Treat the Git repository as the source of truth; do not rely on context from another chat.
+This project is built primarily by AI coding agents. Optimize architecture, documentation, and validation for agents to understand, change, and verify bounded tasks quickly. Human handoff is not a product requirement. Keep code explicit and legible; this principle is not permission for opaque code or speculative abstraction.
+
+Read `docs/AI_HANDOFF.md` first, then `docs/AI_DEVELOPMENT.md` and the linked architecture, API, and technology documents. Treat the Git repository as the source of truth; do not rely on context from another chat.
 
 ## Product invariants
 
@@ -18,5 +20,5 @@ Read `docs/AI_HANDOFF.md` first, then the linked architecture, API, and technolo
 - Record meaningful architectural choices in `docs/decisions/` and mark undecided choices as proposals.
 - Do not introduce real credentials, user data, external service calls, or machine-specific paths.
 - Before changing an unresolved decision in `docs/AI_HANDOFF.md`, surface the trade-off and record the decision.
-- Run `npm run check` and `npm run build` after code changes. The current CI checks types and builds; it does not run a test suite.
+- Run `npm run check`, `npm test`, and `npm run build` after code changes. CI runs all three commands.
 

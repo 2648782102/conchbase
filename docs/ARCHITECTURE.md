@@ -39,3 +39,16 @@ ACP clients ───────── optional adapter ───────�
 ## Initial implementation boundary
 
 The repository currently contains the HTTP service shell and read-only health/runtime endpoints. No model call, external tool execution, or writable management endpoint is exposed yet.
+
+## Source layout
+
+```text
+src/
+├── config/runtime-config.ts       # environment parsing and startup validation
+├── http/
+│   ├── create-app.ts               # Fastify construction and route registration
+│   └── routes/v1/                  # versioned HTTP route handlers
+└── main.ts                         # process entry point and listener lifecycle
+```
+
+Keep the current scaffold small. Add a module when there is a real capability to own; do not create empty layers or generic frameworks in advance. As execution capabilities arrive, organize changes as bounded vertical slices with domain rules separate from HTTP and provider/storage adapters. Keep replaceable or security-sensitive boundaries explicit, and avoid interfaces that only rename a single call without protecting a real boundary.

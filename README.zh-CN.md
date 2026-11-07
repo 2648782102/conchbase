@@ -33,6 +33,10 @@ curl http://127.0.0.1:4318/v1/health
 技术架构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，当前接口和 [OpenAPI 契约](docs/openapi.yaml) 见 API 文档。接手开发的模型请先读 [AI 交接说明](docs/AI_HANDOFF.md)。English: [README.md](README.md).
 技术栈、路线图和验证计划见 [docs/TECH_STACK.md](docs/TECH_STACK.md)、[docs/ROADMAP.md](docs/ROADMAP.md) 与 [docs/VALIDATION_PLAN.md](docs/VALIDATION_PLAN.md)。配套控制台：[Pagurus 寄居蟹](https://github.com/2648782102/pagurus)。
 
+## 面向 AI 开发
+
+本项目主要由 AI 编码 Agent 开发，代码结构、说明和验证流程优先服务于 AI 快速理解、完成边界清楚的改动并确定性验证；不把后续由人类接手作为产品要求。每次开始前先读根目录 [`AGENTS.md`](AGENTS.md)，再按其中顺序读取 [AI 交接说明](docs/AI_HANDOFF.md) 和 [开发约定](docs/AI_DEVELOPMENT.md)。
+
 ## 许可
 
 MIT，详见 [LICENSE](LICENSE)。

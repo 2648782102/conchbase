@@ -1,10 +1,14 @@
 # Validation plan
 
-This plan is for future implementation work; the repository currently has no automated test suite.
+This document records current automated coverage and the next validation layers needed as runtime capabilities arrive.
 
-## Current CI
+## Current automated coverage
 
-GitHub Actions runs `npm run check` and `npm run build`. This catches TypeScript and compilation errors, not runtime behavior or security regressions.
+- Startup configuration accepts only documented loopback hosts and decimal ports in range.
+- Fastify inject checks the exact response bodies for the implemented read-only status routes.
+- GitHub Actions runs `npm run check`, `npm test`, and `npm run build`.
+
+This is a scaffold-level baseline. It does not validate an agent loop, persistence, tool policy, or authentication because those features do not exist yet.
 
 ## Required validation layers as features arrive
 
