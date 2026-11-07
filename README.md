@@ -36,8 +36,8 @@ Set `CONCHBASE_HOST` to `localhost`, `127.0.0.1`, or `::1`, and `CONCHBASE_PORT`
 - MCP provides tool connections; Skills provide agent instructions.
 - A task uses a stable configuration snapshot for its lifetime.
 
-See [the architecture notes](docs/ARCHITECTURE.md) and [API notes](docs/API.md). Chinese: [README.zh-CN.md](README.zh-CN.md).
-See also [the planned technology stack](docs/TECH_STACK.md) and [roadmap](docs/ROADMAP.md). The companion console is [Pagurus](https://github.com/2648782102/pagurus).
+See [the architecture notes](docs/ARCHITECTURE.md), [current API](docs/API.md), and [OpenAPI contract](docs/openapi.yaml). New coding models should start with the [AI handoff](docs/AI_HANDOFF.md). Chinese: [README.zh-CN.md](README.zh-CN.md).
+See also the [technology baseline](docs/TECH_STACK.md), [roadmap](docs/ROADMAP.md), and [validation plan](docs/VALIDATION_PLAN.md). The companion console is [Pagurus](https://github.com/2648782102/pagurus).
 
 ## License
 

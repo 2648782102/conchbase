@@ -1,0 +1,59 @@
+openapi: 3.1.0
+info:
+  title: Conchbase Runtime API
+  version: 0.1.0
+  description: Read-only status API currently implemented by the Conchbase scaffold.
+servers:
+  - url: http://127.0.0.1:4318
+    description: Local runtime default; loopback only.
+paths:
+  /v1/health:
+    get:
+      operationId: getHealth
+      summary: Check whether the local runtime process responds.
+      responses:
+        '200':
+          description: Runtime process is responding.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /v1/runtime:
+    get:
+      operationId: getRuntimeStatus
+      summary: Read runtime identity and currently advertised capabilities.
+      responses:
+        '200':
+          description: Runtime status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeStatus'
+components:
+  schemas:
+    Health:
+      type: object
+      additionalProperties: false
+      required: [status, service, apiVersion]
+      properties:
+        status:
+          const: ok
+        service:
+          const: conchbase
+        apiVersion:
+          const: 1
+    RuntimeStatus:
+      type: object
+      additionalProperties: false
+      required: [name, version, state, capabilities]
+      properties:
+        name:
+          const: Conchbase
+        version:
+          type: string
+        state:
+          const: ready
+        capabilities:
+          type: array
+          items:
+            type: string

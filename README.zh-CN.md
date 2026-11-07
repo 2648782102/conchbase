@@ -30,8 +30,8 @@ curl http://127.0.0.1:4318/v1/health
 - MCP 提供工具连接，Skill 提供 agent 指令。
 - 任务运行期间使用固定配置快照。
 
-技术架构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，接口状态见 [docs/API.md](docs/API.md)。English: [README.md](README.md).
-技术栈与路线图见 [docs/TECH_STACK.md](docs/TECH_STACK.md) 和 [docs/ROADMAP.md](docs/ROADMAP.md)。配套控制台：[Pagurus 寄居蟹](https://github.com/2648782102/pagurus)。
+技术架构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，当前接口和 [OpenAPI 契约](docs/openapi.yaml) 见 API 文档。接手开发的模型请先读 [AI 交接说明](docs/AI_HANDOFF.md)。English: [README.md](README.md).
+技术栈、路线图和验证计划见 [docs/TECH_STACK.md](docs/TECH_STACK.md)、[docs/ROADMAP.md](docs/ROADMAP.md) 与 [docs/VALIDATION_PLAN.md](docs/VALIDATION_PLAN.md)。配套控制台：[Pagurus 寄居蟹](https://github.com/2648782102/pagurus)。
 
 ## 许可
 

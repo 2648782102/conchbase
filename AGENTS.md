@@ -1,10 +1,22 @@
-# AI contribution rules
+# Instructions for coding agents
 
-- Read `docs/ARCHITECTURE.md` before changing runtime boundaries.
-- Conchbase is the execution authority; UI and CLI entry points are clients.
-- Never execute a tool without passing through the runtime policy layer.
-- Keep external network binding disabled until authentication and pairing are implemented.
-- Keep API request, response, and event contracts versioned and documented.
-- Do not add provider secrets, real user data, or machine-specific paths.
-- Run `npm run check` and `npm run build` after code changes.
+Read `docs/AI_HANDOFF.md` first, then the linked architecture, API, and technology documents. Treat the Git repository as the source of truth; do not rely on context from another chat.
+
+## Product invariants
+
+- Conchbase is the agent execution authority. CLI, Pagurus, IDEs, and other interfaces are clients.
+- This project is meant to own the agent loop. It is not only a memory/context overlay for another agent.
+- Never execute a tool outside the runtime policy and approval path.
+- A Skill supplies instructions; it does not grant tool permissions.
+- Keep loopback-only binding until authentication and pairing are designed and implemented.
+- Do not let a UI read or write Conchbase's private files or database.
+
+## Change discipline
+
+- Distinguish implemented behavior from roadmap items. Do not describe planned features as present.
+- Keep API, configuration, and event contracts versioned; update `docs/openapi.yaml` when a current endpoint changes.
+- Record meaningful architectural choices in `docs/decisions/` and mark undecided choices as proposals.
+- Do not introduce real credentials, user data, external service calls, or machine-specific paths.
+- Before changing an unresolved decision in `docs/AI_HANDOFF.md`, surface the trade-off and record the decision.
+- Run `npm run check` and `npm run build` after code changes. The current CI checks types and builds; it does not run a test suite.
 

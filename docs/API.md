@@ -2,6 +2,8 @@
 
 The service listens on `127.0.0.1:4318` by default.
 
+The machine-readable contract for currently implemented endpoints is [`openapi.yaml`](openapi.yaml). Conchbase owns this contract; Pagurus and other clients consume it.
+
 ## Implemented
 
 ### `GET /v1/health`
