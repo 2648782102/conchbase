@@ -8,11 +8,11 @@
 
 ## 当前状态
 
-第一阶段通过本机 [Magpie](https://usemagpie.ai/docs/integrate) 网关接入真实模型。每个任务执行一轮有边界的文本补全，任务状态、输出、错误和事件存储在本地 SQLite 中。CLI 与寄居蟹都能创建、查看、取消和重试任务。进程重启会把未完成任务标记为 `interrupted`；显式重试生成新的 attempt，并保留原事件。运行时不会静默续跑中断中的模型请求。
+第一阶段通过本机 [Magpie](https://usemagpie.ai/docs/integrate) 网关接入真实流式模型调用。任务状态、正文增量、最终输出、错误和事件存储在本地 SQLite 中。CLI 与寄居蟹都能创建、查看、取消和重试任务。进程重启会把未完成任务标记为 `interrupted`；显式重试生成新的 attempt，并保留原事件。运行时不会静默续跑中断中的模型请求。
 
 第一阶段的 SQLite 数据库同一时间只允许一个进程持有。第二个 CLI 或服务实例会快速失败，避免把正在运行的任务误判为中断。`conchbase models` 直接读取 Magpie，不打开数据库；当 `conchbase serve` 正在运行时，不要执行其他读写任务状态的 CLI 命令，并发查看任务应使用 Runtime API。这是开发期的单实例边界，不代表已支持生产级多进程，详见 [ADR 0011](docs/decisions/0011-phase-one-database-instance-ownership.md)。
 
-模型发起的工具执行、MCP、Skills、插件、审批、公开配置写入、流式输出、组合配置、认证和远程访问仍在规划中。第一阶段的一轮执行只是验证主链路的实现边界，不是内建 Agent 拓扑；用户自定义组合仍保持拓扑中立，详见 [ADR 0005](docs/decisions/0005-user-defined-agent-topology-proposal.md) 和 [ADR 0010](docs/decisions/0010-first-real-model-slice.md)。
+模型发起的工具执行、MCP、Skills、插件、审批、公开配置写入、SSE 传输、推理内容展示、组合配置、认证和远程访问仍在规划中。第一阶段的一轮执行只是验证主链路的实现边界，不是内建 Agent 拓扑；用户自定义组合仍保持拓扑中立，详见 [ADR 0005](docs/decisions/0005-user-defined-agent-topology-proposal.md)、[ADR 0010](docs/decisions/0010-first-real-model-slice.md) 和 [ADR 0012](docs/decisions/0012-streaming-output-progress.md)。
 
 确定性的仓库护栏测试把已接受的契约和 AI-first 边界固定为可执行检查。CI 使用假模型响应和临时数据库，不调用真实模型。
 
@@ -57,6 +57,7 @@ curl -X POST http://127.0.0.1:4318/v1/tasks \
 - 海螺拥有任务状态与权限；CLI、寄居蟹和第三方界面都是客户端。
 - Magpie 是适配器背后的可替换本机模型来源，其返回内容是未受信任的数据。
 - 任务与有序事件通过私有的 `TaskStore` 原子提交；界面不读取数据库。
+- 有边界的正文增量会生成持久的 `task.output_delta` 事件和 `partialOutput` 快照；最终输出仍以 `output` 为准。
 - 模型目录读取不依赖数据库；运行时数据库由单一进程持有。
 - 每次任务 attempt 固定一个内容寻址的配置修订。
 - Skill 只提供指令，不授予工具权限；第一阶段会拒绝模型发起的工具调用。
@@ -65,7 +66,7 @@ curl -X POST http://127.0.0.1:4318/v1/tasks \
 
 ## 面向 AI 开发
 
-本项目主要由 AI 编码 Agent 开发，代码结构、说明和验证流程优先服务于 AI 快速理解、完成边界清楚的改动并确定性验证；不把后续由人类接手作为产品要求。先读根目录 [`AGENTS.md`](AGENTS.md)，再读 [AI 交接说明](docs/AI_HANDOFF.md)、[ADR 0010](docs/decisions/0010-first-real-model-slice.md)、[ADR 0011](docs/decisions/0011-phase-one-database-instance-ownership.md)、[开发约定](docs/AI_DEVELOPMENT.md) 和 [任务队列](docs/AI_TASK_QUEUE.md)。
+本项目主要由 AI 编码 Agent 开发，代码结构、说明和验证流程优先服务于 AI 快速理解、完成边界清楚的改动并确定性验证；不把后续由人类接手作为产品要求。先读根目录 [`AGENTS.md`](AGENTS.md)，再读 [AI 交接说明](docs/AI_HANDOFF.md)、[ADR 0010](docs/decisions/0010-first-real-model-slice.md)、[ADR 0011](docs/decisions/0011-phase-one-database-instance-ownership.md)、[ADR 0012](docs/decisions/0012-streaming-output-progress.md)、[开发约定](docs/AI_DEVELOPMENT.md) 和 [任务队列](docs/AI_TASK_QUEUE.md)。
 
 代码改动后运行 `npm run check`、`npm test` 和 `npm run build`。
 

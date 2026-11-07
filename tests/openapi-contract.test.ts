@@ -78,6 +78,7 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
     'state',
     'attempt',
     'output',
+    'partialOutput',
     'error',
   ]);
   assertSchemaFields('RuntimeEvent', [

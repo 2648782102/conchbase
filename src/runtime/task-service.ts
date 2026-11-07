@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { createConfigurationRevisionStore } from './configuration-revision.js';
-import type { ModelAdapterInput, ModelTurn } from './model-adapter.js';
 import {
   MagpieModelCatalog,
   type ModelCatalogClient,
@@ -197,25 +196,42 @@ export class TaskService {
       ...(this.config.fetch ? { fetch: this.config.fetch } : {}),
     });
 
-    const nextTurn = async (input: ModelAdapterInput): Promise<ModelTurn> => {
-        this.store.transitionTask(
-          task.id,
-          'running',
-          this.eventInput(task, 'task.started', 'running', task.attempt),
-        );
-        return provider.nextTurn({ ...input, signal });
-    };
-
     try {
       if (signal.aborted) {
         this.finishCancelled(task);
         return;
       }
-      const turn = await nextTurn({
+      this.store.transitionTask(
+        task.id,
+        'running',
+        this.eventInput(task, 'task.started', 'running', task.attempt),
+      );
+
+      let partialOutput = '';
+      let deltaIndex = 0;
+      const turn = await provider.streamTurn({
         taskId: task.id,
         prompt: task.prompt,
         turnIndex: 0,
         signal,
+        onOutputDelta: (delta) => {
+          partialOutput += delta;
+          const event = this.eventInput(
+            task,
+            'task.output_delta',
+            'running',
+            task.attempt,
+          );
+          this.store.recordOutputDelta(task.id, {
+            ...event,
+            data: {
+              delta,
+              index: deltaIndex,
+              outputLength: partialOutput.length,
+            },
+          }, partialOutput);
+          deltaIndex += 1;
+        },
       });
       if (signal.aborted) {
         this.finishCancelled(task);

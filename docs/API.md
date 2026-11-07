@@ -16,9 +16,9 @@ The service listens on `127.0.0.1:4318` by default. The machine-readable source 
 | `POST /v1/tasks/{taskId}/retry` | Start a new attempt from the original prompt for a terminal task; `409` otherwise. |
 | `GET /v1/events?after=<eventId>` | Persisted events strictly after a known global event ID, plus the resulting cursor; `400` for an unknown cursor. |
 
-A task has a stable ID, its original prompt, selected model id, pinned configuration revision, current state, attempt number, final output, and error. States include `queued`, `running`, `cancelling`, `succeeded`, `failed`, `cancelled`, and `interrupted`. A restart changes persisted nonterminal states to `interrupted`; retry creates a visible new attempt.
+A task has a stable ID, its original prompt, selected model id, pinned configuration revision, current state, attempt number, final output, current `partialOutput`, and error. `partialOutput` is visible while `running` or `cancelling` and is null in terminal states; final `output` remains authoritative. States include `queued`, `running`, `cancelling`, `succeeded`, `failed`, `cancelled`, and `interrupted`. A restart changes persisted nonterminal states to `interrupted`; retry creates a visible new attempt.
 
-Events use stable IDs and a global monotonic `sequence`. Each event records its task, type, resulting state, pinned configuration revision, attempt, and a bounded `data` object. Phase 1 uses polling; SSE, `Last-Event-ID`, retention, and multi-process ownership remain open.
+Events use stable IDs and a global monotonic `sequence`. Each event records its task, type, resulting state, pinned configuration revision, attempt, and a bounded `data` object. `task.output_delta.data` contains `delta`, zero-based per-attempt `index`, and accumulated `outputLength`. Phase 1 uses polling; SSE, `Last-Event-ID`, retention, and multi-process ownership remain open.
 
 Errors use `{ "error": "message" }` with documented status codes. Validation errors return `400`; missing tasks return `404`; conflicting task operations return `409`; model-catalog failures return `502`; an unconfigured task service returns `503`.
 
@@ -26,5 +26,5 @@ Errors use `{ "error": "message" }` with documented status codes. Validation err
 
 - The API is loopback-only. Remote binding requires a reviewed authentication and pairing design.
 - Model ids come from the user's Magpie catalog. No model credentials enter Conchbase configuration or API responses.
-- The phase-1 model task performs one text completion. Model-requested tools are rejected, not executed.
+- The phase-1 model task performs one streaming text completion. Reasoning text is ignored and model-requested tools are rejected, not executed.
 - No configuration write, MCP, Skill, plugin, approval, or composition management route exists yet.

@@ -18,7 +18,7 @@ test('read-only status routes return the documented API shapes', async () => {
     assert.equal(runtime.statusCode, 200);
     assert.deepEqual(runtime.json(), {
       name: 'Conchbase',
-      version: '0.1.0',
+      version: '0.3.0',
       state: 'ready',
       capabilities: [],
     });
@@ -27,5 +27,18 @@ test('read-only status routes return the documented API shapes', async () => {
     assert.equal(tasks.statusCode, 503);
   } finally {
     await app.close();
+  }
+
+  const configured = createApp({ logger: false, taskService: {} as never });
+  try {
+    const runtime = await configured.inject({ method: 'GET', url: '/v1/runtime' });
+    assert.deepEqual(runtime.json<{ capabilities: string[] }>().capabilities, [
+      'tasks',
+      'events',
+      'models',
+      'streaming-output',
+    ]);
+  } finally {
+    await configured.close();
   }
 });

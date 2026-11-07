@@ -80,6 +80,8 @@ function assertAcceptedOpenApi(spec: string, label: string): void {
   assert.doesNotMatch(spec, nonLoopbackAddress, `${label} must not bind beyond loopback`);
   assert.match(spec, /requestBody:/, `${label} must document the accepted task request`);
   assert.match(spec, /interrupted/, `${label} must document interrupted tasks`);
+  assert.match(spec, /^  version: 0\.3\.0$/m, `${label} must record the streaming contract version`);
+  assert.match(spec, /partialOutput/, `${label} must document partial output`);
 }
 
 function assertLoopbackConfig(source: string, label: string): void {
@@ -200,6 +202,10 @@ test('decision records separate accepted phase-1 direction from proposals', () =
     read(`${decisionsDir}/0011-phase-one-database-instance-ownership.md`),
     /single-owner development boundary/,
   );
+  assert.match(
+    read(`${decisionsDir}/0012-streaming-output-progress.md`),
+    /^Status: \*\*accepted product and public API direction/m,
+  );
 });
 
 test('the public contract remains loopback-only and records accepted task routes', () => {
@@ -239,6 +245,11 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
     read('src/cli.ts'),
     /new MagpieModelCatalog\(/,
     'model catalog commands must not need the runtime database',
+  );
+  assert.match(
+    read('src/http/routes/v1/runtime.ts'),
+    /streaming-output/,
+    'the runtime status must advertise streaming output',
   );
 });
 

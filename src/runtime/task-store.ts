@@ -11,6 +11,7 @@ export interface TaskSnapshot {
   readonly state: TaskState;
   readonly attempt: number;
   readonly output: string | null;
+  readonly partialOutput: string | null;
   readonly error: string | null;
 }
 
@@ -42,6 +43,7 @@ export interface TaskStore {
     patch?: { readonly output?: string; readonly error?: string },
   ): TaskSnapshot;
   resetTask(taskId: string, attempt: number, event: TaskEventInput): TaskSnapshot;
+  recordOutputDelta(taskId: string, event: TaskEventInput, partialOutput: string): TaskSnapshot;
   listEvents(afterEventId: string | null): readonly RuntimeEvent[];
   close(): void;
 }
@@ -54,6 +56,7 @@ interface TaskRow {
   readonly state: string;
   readonly attempt: number;
   readonly output: string | null;
+  readonly partial_output: string | null;
   readonly error: string | null;
 }
 
@@ -107,6 +110,7 @@ function toSnapshot(row: TaskRow): TaskSnapshot {
     state: row.state as TaskState,
     attempt: row.attempt,
     output: row.output,
+    partialOutput: row.partial_output,
     error: row.error,
   };
 }
@@ -158,6 +162,7 @@ export class SqliteTaskStore implements TaskStore {
           state TEXT NOT NULL,
           attempt INTEGER NOT NULL,
           output TEXT,
+          partial_output TEXT,
           error TEXT
         ) STRICT;
         CREATE TABLE IF NOT EXISTS events (
@@ -183,8 +188,8 @@ export class SqliteTaskStore implements TaskStore {
       this.database.exec('BEGIN IMMEDIATE');
       this.database.prepare(`
         INSERT INTO tasks (
-          id, prompt, model, configuration_revision_id, state, attempt, output, error
-        ) VALUES (?, ?, ?, ?, 'queued', ?, NULL, NULL)
+          id, prompt, model, configuration_revision_id, state, attempt, output, partial_output, error
+        ) VALUES (?, ?, ?, ?, 'queued', ?, NULL, NULL, NULL)
       `).run(
         input.id,
         input.prompt,
@@ -234,11 +239,15 @@ export class SqliteTaskStore implements TaskStore {
       const current = this.getTask(taskId);
       if (!current) throw new TaskNotFoundError();
       this.database.prepare(`
-        UPDATE tasks SET state = ?, output = COALESCE(?, output), error = COALESCE(?, error)
+        UPDATE tasks SET state = ?, output = COALESCE(?, output),
+          partial_output = CASE WHEN ? IN ('succeeded', 'failed', 'cancelled', 'interrupted')
+            THEN NULL ELSE partial_output END,
+          error = COALESCE(?, error)
         WHERE id = ?
       `).run(
         state,
         patch.output ?? null,
+        state,
         patch.error ?? null,
         taskId,
       );
@@ -275,9 +284,29 @@ export class SqliteTaskStore implements TaskStore {
       const current = this.getTask(taskId);
       if (!current) throw new TaskNotFoundError();
       this.database.prepare(`
-        UPDATE tasks SET state = 'queued', attempt = ?, output = NULL, error = NULL
+        UPDATE tasks SET state = 'queued', attempt = ?, output = NULL, partial_output = NULL, error = NULL
         WHERE id = ?
       `).run(attempt, taskId);
+      this.insertEvent(event);
+      this.database.exec('COMMIT');
+    } catch (cause) {
+      this.database.exec('ROLLBACK');
+      throw cause;
+    }
+    return this.getTask(taskId)!;
+  }
+
+  recordOutputDelta(
+    taskId: string,
+    event: TaskEventInput,
+    partialOutput: string,
+  ): TaskSnapshot {
+    try {
+      this.database.exec('BEGIN IMMEDIATE');
+      const current = this.getTask(taskId);
+      if (!current) throw new TaskNotFoundError();
+      this.database.prepare('UPDATE tasks SET partial_output = ? WHERE id = ?')
+        .run(partialOutput, taskId);
       this.insertEvent(event);
       this.database.exec('COMMIT');
     } catch (cause) {

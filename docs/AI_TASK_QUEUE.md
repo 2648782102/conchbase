@@ -6,6 +6,7 @@ This queue is for coding models continuing from the repository. It records bound
 
 - [ADR 0010](decisions/0010-first-real-model-slice.md) accepts phase-1 direction: Conchbase owns the agent loop, Magpie is the first real-model provider, and durable events plus explicit retry cover interruption. A process restart recognizes interrupted work; it does not continue an in-flight model request.
 - [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md) accepts an internal single-owner database boundary. The SQLite store rejects a second simultaneous owner; `conchbase models` is database-free. Cross-platform crash recovery, migrations, and deliberate multi-process execution remain open.
+- [ADR 0012](decisions/0012-streaming-output-progress.md) accepts durable `task.output_delta` events, `partialOutput`, and bounded Magpie streaming. SSE, `Last-Event-ID`, retention, reasoning display, and streaming tool calls remain open.
 - Conchbase exposes versioned task, retry, cancel, event, and Magpie model-catalog routes. The CLI and Pagurus use the same API. The OpenAPI contract is the source of truth.
 - The phase-1 model loop is single-turn. This is an implementation boundary for validating the runtime, not a default or canonical agent topology. User-defined composition remains topology-neutral product intent, not an implemented schema.
 - `node:sqlite` persists tasks and events behind `TaskStore`. Provider calls use direct HTTP through a narrow adapter. No provider SDK, storage SDK, MCP SDK, or plugin host is installed.
@@ -24,13 +25,13 @@ This queue is for coding models continuing from the repository. It records bound
 
 Each item requires an accepted ADR before its public contract changes. Do not start several at once.
 
-1. **Provider streaming and visible progress.** Decide the event envelope for partial model output, cancellation during streaming, and terminal output. Keep event IDs and task state authoritative.
-2. **Tool capability slice.** Define one bounded tool registry, a policy schema, approval records, idempotent side effects, and deterministic fixtures before any model-requested tool can execute. A Skill never grants tools.
-3. **Configuration API slice.** Define a portable, versioned profile schema, validation errors, revision history, rollback, and secret references. Then let Pagurus edit it through the Runtime API.
-4. **Composition slice.** Define topology-neutral user-authored composition with at least one single-node and two distinct multi-node fixtures. Do not hardcode layer counts, role names, or a hierarchy.
-5. **Persistence hardening.** Add supported OS/architecture/Node CI coverage, migrations, WAL crash recovery, retention, and multi-process ownership before calling the storage layer production-ready.
-6. **Magpie upstream adapter.** Once the Conchbase config format is stable, evaluate a pull request to Magpie's `internal/agent` so Conchbase appears on its Agents page. This is optional integration work, not required for the gateway.
-7. **Authoritative client reads.** Replace direct CLI database reads with a documented Runtime API client path after API parity and authentication direction are accepted. Keep the single-owner lock until that contract exists.
+1. **Tool capability slice.** Define one bounded tool registry, a policy schema, approval records, idempotent side effects, and deterministic fixtures before any model-requested tool can execute. A Skill never grants tools.
+2. **Configuration API slice.** Define a portable, versioned profile schema, validation errors, revision history, rollback, and secret references. Then let Pagurus edit it through the Runtime API.
+3. **Composition slice.** Define topology-neutral user-authored composition with at least one single-node and two distinct multi-node fixtures. Do not hardcode layer counts, role names, or a hierarchy.
+4. **Persistence hardening.** Add supported OS/architecture/Node CI coverage, migrations, WAL crash recovery, retention, and multi-process ownership before calling the storage layer production-ready.
+5. **Magpie upstream adapter.** Once the Conchbase config format is stable, evaluate a pull request to Magpie's `internal/agent` so Conchbase appears on its Agents page. This is optional integration work, not required for the gateway.
+6. **Authoritative client reads.** Replace direct CLI database reads with a documented Runtime API client path after API parity and authentication direction are accepted. Keep the single-owner lock until that contract exists.
+7. **SSE compatibility.** Only after `Last-Event-ID`, retention, and reconnect semantics are accepted, decide whether to expose the durable event log over SSE in addition to polling.
 
 ## Blocked until direction
 
@@ -44,7 +45,7 @@ Do not weaken or delete the repository guardrails to bypass this queue. Update t
 
 ## Definition of done for each task
 
-- Read `AGENTS.md`, `docs/AI_HANDOFF.md`, `docs/AI_DEVELOPMENT.md`, ADRs `0010`–`0011`, and the owning architecture/API document first.
+- Read `AGENTS.md`, `docs/AI_HANDOFF.md`, `docs/AI_DEVELOPMENT.md`, ADRs `0010`–`0012`, and the owning architecture/API document first.
 - Keep implemented behavior separate from planned behavior in every doc/README update.
 - Add deterministic tests; never use real credentials, personal data, public-network dependencies, or user runtime data in fixtures.
 - Run `npm run check`, `npm test`, and `npm run build` in the affected repository.

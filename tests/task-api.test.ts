@@ -11,9 +11,12 @@ function createFixtureService(filename: string): TaskService {
   return new TaskService(new SqliteTaskStore(filename), {
     magpieBaseUrl: 'http://127.0.0.1:3425',
     defaultModel: 'fixture/model',
-    fetch: async () => new Response(JSON.stringify({
-      choices: [{ message: { content: 'fake answer' } }],
-    }), { status: 200, headers: { 'content-type': 'application/json' } }),
+    fetch: async () => new Response(
+      'data: ' + JSON.stringify({
+        choices: [{ delta: { content: 'fake answer' }, finish_reason: 'stop' }],
+      }) + '\n\ndata: [DONE]\n\n',
+      { status: 200, headers: { 'content-type': 'text/event-stream' } },
+    ),
   });
 }
 
@@ -43,7 +46,11 @@ test('task, event, and model routes use one runtime service', async () => {
 
     const read = await app.inject({ method: 'GET', url: `/v1/tasks/${taskId}` });
     assert.equal(read.statusCode, 200);
-    assert.equal(read.json<{ task: { output: string } }>().task.output, 'fake answer');
+    const taskBody = read.json<{
+      task: { output: string; partialOutput: string | null };
+    }>();
+    assert.equal(taskBody.task.output, 'fake answer');
+    assert.equal(taskBody.task.partialOutput, null);
 
     const events = await app.inject({ method: 'GET', url: '/v1/events' });
     assert.equal(events.statusCode, 200);
@@ -51,14 +58,14 @@ test('task, event, and model routes use one runtime service', async () => {
       events: { id: string }[];
       cursor: string;
     }>();
-    assert.equal(eventBody.events.length, 3);
+    assert.equal(eventBody.events.length, 4);
     assert.equal(eventBody.cursor, eventBody.events.at(-1)?.id);
 
     const replay = await app.inject({
       method: 'GET',
       url: `/v1/events?after=${eventBody.events[0]!.id}`,
     });
-    assert.equal(replay.json<{ events: unknown[] }>().events.length, 2);
+    assert.equal(replay.json<{ events: unknown[] }>().events.length, 3);
 
     const unknownCursor = await app.inject({
       method: 'GET',

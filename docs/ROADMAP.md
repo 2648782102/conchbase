@@ -5,6 +5,7 @@ This is a direction for staged validation, not a release commitment.
 ## Phase 1: real-model foundation (implemented)
 
 - Connect one real model through a narrow local Magpie adapter.
+- Stream bounded answer-text progress through durable events and `partialOutput`.
 - Persist task state, attempts, and ordered events in SQLite.
 - Expose versioned task, cancel, retry, event, and model-catalog routes.
 - Provide CLI and Pagurus access through the same Runtime API.
@@ -12,7 +13,7 @@ This is a direction for staged validation, not a release commitment.
 
 ## Phase 2: bounded execution capabilities
 
-- Define partial-output events, streaming, and cancellation semantics through an ADR.
+- Define a public SSE/`Last-Event-ID` transport and retention policy through an ADR.
 - Add one bounded tool registry with policy and approval records and idempotent side effects.
 - Define a portable, versioned profile schema with validation, revision history, rollback, and secret references.
 - Add topology-neutral, user-authored composition with single-node and distinct multi-node fixtures.

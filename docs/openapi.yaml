@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Conchbase Runtime API
-  version: 0.2.0
-  description: Local, versioned API for Conchbase phase-1 model tasks, ordered events, and Magpie model discovery.
+  version: 0.3.0
+  description: Local, versioned API for Conchbase streaming model tasks, ordered progress events, and Magpie model discovery.
 servers:
   - url: http://127.0.0.1:4318
     description: Local runtime default; loopback only.
@@ -220,7 +220,7 @@ components:
     Task:
       type: object
       additionalProperties: false
-      required: [id, prompt, model, configurationRevisionId, state, attempt, output, error]
+      required: [id, prompt, model, configurationRevisionId, state, attempt, output, partialOutput, error]
       properties:
         id:
           type: string
@@ -236,6 +236,8 @@ components:
           type: integer
           minimum: 1
         output:
+          type: [string, 'null']
+        partialOutput:
           type: [string, 'null']
         error:
           type: [string, 'null']
@@ -302,6 +304,8 @@ components:
           minimum: 1
         data:
           type: object
+          additionalProperties:
+            type: [string, number, boolean, 'null']
     EventList:
       type: object
       additionalProperties: false

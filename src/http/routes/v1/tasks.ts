@@ -32,6 +32,7 @@ function toTaskResponse(task: {
   readonly state: string;
   readonly attempt: number;
   readonly output: string | null;
+  readonly partialOutput: string | null;
   readonly error: string | null;
 }) {
   return {
@@ -42,6 +43,7 @@ function toTaskResponse(task: {
     state: task.state,
     attempt: task.attempt,
     output: task.output,
+    partialOutput: task.partialOutput,
     error: task.error,
   };
 }
