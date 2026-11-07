@@ -1,0 +1,24 @@
+name: Bug report
+description: Report a reproducible problem in Conchbase.
+labels: [bug]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      placeholder: Include the command, API request, or configuration needed.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Conchbase and Node.js versions
+    validations:
+      required: true
