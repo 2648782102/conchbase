@@ -33,7 +33,7 @@ Implemented:
 - npm scripts: `npm run dev`, `npm run check`, `npm test`, and `npm run build`.
 - Automated tests cover loopback/port validation, current read-only HTTP response bodies and OpenAPI shapes, legal task transitions, cancellation, event ordering/replay, configuration revision pinning, a tool policy gate, and provider-independent fake-model terminal-state paths.
 - Deterministic internal modules under `src/runtime/` are not exposed through HTTP. Their fake model and tool callbacks are test fixtures; they do not execute real tools or call a model provider.
-- Proposal ADRs `0002`–`0004` record options and recommendations for the still-open public task/event/configuration contracts. `0005` records topology-neutral product direction; `0006`–`0007` propose provider and configuration boundaries. `docs/REFERENCE_PROJECTS.md` records a dated GitHub Trending snapshot and its explicitly rejected patterns.
+- Proposal ADRs `0002`–`0004` record options and recommendations for the still-open public task/event/configuration contracts. `0005` records topology-neutral product direction; `0006`–`0007` propose provider and configuration boundaries. `0008` records a dated local SQLite driver compatibility spike, not a production driver choice. `docs/REFERENCE_PROJECTS.md` records a dated GitHub Trending snapshot and its explicitly rejected patterns.
 - GitHub Actions runs type checks, tests, and a production build on pushes and pull requests.
 
 Not implemented yet:
@@ -78,7 +78,7 @@ Do not silently treat these as settled:
 
 - Task/session API, event envelope, replay/cursor semantics, and SSE details.
 - User-authored composition schema, identity, validation, delegation, concurrency, and cancellation propagation; ADR `0005` is a proposal, not a contract.
-- Persistence schema and Node SQLite driver.
+- Persistence schema, production SQLite driver, and supported-platform compatibility matrix; [ADR 0008](decisions/0008-sqlite-driver-compatibility-proposal.md) records local evidence only.
 - Provider SDK and provider/model support order.
 - Profile/config file format, migration policy, and exact secret-store interface.
 - Memory data model, retention, import/export, and retrieval strategy.
@@ -90,10 +90,10 @@ When an implementation depends on one of these, write a short ADR with options, 
 
 ## Recommended first implementation sequence
 
-1. Read `docs/AI_TASK_QUEUE.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0007`; do not treat them as accepted public contracts.
+1. Read `docs/AI_TASK_QUEUE.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008`; do not treat them as accepted public contracts.
 2. Obtain product direction on task IDs, event envelopes/cursors, and configuration schema before changing `docs/openapi.yaml`.
 3. ~~Add provider-independent acceptance tests and policy fixtures around the existing deterministic core.~~ Done for the current internal core; see `docs/AI_TASK_QUEUE.md`.
-4. Run the storage compatibility spike in a scratch branch, then select persistence and provider drivers through focused checks before adding restart/resume behavior.
-5. Only after an ADR is accepted, add versioned schemas to OpenAPI and expose task or event routes.
+4. ~~Run the storage compatibility spike in a scratch branch~~ Done as local compatibility evidence in [ADR 0008](decisions/0008-sqlite-driver-compatibility-proposal.md); no production driver was selected. Select persistence and provider drivers only after ADRs `0002`–`0007` receive product direction and supported-platform checks are defined; add restart/resume behavior only after an accepted schema.
+5. Wait for explicit product direction on the open ADRs, beginning with task lifecycle, event envelope, configuration revision, and user-authored composition. Only after an ADR is accepted, add versioned schemas to OpenAPI and expose task or event routes.
 
 Keep each change small enough to verify with deterministic local fixtures. Never use real user credentials in fixture data.

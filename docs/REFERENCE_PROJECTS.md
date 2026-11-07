@@ -46,4 +46,5 @@ Status: research notes observed on 2026-11-07 (Asia/Shanghai). This is a time-bo
 - [ADR 0005](decisions/0005-user-defined-agent-topology-proposal.md): topology-neutral, user-defined agent composition.
 - [ADR 0006](decisions/0006-provider-adapter-capability-boundary-proposal.md): provider adapter and capability boundary.
 - [ADR 0007](decisions/0007-skill-plugin-mcp-configuration-proposal.md): Skill, plugin, MCP, and configuration-revision boundary.
-- [AI task queue](AI_TASK_QUEUE.md): current blocked work and the next independent storage spike.
+- [ADR 0008](decisions/0008-sqlite-driver-compatibility-proposal.md): dated, local SQLite driver compatibility evidence with no production driver selection.
+- [AI task queue](AI_TASK_QUEUE.md): current blocked work and the next independent implementation slice.
