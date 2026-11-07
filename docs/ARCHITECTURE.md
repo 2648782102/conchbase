@@ -40,7 +40,7 @@ ACP clients ───────── optional adapter ───────�
 
 The repository currently contains the HTTP service shell and read-only health/runtime endpoints. No model call, external tool execution, or writable management endpoint is exposed yet.
 
-`src/runtime/` holds internal deterministic domain modules for task transitions, ordered events, configuration revisions, and tool policy decisions. They are deliberately outside `src/http/`; their shapes are proposal material, not the public API. See `docs/decisions/0002-task-lifecycle-proposal.md`, `0003-event-ordering-proposal.md`, and `0004-configuration-revision-proposal.md`.
+`src/runtime/` holds internal deterministic domain modules for task transitions, ordered events, configuration revisions, tool policy decisions, a provider-independent model adapter contract, and an internal task-runner acceptance harness. They are deliberately outside `src/http/`; their shapes are proposal material, not the public API. The scripted model adapter and tool callbacks live in `tests/fixtures/`. See `docs/decisions/0002-task-lifecycle-proposal.md`, `0003-event-ordering-proposal.md`, and `0004-configuration-revision-proposal.md`.
 
 ## Source layout
 

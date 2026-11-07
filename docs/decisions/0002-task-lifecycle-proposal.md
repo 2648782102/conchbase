@@ -40,4 +40,4 @@ Adopt option A as the internal behavior under test. Keep it a proposal for the p
 
 ## Validation
 
-`tests/task-lifecycle.test.ts`, `tests/event-log.test.ts`, and `tests/configuration-revision.test.ts` cover legal transitions, terminal rejection, cancellation, config pinning, stable event IDs, replay without duplication, and immutable revision history. `tests/policy-gate.test.ts` proves denied or unapproved tools do not execute.
+`tests/task-lifecycle.test.ts`, `tests/event-log.test.ts`, and `tests/configuration-revision.test.ts` cover legal transitions, terminal rejection, cancellation, config pinning, stable event IDs, replay without duplication, and immutable revision history. `tests/policy-gate.test.ts` proves denied, unapproved, and revoked tools do not execute. `tests/task-runner.test.ts` uses an internal scripted model adapter to prove success, failure, and cancellation terminal paths without executing a later tool; it does not call a real provider.

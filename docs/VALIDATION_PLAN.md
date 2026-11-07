@@ -5,8 +5,8 @@ This document records current automated coverage and the next validation layers 
 ## Current automated coverage
 
 - Startup configuration accepts only documented loopback hosts and decimal ports in range.
-- Fastify inject checks the exact response bodies for the implemented read-only status routes.
-- Internal deterministic modules cover legal task transitions, terminal rejection, cancellation, configuration revision pinning and history, stable event IDs, replay without duplication, and denied/unapproved tool execution.
+- Fastify inject checks the exact response bodies for the implemented read-only status routes. A dependency-free test reads `docs/openapi.yaml` as the source of truth and checks the documented route/schema fields and exact response fixtures.
+- Internal deterministic modules cover legal task transitions, terminal rejection, cancellation, configuration revision pinning and history, stable event IDs, replay without duplication, denied/unapproved/revoked tool decisions, and provider-independent fake-model success, failure, and cancellation paths. Event/log-shaped fixtures assert that fake secret markers are not serialized.
 - GitHub Actions runs `npm run check`, `npm test`, and `npm run build`.
 
 This is a scaffold-level baseline plus internal domain invariants. It does not validate a live agent loop, persistence, an exposed task API, or authentication because those features do not exist yet.
@@ -14,8 +14,8 @@ This is a scaffold-level baseline plus internal domain invariants. It does not v
 ## Required validation layers as features arrive
 
 1. **Unit:** task state transitions, policy decisions, config parsing/migration, event serialization, and cancellation. The first four areas now have deterministic internal tests; config migration and wire serialization remain future work.
-2. **API contract:** validate live responses against `docs/openapi.yaml`; assert errors and loopback binding.
-3. **Integration:** deterministic fake model and fake MCP server; no real API keys and no external network dependency.
+2. **API contract:** the current read-only fixtures are checked against `docs/openapi.yaml`; generated validation, error responses, writable routes, and loopback binding assertions remain future work.
+3. **Integration:** a deterministic internal fake model exists as an acceptance fixture; a fake MCP server, durable integration, and no-real-key provider integration remain future work.
 4. **Security:** denied tools never execute; secrets do not enter events/logs; untrusted tool output is treated as data; external binding stays disabled without authentication.
 5. **Recovery:** clients can resume events after reconnecting; interrupted tasks reach an explicit terminal or recoverable state.
 

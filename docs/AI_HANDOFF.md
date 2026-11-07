@@ -29,8 +29,8 @@ Implemented:
 - `GET /v1/health` and `GET /v1/runtime`, matching `docs/openapi.yaml`.
 - Explicit rejection of non-loopback host values.
 - npm scripts: `npm run dev`, `npm run check`, `npm test`, and `npm run build`.
-- Automated tests cover loopback/port validation, current read-only HTTP response bodies, legal task transitions, cancellation, event ordering/replay, configuration revision pinning, and a tool policy gate.
-- Deterministic internal modules under `src/runtime/` are not exposed through HTTP and do not execute real tools.
+- Automated tests cover loopback/port validation, current read-only HTTP response bodies and OpenAPI shapes, legal task transitions, cancellation, event ordering/replay, configuration revision pinning, a tool policy gate, and provider-independent fake-model terminal-state paths.
+- Deterministic internal modules under `src/runtime/` are not exposed through HTTP. Their fake model and tool callbacks are test fixtures; they do not execute real tools or call a model provider.
 - Proposal ADRs `0002`–`0004` record options and recommendations for the still-open public task/event/configuration contracts.
 - GitHub Actions runs type checks, tests, and a production build on pushes and pull requests.
 
@@ -88,8 +88,8 @@ When an implementation depends on one of these, write a short ADR with options, 
 
 1. Read `docs/AI_TASK_QUEUE.md` and the three proposal ADRs; do not treat them as accepted public contracts.
 2. Obtain product direction on task IDs, event envelopes/cursors, and configuration schema before changing `docs/openapi.yaml`.
-3. Add provider-independent acceptance tests and policy fixtures around the existing deterministic core.
-4. Select persistence and provider drivers through focused compatibility checks, then add restart/resume behavior.
+3. ~~Add provider-independent acceptance tests and policy fixtures around the existing deterministic core.~~ Done for the current internal core; see `docs/AI_TASK_QUEUE.md`.
+4. Run the storage compatibility spike in a scratch branch, then select persistence and provider drivers through focused checks before adding restart/resume behavior.
 5. Only after an ADR is accepted, add versioned schemas to OpenAPI and expose task or event routes.
 
 Keep each change small enough to verify with deterministic local fixtures. Never use real user credentials in fixture data.

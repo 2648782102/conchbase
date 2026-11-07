@@ -6,7 +6,7 @@
 
 Conchbase owns agent execution: tasks, model and tool orchestration, policy enforcement, runtime events, and persisted state. It can run from the CLI without a graphical interface. Pagurus and other clients connect through a versioned API.
 
-The current scaffold exposes local health and runtime status endpoints. It also includes internal, tested domain primitives for future task lifecycle, event ordering, configuration revisions, and tool policy decisions. Agent execution, MCP connections, persistent state, and the public task API are planned work; the internal primitives are not wired into HTTP.
+The current scaffold exposes local health and runtime status endpoints. It also includes internal, tested domain primitives for future task lifecycle, event ordering, configuration revisions, tool policy decisions, and a provider-independent fake-model acceptance fixture. Agent execution, MCP connections, persistent state, and the public task API are planned work; the internal primitives are not wired into HTTP and do not call a real model or tool.
 
 ## Current status
 
