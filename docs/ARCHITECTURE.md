@@ -2,60 +2,62 @@
 
 ## Runtime boundary
 
-Conchbase is the execution authority. It owns task and session state, model calls, tool dispatch, policy checks, approval requests, and durable runtime events. A CLI is one client; no graphical UI is required to start or finish a task.
+Conchbase is the execution authority. It owns task state, model calls, cancellation, explicit retry, durable events, and the phase-1 configuration revision. CLI, Pagurus, and third-party clients all use the versioned Runtime API. No UI is required to start or finish a task.
 
-User-defined agent composition is intended to be topology-neutral. A layered multi-role setup is only an illustrative example and must not become a built-in structure, default template, required layer count, or role-name convention. See [ADR 0005](decisions/0005-user-defined-agent-topology-proposal.md); no composition behavior is implemented yet.
+User-defined agent composition is intended to be topology-neutral. A layered multi-role setup is only an illustrative example and must not become a built-in structure, default template, required layer count, or role-name convention. Phase 1 implements a single-turn execution unit to validate real-model execution; this is not an accepted composition schema. See [ADR 0005](decisions/0005-user-defined-agent-topology-proposal.md) and [ADR 0010](decisions/0010-first-real-model-slice.md).
 
 ```text
 CLI ────────────┐
-Pagurus ────────┼── versioned Runtime API ── Conchbase Runtime
-External clients┘                              ├─ task state machine
-ACP clients ───────── optional adapter ────────├─ model adapters
-                                                ├─ policy and approvals
-                                                ├─ MCP client / Skill loader
-                                                └─ storage and event log
+Pagurus ────────┼── versioned Runtime API ── Conchbase TaskService
+External clients┘                              ├─ OpenAiChatCompletionsProvider
+                                               │    └── local Magpie gateway
+                                               └─ TaskStore
+                                                    └── node:sqlite tasks + events
 ```
 
 ## Interface rules
 
-- HTTP/JSON is the management and task API; SSE carries ordered runtime events.
-- JSON Schema is the source for request and response validation. Public schemas receive explicit versions.
-- Events have stable IDs and task IDs so clients can resume after reconnecting.
-- ACP is an optional compatibility adapter for agent clients. MCP is used for tool services; neither replaces the Runtime API.
-- Browser clients connect to a same-origin console or an explicitly paired local endpoint. The runtime binds to loopback by default.
+- HTTP/JSON is the management and task API. `docs/openapi.yaml` is the versioned source of truth.
+- Events have stable global sequence numbers and IDs so clients can poll from a cursor after reconnecting. SSE remains a later compatibility concern.
+- Magpie is a replaceable local model gateway. Its OpenAI Chat Completions endpoint, model catalog, and app-naming key are provider details behind the adapter; they do not become public Conchbase schemas.
+- Browser clients connect through the same-origin development proxy or an explicitly paired future endpoint. The runtime binds to loopback by default.
+
+## Phase-1 execution flow
+
+1. A client sends `POST /v1/tasks` with a prompt and optional model id. `TaskService.createTask` validates it and `TaskStore.createTask` atomically inserts a `queued` task and its first event.
+2. `TaskService.startTask` tracks an `AbortController` and runs `OpenAiChatCompletionsProvider.nextTurn`. The provider sends one non-streaming request to Magpie's `/v1/chat/completions`.
+3. Task state changes and their events are committed together. A completion becomes `succeeded` with output; a normalized provider error becomes `failed`; cancellation becomes `cancelling` then `cancelled`.
+4. On process startup, `TaskService` converts persisted nonterminal states to `interrupted` and records one event per task. It never replays an in-flight provider call.
+5. `POST /v1/tasks/{taskId}/retry` creates a new attempt from the original prompt while preserving the task ID and all previous events.
+
+The internal `src/runtime/task-runner.ts` and `policy-gate.ts` remain deterministic acceptance primitives for a future tool-capable loop. They are not wired into the phase-1 HTTP task path and do not execute real tools.
 
 ## State and configuration
 
-- User-authored profile, policy, and Skill files are portable configuration inputs.
-- Runtime operational state (sessions, tasks, approvals, and events) belongs to a future transactional local store. [ADR 0008](decisions/0008-sqlite-driver-compatibility-proposal.md) records local driver evidence; no store or driver is implemented.
-- Artifacts live as files referenced from runtime records.
-- Secrets are referenced by name and resolved by the runtime from an operating-system credential store or explicitly configured environment.
-- Each task is pinned to a configuration revision. Applying a new revision affects new tasks.
-- A future versioned profile may describe a user-authored composition, but its topology, identity model, delegation, concurrency, and validation rules remain open decisions.
-
-## Extension model
-
-- MCP servers expose tools over a standard protocol and remain independently permission-gated.
-- Skills are instruction content and do not grant tool permissions.
-- Arbitrary in-process plugins are out of the initial runtime scope. A later plugin host must define isolation, lifecycle, and capability grants first.
-- Provider adapters, Skills, MCP servers, and any future declarative plugins are replaceable inputs. None owns the public Runtime API, durable task state, or final authorization; see [ADR 0006](decisions/0006-provider-adapter-capability-boundary-proposal.md) and [ADR 0007](decisions/0007-skill-plugin-mcp-configuration-proposal.md).
-
-## Initial implementation boundary
-
-The repository currently contains the HTTP service shell and read-only health/runtime endpoints. No model call, external tool execution, or writable management endpoint is exposed yet.
-
-`src/runtime/` holds internal deterministic domain modules for task transitions, ordered events, configuration revisions, tool policy decisions, a provider-independent model adapter contract, and an internal task-runner acceptance harness. They are deliberately outside `src/http/`; their shapes are proposal material, not the public API. The scripted model adapter and tool callbacks live in `tests/fixtures/`. See `docs/decisions/0002-task-lifecycle-proposal.md`, `0003-event-ordering-proposal.md`, `0004-configuration-revision-proposal.md`, and `0005-user-defined-agent-topology-proposal.md` through `0007-skill-plugin-mcp-configuration-proposal.md`.
+- `SqliteTaskStore` owns normalized task and event rows in a private SQLite database. WAL and foreign keys are enabled. Driver types and errors do not leave the store boundary.
+- A content-addressed, immutable revision identifies the phase-1 configuration. Each task attempt pins its revision id. There is no public configuration write API or portable profile schema yet.
+- Artifacts, secrets, MCP servers, Skills, approvals, and plugin hosts are not implemented. Provider credentials stay in Magpie's own configuration; Conchbase sends only the optional `magpie-<app-id>` naming key.
+- The phase-1 database schema has no migration policy or cross-platform production guarantee. See the open decisions in `docs/AI_HANDOFF.md`.
 
 ## Source layout
 
 ```text
 src/
-├── config/runtime-config.ts       # environment parsing and startup validation
+├── cli.ts                         # CLI commands and direct runtime use
+├── main.ts                        # server entry point
+├── config/runtime-config.ts       # environment parsing and loopback validation
 ├── http/
 │   ├── create-app.ts               # Fastify construction and route registration
 │   └── routes/v1/                  # versioned HTTP route handlers
-├── runtime/                        # internal deterministic domain modules, not public API
-└── main.ts                         # process entry point and listener lifecycle
+└── runtime/
+    ├── magpie-provider.ts          # real local model adapter
+    ├── task-service.ts             # orchestration, cancellation, retry, recovery
+    ├── task-store.ts               # SQLite task/event persistence interface
+    ├── event-log.ts                # deterministic in-memory event invariants
+    ├── task-lifecycle.ts           # state machine
+    ├── task-runner.ts              # future tool-loop acceptance harness
+    ├── policy-gate.ts              # future tool authorization primitive
+    └── configuration-revision.ts   # content-addressed revision identity
 ```
 
-Keep the current scaffold small. Add a module when there is a real capability to own; do not create empty layers or generic frameworks in advance. As execution capabilities arrive, organize changes as bounded vertical slices with domain rules separate from HTTP and provider/storage adapters. Keep replaceable or security-sensitive boundaries explicit, and avoid interfaces that only rename a single call without protecting a real boundary.
+Keep domain rules independent of Fastify, provider HTTP, and SQLite. Add a module only when a real capability or security boundary needs an owner.

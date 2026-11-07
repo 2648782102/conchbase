@@ -2,6 +2,8 @@
 
 Status: **proposed, not accepted as a public contract**
 
+Accepted direction: [ADR 0010](0010-first-real-model-slice.md) accepts a durable global monotonic log and ID cursor for the first real-model slice. SSE, retention, and multi-process ownership remain open.
+
 ## Context
 
 `docs/ARCHITECTURE.md` requires runtime events to have stable IDs and task IDs so clients can resume after reconnection. SSE details, the event envelope, and replay/cursor semantics remain open in `docs/AI_HANDOFF.md`.

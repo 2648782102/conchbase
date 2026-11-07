@@ -1,25 +1,26 @@
 # Technology baseline
 
-This records the initial implementation choices. Revisit a choice through a short decision record when requirements change.
-
 | Area | Baseline | State |
 |---|---|---|
 | Runtime and CLI | TypeScript on Node.js 24+ | In use |
-| HTTP server | Fastify | In use for the read-only service shell |
-| API contract | Versioned HTTP/JSON, JSON Schema, OpenAPI documentation | Planned; health endpoints are the only current routes |
-| Runtime events | Resumable SSE with stable event IDs | Planned |
-| Tool protocol | MCP TypeScript SDK v2 | Planned |
-| Agent orchestration | Conchbase-owned task state machine; provider SDK behind an adapter | Planned |
-| Operational state | SQLite behind a storage interface | Planned; local driver compatibility evidence in [ADR 0008](decisions/0008-sqlite-driver-compatibility-proposal.md), production driver not selected |
-| Configuration and Skills | Portable profile files and Markdown Skills, validated by versioned schemas | Planned |
+| HTTP server | Fastify | In use |
+| API contract | Versioned HTTP/JSON, JSON Schema, OpenAPI | In use for phase-1 status, task, event, and model routes |
+| Model provider | Direct OpenAI Chat Completions-compatible HTTP to local Magpie | In use for phase 1; no provider SDK |
+| Task and event state | `node:sqlite` `DatabaseSync` behind `TaskStore` | In use for local phase 1; production platform matrix and migrations pending |
+| Runtime events | Global monotonic event IDs and polling cursor | In use; SSE and retention pending |
+| Tool protocol | MCP TypeScript SDK | Deferred until lifecycle, sandboxing, and per-tool grants are accepted |
+| Agent orchestration | Conchbase-owned task state machine with a narrow provider adapter | In use for one bounded text turn; composition and tool loops pending |
+| Configuration and Skills | Content-addressed revision id and future portable profile files | Revision id in use; profile schema, Skills, and write API deferred |
 
-Repository guardrails use Node's built-in test runner and local-file assertions; they are development checks, not runtime technology. See [ADR 0009](decisions/0009-ai-development-guardrails.md).
+The runtime is primarily I/O orchestration. Model inference belongs to a local gateway or external provider, so a separate inference language is not part of the baseline. The public API stays language-neutral for non-TypeScript clients.
 
-The runtime is primarily I/O orchestration. A separate language is not justified by model inference, which is performed by model providers or external local-model processes. The public API remains language-neutral for non-TypeScript clients.
+`node:sqlite` is experimental in Node 24. It avoids a native npm dependency for this local slice, but production choice, supported OS/CPU/Node combinations, WAL crash recovery, migrations, and multi-process ownership remain open. [ADR 0008](decisions/0008-sqlite-driver-compatibility-proposal.md) records dated single-machine evidence; [ADR 0010](decisions/0010-first-real-model-slice.md) accepts only the phase-1 internal schema.
+
+Repository guardrails use Node's built-in test runner and local-file assertions; they are development checks, not runtime technology.
 
 ## Deferred choices
 
-- Provider SDK: evaluate provider coverage, streaming, structured tool calls, cancellation, and checkpoint behavior before choosing an adapter.
-- SQLite driver: all candidates remain outside runtime dependencies. [ADR 0008](decisions/0008-sqlite-driver-compatibility-proposal.md) records a single-machine spike and recommends a built-in-module prototype only after product direction and supported-platform checks; keep storage behind a narrow interface.
-- Plugin execution: defer arbitrary code loading until isolation and capability grants are specified.
-- Remote access and desktop packaging: defer until pairing, authentication, and supported operating systems are defined.
+- Provider capability discovery, streaming, structured tool calls, multi-turn context, error classification, and direct vendor adapters.
+- Production SQLite driver, schema migrations, retention, SSE, and `Last-Event-ID` mapping.
+- Plugin isolation and capability grants.
+- Remote authentication, pairing, and desktop packaging.

@@ -1,12 +1,22 @@
 import Fastify from 'fastify';
+import type { TaskService } from '../runtime/task-service.js';
+import { registerEventRoutes } from './routes/v1/events.js';
 import { registerHealthRoute } from './routes/v1/health.js';
+import { registerModelRoutes } from './routes/v1/models.js';
 import { registerRuntimeRoute } from './routes/v1/runtime.js';
+import { registerTaskRoutes } from './routes/v1/tasks.js';
 
-export function createApp(options: { logger?: boolean } = {}) {
+export function createApp(options: {
+  logger?: boolean;
+  taskService?: TaskService;
+} = {}) {
   const app = Fastify({ logger: options.logger ?? true });
 
   registerHealthRoute(app);
-  registerRuntimeRoute(app);
+  registerRuntimeRoute(app, Boolean(options.taskService));
+  registerEventRoutes(app, options.taskService);
+  registerModelRoutes(app, options.taskService);
+  registerTaskRoutes(app, options.taskService);
 
   return app;
 }

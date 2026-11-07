@@ -1,70 +1,49 @@
 # AI task queue
 
-This queue is for coding models continuing from the repository. It records bounded work that can be started without another chat. It is not a release plan and does not imply approval of the proposed public contracts.
+This queue is for coding models continuing from the repository. It records bounded work and current repository facts. It is not a release plan and does not accept new public contracts.
 
 ## Current state
 
-- Both repositories are scaffold repositories whose pushed heads have green `npm run check`, `npm test`, and `npm run build`; this queue reflects the pushed internal acceptance slice.
-- Conchbase exposes only `GET /v1/health` and `GET /v1/runtime`; see `docs/API.md` and `docs/openapi.yaml`.
-- Conchbase has deterministic, **internal-only** modules and tests for task transitions, event ordering, configuration revisions, a tool policy gate, and provider-independent fake-model terminal paths. They are not wired into HTTP; fixture model/tool callbacks do not call real providers or execute real tools.
-- A dependency-free OpenAPI contract test treats `docs/openapi.yaml` as the source of truth for the current read-only response fixtures. It does not implement a general generated validator.
-- `docs/REFERENCE_PROJECTS.md` and ADRs `0005`–`0007` record dated external research, topology-neutral product intent, and proposed provider/configuration boundaries. ADR `0008` records a local SQLite driver compatibility spike. These are documentation only; no composition schema, provider adapter, plugin host, configuration route, or persistence driver is implemented.
-- Pagurus is a read-only status client with an explicit unsupported-API-version state and tests. It must not invent a second API schema.
-- `main` is protected against force pushes and deletion by an active GitHub ruleset; normal pushes remain allowed.
-- `tests/repository-guardrails.test.ts` and [ADR 0009](decisions/0009-ai-development-guardrails.md) make the development boundary executable in `npm test`. ADR `0009` is not a public API contract.
+- [ADR 0010](decisions/0010-first-real-model-slice.md) accepts phase-1 direction: Conchbase owns the agent loop, Magpie is the first real-model provider, and durable events plus explicit retry cover interruption. A process restart recognizes interrupted work; it does not continue an in-flight model request.
+- Conchbase exposes versioned task, retry, cancel, event, and Magpie model-catalog routes. The CLI and Pagurus use the same API. The OpenAPI contract is the source of truth.
+- The phase-1 model loop is single-turn. This is an implementation boundary for validating the runtime, not a default or canonical agent topology. User-defined composition remains topology-neutral product intent, not an implemented schema.
+- `node:sqlite` persists tasks and events behind `TaskStore`. Provider calls use direct HTTP through a narrow adapter. No provider SDK, storage SDK, MCP SDK, or plugin host is installed.
+- `tests/repository-guardrails.test.ts` checks AI-first entry documents, accepted ADR status, the phase-1 OpenAPI path set, loopback-only configuration, source boundaries, and dependency boundaries. It was updated in the same slice as ADR `0010`.
+- Both repositories have protected `main` rulesets against force pushes and deletion; normal pushes remain allowed.
 
-## Before locking any public contract
+## Done in the phase-1 slice
 
-The following proposals in `docs/decisions/` require explicit product direction before any public contract is locked:
+1. **Accepted direction.** ADR `0010` records the final boundary, Magpie evidence, explicit retry rationale, and non-goals. Proposal ADRs `0002`–`0008` keep their broader open questions.
+2. **Provider adapter.** `src/runtime/magpie-provider.ts` parses a local OpenAI Chat Completions response, rejects tool calls, forwards cancellation, and normalizes errors. Tests use fake `fetch`.
+3. **Durable state.** `src/runtime/task-store.ts` atomically writes task transitions and events to SQLite; `src/runtime/task-service.ts` handles completion, failures, cancellation, restart interruption, and retry.
+4. **API and CLI.** `docs/openapi.yaml`, `src/http/routes/v1/`, `src/cli.ts`, and `src/main.ts` provide local clients with one contract. Pagurus uses the same routes.
+5. **AI handoff.** Entry documents, README files, architecture, API, technology, roadmap, validation, and workspace notes distinguish implemented phase-1 behavior from planned work.
 
-- `0002-task-lifecycle-proposal.md`: states, cancellation, retry/failure details, and task IDs.
-- `0003-event-ordering-proposal.md`: SSE envelope, cursor mapping, retention, durable transactions, and multi-process ownership.
-- `0004-configuration-revision-proposal.md`: profile schema, validation errors, migrations, rollback, secret references, and display ordinals.
-- `0005-user-defined-agent-topology-proposal.md`: user-authored composition schema, identity, delegation, concurrency, cancellation propagation, and event shape. A layered multi-role arrangement is only an example; never hardcode it.
-- `0006-provider-adapter-capability-boundary-proposal.md`: provider capability discovery, streaming, tool calls, cancellation, error semantics, credential references, and provider order.
-- `0007-skill-plugin-mcp-configuration-proposal.md`: declarative bundle format, validation preview, MCP lifecycle/sandboxing, per-tool grants, plugin isolation, secret references, and rollback.
-- `0008-sqlite-driver-compatibility-proposal.md`: production driver, persistence schema, normalized storage errors, migrations, WAL/crash recovery, and supported-platform CI matrix. This ADR records spike evidence; it does not propose a public API.
+## Next bounded slices
 
-Do not add write routes, generate client types, build configuration forms, introduce a real provider SDK or storage driver, load plugin code, or hardcode a role hierarchy from these internal shapes before their owning ADR is accepted. A Skill never grants tool permissions.
+Each item requires an accepted ADR before its public contract changes. Do not start several at once.
 
-## Product direction added in this slice
+1. **Provider streaming and visible progress.** Decide the event envelope for partial model output, cancellation during streaming, and terminal output. Keep event IDs and task state authoritative.
+2. **Tool capability slice.** Define one bounded tool registry, a policy schema, approval records, idempotent side effects, and deterministic fixtures before any model-requested tool can execute. A Skill never grants tools.
+3. **Configuration API slice.** Define a portable, versioned profile schema, validation errors, revision history, rollback, and secret references. Then let Pagurus edit it through the Runtime API.
+4. **Composition slice.** Define topology-neutral user-authored composition with at least one single-node and two distinct multi-node fixtures. Do not hardcode layer counts, role names, or a hierarchy.
+5. **Persistence hardening.** Add supported OS/architecture/Node CI coverage, migrations, WAL crash recovery, retention, and multi-process ownership before calling the storage layer production-ready.
+6. **Magpie upstream adapter.** Once the Conchbase config format is stable, evaluate a pull request to Magpie's `internal/agent` so Conchbase appears on its Agents page. This is optional integration work, not required for the gateway.
 
-- **Accepted as intent only:** Conchbase should support highly customizable, user-defined agent composition. The composition must remain topology-neutral; no layer count, role name, hierarchy, coordination pattern, or single example becomes a built-in product shape.
-- **Still blocked:** composition schema/API, provider SDK/conformance, Skill/plugin/MCP bundle format, and any Pagurus write form. See ADRs `0005`–`0007`.
-- **Boundary preserved:** runtime owns task state, policy, approvals, events, and tool execution. Provider adapters and declarative extensions are replaceable inputs, not authorities.
+## Blocked until direction
 
-## Task status
+- Configuration write routes and generated client types built from an unaccepted schema.
+- Automatic continuation of in-flight model or tool work after a crash.
+- MCP process lifecycle, per-tool grants, arbitrary plugin loading, remote binding, authentication/pairing, and desktop packaging.
+- Pagurus configuration forms that present one topology as the only supported shape.
 
-### Done in the current internal acceptance slice
-
-1. **Provider-independent acceptance tests.** `src/runtime/model-adapter.ts`, `src/runtime/task-runner.ts`, and `tests/task-runner.test.ts` define an internal fake adapter and prove success, failure, and cancellation terminal paths without a later tool execution. There is no provider SDK, network call, or new endpoint.
-2. **Policy fixtures.** `tests/policy-gate.test.ts` and `tests/fixtures/runtime-fixtures.ts` cover denied-tool, approval-required, approval-revoked, and approved-after-grant scenarios. Fake secret markers are asserted absent from event/log-shaped fixtures.
-3. **API contract test tooling.** `tests/openapi-contract.test.ts` reads `docs/openapi.yaml` without a new dependency, checks current route/schema fields, compares exact response fixtures, and injects the live read-only routes. `docs/openapi.yaml` remains the source of truth.
-
-### Done in Pagurus
-
-5. **Pagurus incompatibility state.** The shipped Pagurus scaffold has an explicit unsupported-API-version state, recovery guidance, and API/component tests. It is a client-side guard against the current `/v1/health` version, not a negotiated versioning protocol. Do not repeat this work or treat it as approval of new API shapes.
-
-### Done in the executable guardrails slice
-
-8. **AI development guardrails.** `tests/repository-guardrails.test.ts` checks AI-first entry documents, ADR statuses, the read-only/loopback OpenAPI surface, source-boundary isolation, and the absence of premature provider/storage dependencies. Synthetic violation fixtures prove the helpers reject representative boundary breaks. [ADR 0009](decisions/0009-ai-development-guardrails.md) records why these canaries exist and how they must evolve. No public contract, provider, driver, or runtime feature was added.
-
-### Done in the isolated storage spike
-
-4. **Storage compatibility spike.** [ADR 0008](decisions/0008-sqlite-driver-compatibility-proposal.md) records a dated `darwin/arm64`, Node `v24.22.2` check of `node:sqlite`, `better-sqlite3@13.0.3`, and `sqlite3@6.0.1`. All three passed a temporary task/event transaction rollback, commit, and reopen fixture. The check ran outside the repository on a scratch branch; Conchbase runtime dependencies, source, lockfile, OpenAPI, and CI are unchanged. It is not cross-platform CI evidence and does not select a production driver.
-
-### Blocked
-
-6. **Pagurus accessibility pass.** Wait for a real write form before adding deterministic keyboard-focus, 320px layout, and reduced-motion CSS tests; do not convert navigation placeholders into fake workflows.
-7. **Next implementation slice.** Wait for explicit product direction on the open ADRs, beginning with task lifecycle, event envelope, configuration revision, and user-authored composition. Do not add write routes, provider SDKs, a storage driver, client-generated types, or plugin loading to fill the queue. Do not weaken or delete the repository guardrails to bypass this gate; update them only in the same slice as an accepted ADR or a documented development-boundary change.
-
-Proposal ADRs `0002`–`0008` remain **product-direction blocked**. Their public task, event, composition, provider, configuration, and persistence contracts must not be implemented, generated into clients, or exposed as write routes until accepted. ADR `0009` is an accepted development guardrail decision only.
+Do not weaken or delete the repository guardrails to bypass this queue. Update them only in the same slice as an accepted ADR or a documented development-boundary change.
 
 ## Definition of done for each task
 
-- Read `AGENTS.md`, `docs/AI_HANDOFF.md`, `docs/AI_DEVELOPMENT.md`, and the owning architecture/API document first.
+- Read `AGENTS.md`, `docs/AI_HANDOFF.md`, `docs/AI_DEVELOPMENT.md`, ADR `0010`, and the owning architecture/API document first.
 - Keep implemented behavior separate from planned behavior in every doc/README update.
-- Add or update deterministic tests; never use real credentials, personal data, or public-network dependencies.
+- Add deterministic tests; never use real credentials, personal data, public-network dependencies, or user runtime data in fixtures.
 - Run `npm run check`, `npm test`, and `npm run build` in the affected repository.
-- If a public API or shared schema would change, write an ADR with options/consequences/recommendation and request product direction before implementing it.
+- If a public API or shared schema changes, write an ADR with options/consequences/recommendation and record direction before implementing it.
 - Commit the focused slice, report changed files and validation results, and update this queue.

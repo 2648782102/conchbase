@@ -22,6 +22,9 @@ test('read-only status routes return the documented API shapes', async () => {
       state: 'ready',
       capabilities: [],
     });
+
+    const tasks = await app.inject({ method: 'GET', url: '/v1/tasks' });
+    assert.equal(tasks.statusCode, 503);
   } finally {
     await app.close();
   }

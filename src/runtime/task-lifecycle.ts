@@ -7,12 +7,14 @@ export type TaskState =
   | 'cancelling'
   | 'succeeded'
   | 'failed'
-  | 'cancelled';
+  | 'cancelled'
+  | 'interrupted';
 
 export const TERMINAL_TASK_STATES: readonly TaskState[] = Object.freeze([
   'succeeded',
   'failed',
   'cancelled',
+  'interrupted',
 ]);
 
 export type TaskEventType =
@@ -23,25 +25,34 @@ export type TaskEventType =
   | 'task.completed'
   | 'task.failed'
   | 'task.cancellation_requested'
-  | 'task.cancelled';
+  | 'task.cancelled'
+  | 'task.interrupted';
 
 const TRANSITIONS: Readonly<Record<TaskState, readonly TaskState[]>> = Object.freeze({
-  queued: Object.freeze<TaskState[]>(['running', 'cancelling', 'failed']),
+  queued: Object.freeze<TaskState[]>([
+    'running',
+    'cancelling',
+    'failed',
+    'interrupted',
+  ]),
   running: Object.freeze<TaskState[]>([
     'waiting_approval',
     'cancelling',
     'succeeded',
     'failed',
+    'interrupted',
   ]),
   waiting_approval: Object.freeze<TaskState[]>([
     'running',
     'cancelling',
     'failed',
+    'interrupted',
   ]),
-  cancelling: Object.freeze<TaskState[]>(['cancelled']),
+  cancelling: Object.freeze<TaskState[]>(['cancelled', 'interrupted']),
   succeeded: Object.freeze<TaskState[]>([]),
   failed: Object.freeze<TaskState[]>([]),
   cancelled: Object.freeze<TaskState[]>([]),
+  interrupted: Object.freeze<TaskState[]>([]),
 });
 
 export class InvalidTaskTransitionError extends Error {
@@ -80,6 +91,7 @@ export const TASK_TRANSITIONS: Readonly<Record<TaskEventType, TaskTransition>> =
     eventType: 'task.cancellation_requested',
   },
   'task.cancelled': { state: 'cancelled', eventType: 'task.cancelled' },
+  'task.interrupted': { state: 'interrupted', eventType: 'task.interrupted' },
 });
 
 export function canTransition(from: TaskState, to: TaskState): boolean {

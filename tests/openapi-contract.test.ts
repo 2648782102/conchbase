@@ -48,18 +48,48 @@ function assertExactObject(
   assert.deepEqual(Object.keys(value as object).sort(), [...requiredFields].sort());
 }
 
-test('docs/openapi.yaml declares the current read-only route and schema contract', () => {
+test('docs/openapi.yaml declares the versioned task, event, and status contract', () => {
   const spec = readOpenApi();
 
   assert.match(spec, /^openapi: 3\.1\.0$/m);
   assert.deepEqual(
     [...spec.matchAll(/^ {2}(\/v1\/[^:]+):$/gm)].map((match) => match[1]),
-    ['/v1/health', '/v1/runtime'],
+    [
+      '/v1/health',
+      '/v1/runtime',
+      '/v1/models',
+      '/v1/tasks',
+      '/v1/tasks/{taskId}',
+      '/v1/tasks/{taskId}/cancel',
+      '/v1/tasks/{taskId}/retry',
+      '/v1/events',
+    ],
   );
   assert.match(spec, /\$ref: '#\/components\/schemas\/Health'/);
   assert.match(spec, /\$ref: '#\/components\/schemas\/RuntimeStatus'/);
   assertSchemaFields('Health', ['status', 'service', 'apiVersion']);
   assertSchemaFields('RuntimeStatus', ['name', 'version', 'state', 'capabilities']);
+  assertSchemaFields('CreateTaskRequest', ['prompt']);
+  assertSchemaFields('Task', [
+    'id',
+    'prompt',
+    'model',
+    'configurationRevisionId',
+    'state',
+    'attempt',
+    'output',
+    'error',
+  ]);
+  assertSchemaFields('RuntimeEvent', [
+    'sequence',
+    'id',
+    'taskId',
+    'type',
+    'state',
+    'configurationRevisionId',
+    'attempt',
+    'data',
+  ]);
 });
 
 test('exact response fixtures match the documented read-only JSON schema shapes', () => {

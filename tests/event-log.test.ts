@@ -23,18 +23,21 @@ function buildLog() {
     type: 'task.queued',
     state: 'queued',
     configurationRevisionId: revision.id,
+    attempt: 1,
   });
   log = appendEvent(log, {
     taskId: 'task_1',
     type: 'task.started',
     state: 'running',
     configurationRevisionId: revision.id,
+    attempt: 1,
   });
   log = appendEvent(log, {
     taskId: 'task_1',
     type: 'task.completed',
     state: 'succeeded',
     configurationRevisionId: revision.id,
+    attempt: 1,
   });
   return log;
 }

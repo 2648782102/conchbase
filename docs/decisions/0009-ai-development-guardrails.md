@@ -2,6 +2,8 @@
 
 Status: accepted for repository development guardrails, not a public API contract.
 
+Update note (2026-11-07): [ADR 0010](0010-first-real-model-slice.md) accepts the phase-1 public task contract, `node:sqlite` persistence, and a direct Magpie HTTP adapter. The executable guardrails were updated in the same slice to check the accepted route set and dependency boundaries. ADRs `0002`–`0008` remain proposals for their broader open questions.
+
 ## Context
 
 Conchbase is developed primarily by AI coding agents, and the repository explicitly does not optimize for human handoff. `docs/AI_TASK_QUEUE.md` currently blocks the next implementation slice until product direction is given on ADRs `0002`–`0008`. A weaker model continuing from the repository could otherwise fill the queue by inventing a write route, adding a provider SDK or SQLite driver, wiring internal runtime modules into HTTP, or describing planned capabilities as implemented.
@@ -39,6 +41,8 @@ The guardrails must stay small, dependency-free, and deterministic. They are not
 ## Validation
 
 `tests/repository-guardrails.test.ts` is part of `npm test`, which CI already runs. It uses only Node built-ins and local repository files; it performs no network calls and contains no credentials or personal data. One deterministic test feeds synthetic violations into the guardrail helpers to prove those checks fail, rather than silently becoming tautologies. It checks:
+
+The original scaffold checks below have since been updated in the same slice as [ADR 0010](0010-first-real-model-slice.md); the current test checks the accepted phase-1 route set and the built-in SQLite driver. Historical wording is retained to show why the guardrail existed.
 
 - required AI-first and product-invariant phrases in `AGENTS.md`;
 - the implemented-versus-planned wording in `docs/AI_HANDOFF.md`, `README.md`, and `README.zh-CN.md`;

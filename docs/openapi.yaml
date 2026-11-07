@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Conchbase Runtime API
-  version: 0.1.0
-  description: Read-only status API currently implemented by the Conchbase scaffold.
+  version: 0.2.0
+  description: Local, versioned API for Conchbase phase-1 model tasks, ordered events, and Magpie model discovery.
 servers:
   - url: http://127.0.0.1:4318
     description: Local runtime default; loopback only.
@@ -29,7 +29,157 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RuntimeStatus'
+  /v1/models:
+    get:
+      operationId: listModels
+      summary: List chat model ids exposed by the configured local Magpie gateway.
+      responses:
+        '200':
+          description: Available models.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelList'
+        '502':
+          description: Model catalog is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/tasks:
+    get:
+      operationId: listTasks
+      summary: List persisted tasks and the active configuration revision.
+      responses:
+        '200':
+          description: Persisted tasks.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskList'
+    post:
+      operationId: createTask
+      summary: Create and start one bounded model task.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskRequest'
+      responses:
+        '202':
+          description: Task accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskEnvelope'
+        '400':
+          description: Invalid request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/tasks/{taskId}:
+    get:
+      operationId: getTask
+      summary: Read one persisted task.
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Task record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskEnvelope'
+        '404':
+          description: Task not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/tasks/{taskId}/cancel:
+    post:
+      operationId: cancelTask
+      summary: Request cancellation of an active task.
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Cancellation requested.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskEnvelope'
+        '404':
+          description: Task not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Task is not active.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/tasks/{taskId}/retry:
+    post:
+      operationId: retryTask
+      summary: Start a new attempt for a terminal task from its original prompt.
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: New attempt started.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetryTaskResponse'
+        '404':
+          description: Task not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Task is not in a terminal state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/events:
+    get:
+      operationId: listEvents
+      summary: Read globally ordered persisted events after an optional event ID cursor.
+      parameters:
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^evt_[0-9]{12}$'
+      responses:
+        '200':
+          description: Events strictly after the cursor and the resulting cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventList'
+        '400':
+          description: Invalid or unknown event cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 components:
+  parameters:
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      schema:
+        type: string
   schemas:
     Health:
       type: object
@@ -57,3 +207,127 @@ components:
           type: array
           items:
             type: string
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+    TaskState:
+      type: string
+      enum: [queued, running, cancelling, succeeded, failed, cancelled, interrupted, waiting_approval]
+    Task:
+      type: object
+      additionalProperties: false
+      required: [id, prompt, model, configurationRevisionId, state, attempt, output, error]
+      properties:
+        id:
+          type: string
+        prompt:
+          type: string
+        model:
+          type: string
+        configurationRevisionId:
+          type: string
+        state:
+          $ref: '#/components/schemas/TaskState'
+        attempt:
+          type: integer
+          minimum: 1
+        output:
+          type: [string, 'null']
+        error:
+          type: [string, 'null']
+    TaskEnvelope:
+      type: object
+      additionalProperties: false
+      required: [task]
+      properties:
+        task:
+          $ref: '#/components/schemas/Task'
+    TaskList:
+      type: object
+      additionalProperties: false
+      required: [tasks, activeConfigurationRevisionId]
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+        activeConfigurationRevisionId:
+          type: string
+    RetryTaskResponse:
+      type: object
+      additionalProperties: false
+      required: [task, retried]
+      properties:
+        task:
+          $ref: '#/components/schemas/Task'
+        retried:
+          const: true
+    CreateTaskRequest:
+      type: object
+      additionalProperties: false
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 20000
+        model:
+          type: string
+          minLength: 1
+          maxLength: 300
+    RuntimeEvent:
+      type: object
+      additionalProperties: false
+      required: [sequence, id, taskId, type, state, configurationRevisionId, attempt, data]
+      properties:
+        sequence:
+          type: integer
+          minimum: 1
+        id:
+          type: string
+        taskId:
+          type: string
+        type:
+          type: string
+        state:
+          $ref: '#/components/schemas/TaskState'
+        configurationRevisionId:
+          type: string
+        attempt:
+          type: integer
+          minimum: 1
+        data:
+          type: object
+    EventList:
+      type: object
+      additionalProperties: false
+      required: [events, cursor]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeEvent'
+        cursor:
+          type: [string, 'null']
+    ModelCatalogEntry:
+      type: object
+      additionalProperties: false
+      required: [id, displayName]
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+    ModelList:
+      type: object
+      additionalProperties: false
+      required: [models]
+      properties:
+        models:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelCatalogEntry'

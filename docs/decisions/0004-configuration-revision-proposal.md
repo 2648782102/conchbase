@@ -2,6 +2,8 @@
 
 Status: **proposed, not accepted as a public contract**
 
+Accepted direction: [ADR 0010](0010-first-real-model-slice.md) accepts content-addressed revision identity for the first internal configuration snapshot. The portable profile schema, write API, migrations, rollback, and secret references remain open.
+
 ## Context
 
 Accepted architecture says each task binds to one configuration revision for its lifetime; applying a new revision affects later tasks. Profile format, migration policy, and the exact active-revision API remain undecided.

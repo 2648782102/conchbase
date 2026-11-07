@@ -49,3 +49,7 @@ Status: research notes observed on 2026-11-07 (Asia/Shanghai). This is a time-bo
 - [ADR 0008](decisions/0008-sqlite-driver-compatibility-proposal.md): dated, local SQLite driver compatibility evidence with no production driver selection.
 - [ADR 0009](decisions/0009-ai-development-guardrails.md): accepted, executable development guardrails based on deterministic validators.
 - [AI task queue](AI_TASK_QUEUE.md): current blocked work and the next independent implementation slice.
+
+## Later product direction (2026-11-07)
+
+This snapshot remains dated research. [ADR 0010](decisions/0010-first-real-model-slice.md) now records accepted phase-1 direction for a real-model task slice, durable events, explicit retry, and a narrow Magpie provider adapter. It does not retroactively accept the broader proposal contracts or add a GitHub Trending observation.

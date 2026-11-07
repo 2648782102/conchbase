@@ -49,16 +49,23 @@ interface MutableRunState {
   readonly modelOutputs: string[];
 }
 
-function appendStateEvent(state: MutableRunState, eventType: TaskEventType): void {
+function appendStateEvent(
+  state: MutableRunState,
+  eventType: TaskEventType,
+): void {
   state.log = appendEvent(state.log, {
     taskId: state.task.id,
     type: eventType,
     state: state.task.state,
     configurationRevisionId: state.task.configurationRevisionId,
+    attempt: 1,
   });
 }
 
-function transition(state: MutableRunState, eventType: TaskEventType): void {
+function transition(
+  state: MutableRunState,
+  eventType: TaskEventType,
+): void {
   state.task = transitionTask(state.task, eventType);
   appendStateEvent(state, eventType);
 }

@@ -16,7 +16,6 @@ interface PackageLock {
 }
 
 const forbiddenPackages: readonly string[] = [
-  'node:sqlite',
   'better-sqlite3',
   'sqlite3',
   '@types/better-sqlite3',
@@ -25,18 +24,24 @@ const forbiddenPackages: readonly string[] = [
   '@modelcontextprotocol/sdk',
 ];
 
-const forbiddenImport = /(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"](node:sqlite|better-sqlite3|sqlite3|openai|@anthropic-ai\/sdk|@modelcontextprotocol\/sdk)['"]/;
+const forbiddenImport = /(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"](better-sqlite3|sqlite3|openai|@anthropic-ai\/sdk|@modelcontextprotocol\/sdk)['"]/;
 const importPrefix = /(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"]/;
-const forbiddenHttpImport = new RegExp(
-  `${importPrefix.source}(?:[^'"]*runtime\\/|node:fs(?:\\/promises)?)[^'"]*['"]`,
-);
 const forbiddenRuntimeImport = new RegExp(
   `${importPrefix.source}(?:fastify|node:https?|[^'"]*\\/http\\/)[^'"]*['"]`,
 );
 const privateFileIo = /\b(?:readFileSync|readFile|writeFileSync|writeFile|appendFile|createReadStream|createWriteStream)\b/;
 const loopbackHosts = /const LOOPBACK_HOSTS = new Set\(\['127\.0\.0\.1', '::1', 'localhost'\]\)/;
-const writeMethod = /^ {4}(post|put|patch|delete):/m;
 const nonLoopbackAddress = /0\.0\.0\.0|::\/0/;
+const acceptedPaths = [
+  '/v1/health',
+  '/v1/runtime',
+  '/v1/models',
+  '/v1/tasks',
+  '/v1/tasks/{taskId}',
+  '/v1/tasks/{taskId}/cancel',
+  '/v1/tasks/{taskId}/retry',
+  '/v1/events',
+];
 
 function read(relativePath: string): string {
   return readFileSync(path.join(repositoryRoot, relativePath), 'utf8');
@@ -57,24 +62,24 @@ function assertNoForbiddenImportIn(source: string, label: string): void {
   assert.doesNotMatch(
     source,
     forbiddenImport,
-    `${label} must not import a premature provider or storage integration`,
+    `${label} must not import an unaccepted provider or storage SDK`,
   );
 }
 
-function assertReadOnlyOpenApi(spec: string, label: string): void {
+function assertAcceptedOpenApi(spec: string, label: string): void {
   assert.deepEqual(
     [...spec.matchAll(/^ {2}(\/v1\/[^:]+):$/gm)].map((match) => match[1]),
-    ['/v1/health', '/v1/runtime'],
-    `${label} must expose exactly the current read-only paths`,
+    acceptedPaths,
+    `${label} must expose the accepted phase-1 paths`,
   );
   assert.deepEqual(
     [...spec.matchAll(/^ {2}- url: (.+)$/gm)].map((match) => match[1]),
     ['http://127.0.0.1:4318'],
     `${label} must keep a single loopback server URL`,
   );
-  assert.doesNotMatch(spec, writeMethod, `${label} must not declare write methods`);
-  assert.doesNotMatch(spec, /requestBody:/, `${label} must not declare request bodies`);
   assert.doesNotMatch(spec, nonLoopbackAddress, `${label} must not bind beyond loopback`);
+  assert.match(spec, /requestBody:/, `${label} must document the accepted task request`);
+  assert.match(spec, /interrupted/, `${label} must document interrupted tasks`);
 }
 
 function assertLoopbackConfig(source: string, label: string): void {
@@ -83,11 +88,6 @@ function assertLoopbackConfig(source: string, label: string): void {
 }
 
 function assertHttpBoundary(source: string, label: string): void {
-  assert.doesNotMatch(
-    source,
-    forbiddenHttpImport,
-    `${label} must not import internal runtime modules or private-file modules before the public contract is accepted`,
-  );
   assert.doesNotMatch(
     source,
     privateFileIo,
@@ -115,7 +115,7 @@ function assertDependencyBoundaries(
   assert.deepEqual(
     Object.keys(manifest.dependencies ?? {}).sort(),
     ['fastify'],
-    `${label} runtime dependencies must remain the scaffold baseline`,
+    `${label} runtime dependencies must remain the accepted baseline`,
   );
   for (const name of forbiddenPackages) {
     assert.equal(
@@ -136,11 +136,12 @@ function assertDependencyBoundaries(
   }
 }
 
-test('AI-first entry documents keep the implemented and planned boundary explicit', () => {
+test('AI-first entry documents describe the implemented real-model slice', () => {
   const agents = read('AGENTS.md');
   for (const phrase of [
     'built primarily by AI coding agents',
     'Read `docs/AI_HANDOFF.md` first',
+    'Conchbase is the agent execution authority.',
     'Never execute a tool outside the runtime policy and approval path.',
     'A Skill supplies instructions; it does not grant tool permissions.',
     'Keep loopback-only binding until authentication and pairing are designed and implemented.',
@@ -151,29 +152,23 @@ test('AI-first entry documents keep the implemented and planned boundary explici
     assert.ok(agents.includes(phrase), `AGENTS.md must keep: ${phrase}`);
   }
 
-  const queue = read('docs/AI_TASK_QUEUE.md');
-  assert.match(queue, /Wait for explicit product direction on the open ADRs/);
-  assert.match(queue, /Do not weaken or delete the repository guardrails/);
-
   const handoff = read('docs/AI_HANDOFF.md');
-  assert.match(handoff, /Do not claim that Conchbase can already run an agent task/);
-  assert.match(handoff, /Wait for explicit product direction on the open ADRs/);
+  assert.match(handoff, /Phase 1 connects a real model through Magpie/);
+  assert.match(handoff, /interrupted/);
+  assert.match(handoff, /explicit retry/);
+  assert.match(handoff, /does not implement user-defined agent composition/);
 
-  const englishReadme = read('README.md');
-  const chineseReadme = read('README.zh-CN.md');
-  assert.match(englishReadme, /planned work/);
-  assert.match(
-    englishReadme,
-    /Deterministic repository guardrail tests keep the current read-only contract and AI-first boundaries explicit\./,
-  );
-  assert.match(chineseReadme, /仍在规划中/);
-  assert.match(
-    chineseReadme,
-    /确定性的仓库护栏测试会把当前只读契约与 AI-first 边界固定为可执行检查。/,
-  );
+  const queue = read('docs/AI_TASK_QUEUE.md');
+  assert.match(queue, /single-turn/);
+  assert.match(queue, /topology-neutral/);
+
+  assert.match(read('README.md'), /real model/);
+  assert.match(read('README.md'), /planned work/);
+  assert.match(read('README.zh-CN.md'), /真实模型/);
+  assert.match(read('README.zh-CN.md'), /仍在规划中/);
 });
 
-test('decision records separate accepted boundaries from blocked proposals', () => {
+test('decision records separate accepted phase-1 direction from proposals', () => {
   const decisionsDir = 'docs/decisions';
   const files = readdirSync(path.join(repositoryRoot, decisionsDir))
     .filter((file) => file.endsWith('.md'))
@@ -190,8 +185,8 @@ test('decision records separate accepted boundaries from blocked proposals', () 
   }
 
   assert.match(
-    read(`${decisionsDir}/0001-runtime-as-execution-authority.md`),
-    /^Status: accepted for the initial scaffold\.$/m,
+    read(`${decisionsDir}/0010-first-real-model-slice.md`),
+    /^Status: \*\*accepted product and internal architecture direction/m,
   );
   assert.match(
     read(`${decisionsDir}/0009-ai-development-guardrails.md`),
@@ -199,12 +194,12 @@ test('decision records separate accepted boundaries from blocked proposals', () 
   );
 });
 
-test('the public contract remains read-only and loopback-only', () => {
-  assertReadOnlyOpenApi(read('docs/openapi.yaml'), 'docs/openapi.yaml');
+test('the public contract remains loopback-only and records accepted task routes', () => {
+  assertAcceptedOpenApi(read('docs/openapi.yaml'), 'docs/openapi.yaml');
   assertLoopbackConfig(read('src/config/runtime-config.ts'), 'src/config/runtime-config.ts');
 });
 
-test('source boundaries reject premature adapters and private-file access', () => {
+test('accepted source boundaries reject unaccepted adapters and private-file access', () => {
   const sourceFiles = listTypeScriptFiles('src');
   const testFiles = listTypeScriptFiles('tests');
   assert.ok(sourceFiles.length > 0);
@@ -222,68 +217,52 @@ test('source boundaries reject premature adapters and private-file access', () =
     assertRuntimeBoundary(read(file), file);
   }
 
-  assert.doesNotMatch(
-    read('src/main.ts'),
-    /from ['"][^'"]*runtime\//,
-    'src/main.ts must not wire internal runtime modules into startup yet',
+  assert.match(
+    read('src/runtime/task-store.ts'),
+    /from 'node:sqlite'/,
+    'the accepted phase-1 persistence driver must be the built-in module',
   );
 });
 
-test('dependencies do not silently accept provider or storage drivers', () => {
+test('dependencies do not silently accept provider or storage SDKs', () => {
   const manifest = JSON.parse(read('package.json')) as PackageManifest;
   const lock = JSON.parse(read('package-lock.json')) as PackageLock;
   assertDependencyBoundaries(manifest, lock, 'package manifests');
 });
 
 test('guardrail helpers reject representative boundary violations', () => {
-  const syntheticForbiddenImport = ['from ', "'node:", "sqlite'"].join('');
-  const syntheticDynamicImport = ['import', "('openai')"].join('');
-  const syntheticRequireImport = ['require', "('sqlite3')"].join('');
-  const syntheticRuntimeImport = ['from ', "'../runtime/", "task-lifecycle.js'"].join('');
+  const syntheticForbiddenImport = ['from ', "'openai'"].join('');
+  const syntheticRuntimeImport = ['import Fastify ', "from 'fastify';"].join('');
   const syntheticPrivateRead = ['const content = ', 'readFileSync', "('secret');"].join('');
-  const syntheticFastifyImport = ['import Fastify ', "from 'fastify';"].join('');
-  const syntheticWriteRouteSpec = [
-    'paths:',
-    '  /v1/tasks:',
-    '    post:',
-    '      responses:',
-  ].join('\n');
   const syntheticNonLoopbackConfig = [
     'const LOOPBACK_HOSTS = new Set([',
     "'0.0.0.0'",
     ']);',
   ].join('');
+  const syntheticMissingPath = [
+    'paths:',
+    '  /v1/health:',
+    '    post:',
+  ].join('\n');
 
   assert.throws(
     () => assertNoForbiddenImportIn(syntheticForbiddenImport, 'synthetic'),
-    /must not import a premature provider or storage integration/,
+    /must not import an unaccepted provider/,
   );
   assert.throws(
-    () => assertNoForbiddenImportIn(syntheticDynamicImport, 'synthetic'),
-    /must not import a premature provider or storage integration/,
-  );
-  assert.throws(
-    () => assertNoForbiddenImportIn(syntheticRequireImport, 'synthetic'),
-    /must not import a premature provider or storage integration/,
-  );
-  assert.throws(
-    () => assertReadOnlyOpenApi(syntheticWriteRouteSpec, 'synthetic'),
-    /must expose exactly the current read-only paths/,
+    () => assertAcceptedOpenApi(syntheticMissingPath, 'synthetic'),
+    /must expose the accepted phase-1 paths/,
   );
   assert.throws(
     () => assertLoopbackConfig(syntheticNonLoopbackConfig, 'synthetic'),
     /must keep exactly the documented loopback hosts/,
   );
   assert.throws(
-    () => assertHttpBoundary(syntheticRuntimeImport, 'synthetic'),
-    /must not import internal runtime modules/,
-  );
-  assert.throws(
     () => assertHttpBoundary(syntheticPrivateRead, 'synthetic'),
     /must not read or write private runtime files/,
   );
   assert.throws(
-    () => assertRuntimeBoundary(syntheticFastifyImport, 'synthetic'),
+    () => assertRuntimeBoundary(syntheticRuntimeImport, 'synthetic'),
     /must stay independent of Fastify/,
   );
 

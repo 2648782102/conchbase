@@ -4,6 +4,8 @@ Status: **proposed, not accepted as a public contract**
 
 Product direction: **accepted as intent, not implemented**. Conchbase should let a user define a highly customizable agent. A layered arrangement with several specialized roles is only an illustrative example. It is not a built-in structure, default template, preferred topology, or schema.
 
+Phase-1 boundary: [ADR 0010](0010-first-real-model-slice.md) implements a single-turn execution unit for real-model validation. This is an implementation slice, not a canonical single-agent topology and not a rejection of future user-authored compositions.
+
 ## Context
 
 `AGENTS.md` and `docs/AI_HANDOFF.md` establish Conchbase as the execution authority. The current repository has read-only status endpoints and internal deterministic primitives; it has no agent loop, profile schema, role registry, provider adapter, or writable management API. ADRs `0002`–`0004` keep task, event, and configuration contracts open.

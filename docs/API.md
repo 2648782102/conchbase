@@ -1,25 +1,30 @@
 # Runtime API status
 
-The service listens on `127.0.0.1:4318` by default.
+The service listens on `127.0.0.1:4318` by default. The machine-readable source of truth for all routes is [`openapi.yaml`](openapi.yaml). Conchbase owns this contract; Pagurus and other clients consume it.
 
-The machine-readable contract for currently implemented endpoints is [`openapi.yaml`](openapi.yaml). Conchbase owns this contract; Pagurus and other clients consume it.
+## Implemented phase-1 routes
 
-## Implemented
+| Method and path | Behavior |
+|---|---|
+| `GET /v1/health` | Service health and API version `1`. |
+| `GET /v1/runtime` | Runtime identity, version, and advertised capabilities. |
+| `GET /v1/models` | Chat model ids from the configured local Magpie gateway; `502` when the catalog is unavailable. |
+| `POST /v1/tasks` | Validate `prompt` and optional `model`, then create and start one bounded model task; `202`. |
+| `GET /v1/tasks` | Persisted tasks and the active configuration revision id. |
+| `GET /v1/tasks/{taskId}` | One persisted task; `404` when absent. |
+| `POST /v1/tasks/{taskId}/cancel` | Request cancellation of an active task; `409` when it is not active. |
+| `POST /v1/tasks/{taskId}/retry` | Start a new attempt from the original prompt for a terminal task; `409` otherwise. |
+| `GET /v1/events?after=<eventId>` | Persisted events strictly after a known global event ID, plus the resulting cursor; `400` for an unknown cursor. |
 
-### `GET /v1/health`
+A task has a stable ID, its original prompt, selected model id, pinned configuration revision, current state, attempt number, final output, and error. States include `queued`, `running`, `cancelling`, `succeeded`, `failed`, `cancelled`, and `interrupted`. A restart changes persisted nonterminal states to `interrupted`; retry creates a visible new attempt.
 
-Returns the service health and API version.
+Events use stable IDs and a global monotonic `sequence`. Each event records its task, type, resulting state, pinned configuration revision, attempt, and a bounded `data` object. Phase 1 uses polling; SSE, `Last-Event-ID`, retention, and multi-process ownership remain open.
 
-```json
-{"status":"ok","service":"conchbase","apiVersion":1}
-```
+Errors use `{ "error": "message" }` with documented status codes. Validation errors return `400`; missing tasks return `404`; conflicting task operations return `409`; model-catalog failures return `502`; an unconfigured task service returns `503`.
 
-### `GET /v1/runtime`
+## Boundaries
 
-Returns the current service identity and advertised capabilities. Capabilities are empty in this scaffold.
-
-## Planned contract
-
-Task creation, cancellation, approvals, configuration validation/application, event streaming, and artifact access will be specified before implementation. The API will use versioned JSON schemas; events will be resumable by event ID. A user-defined agent composition is a future configuration concern, not an implemented route; no topology, layer count, or role registry is exposed here.
-
-No remote bind or unauthenticated write endpoint is enabled in this scaffold.
+- The API is loopback-only. Remote binding requires a reviewed authentication and pairing design.
+- Model ids come from the user's Magpie catalog. No model credentials enter Conchbase configuration or API responses.
+- The phase-1 model task performs one text completion. Model-requested tools are rejected, not executed.
+- No configuration write, MCP, Skill, plugin, approval, or composition management route exists yet.

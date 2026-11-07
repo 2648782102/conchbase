@@ -6,94 +6,79 @@ This document is the starting packet for a coding model that has not seen the de
 
 ## Product definition
 
-Conchbase (海螺) is a local-first, headless-capable personal agent runtime. It owns the agent execution loop and can run from a CLI without Pagurus or another graphical interface. Pagurus is an optional control client. Other clients should be able to connect through a stable, documented API.
+Conchbase (海螺) is a local-first, headless-capable personal agent runtime. It owns the agent execution loop and can run from a CLI without Pagurus or another graphical interface. Pagurus is an optional control client. Other clients should be able to connect through a stable, documented API. Target users are open-ended; CLI, GUI, and third-party integrations are all valid clients.
 
-Target users are open-ended. CLI is one entry point; graphical clients and third-party integrations must remain first-class. Do not design the runtime around one specific UI.
-
-Users should be able to define a highly customizable agent composition. Composition must remain topology-neutral: a layered arrangement with several specialized roles is an illustrative example, not a built-in structure, default template, required hierarchy, or accepted schema. See [ADR 0005](decisions/0005-user-defined-agent-topology-proposal.md). This is product intent only; no agent composition is implemented in the current scaffold.
+Users should eventually define highly customizable agent compositions. Composition must remain topology-neutral: a layered arrangement with several specialized roles is an illustrative example, not a built-in structure, default template, required hierarchy, or accepted schema. See [ADR 0005](decisions/0005-user-defined-agent-topology-proposal.md). Phase 1 does not implement user-defined agent composition; its single-turn execution unit is an implementation boundary for proving the real-model loop, not a canonical product topology.
 
 ## Read in this order
 
 1. `AGENTS.md` — mandatory coding constraints and AI-first development rule.
-2. `docs/AI_DEVELOPMENT.md` — how to make and validate focused changes in this repository.
-3. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
-4. `docs/API.md` and `docs/openapi.yaml` — actual API surface.
-5. `docs/TECH_STACK.md` — chosen and deferred technology.
-6. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and `docs/decisions/` — intended sequencing, dated external research, and recorded decisions; ADR `0009` is an accepted development guardrail, not a public contract.
-7. `docs/AI_TASK_QUEUE.md` — bounded work that is ready for the next coding model.
+2. This handoff, then `docs/AI_DEVELOPMENT.md`.
+3. [ADR 0010](decisions/0010-first-real-model-slice.md) — accepted phase-1 direction, trade-offs, and explicit non-goals.
+4. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
+5. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
+6. `docs/TECH_STACK.md` — chosen and deferred technology.
+7. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` — wider intended sequencing and still-open contracts.
+8. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
 
 ## Current repository facts
 
 Implemented:
 
-- Node.js 24+ and TypeScript application shell.
-- Fastify server listening on loopback by default.
-- `GET /v1/health` and `GET /v1/runtime`, matching `docs/openapi.yaml`.
-- Explicit rejection of non-loopback host values.
-- npm scripts: `npm run dev`, `npm run check`, `npm test`, and `npm run build`.
-- Automated tests cover loopback/port validation, current read-only HTTP response bodies and OpenAPI shapes, legal task transitions, cancellation, event ordering/replay, configuration revision pinning, a tool policy gate, provider-independent fake-model terminal-state paths, and deterministic repository guardrails. See [ADR 0009](decisions/0009-ai-development-guardrails.md) for the guardrail boundary and `tests/repository-guardrails.test.ts` for the checks.
-- Deterministic internal modules under `src/runtime/` are not exposed through HTTP. Their fake model and tool callbacks are test fixtures; they do not execute real tools or call a model provider.
-- Proposal ADRs `0002`–`0004` record options and recommendations for the still-open public task/event/configuration contracts. `0005` records topology-neutral product direction; `0006`–`0007` propose provider and configuration boundaries. `0008` records a dated local SQLite driver compatibility spike, not a production driver choice. ADR `0009` accepts executable development guardrails only; it is not a public contract. `docs/REFERENCE_PROJECTS.md` records a dated GitHub Trending snapshot and its explicitly rejected patterns.
-- GitHub Actions runs type checks, tests, and a production build on pushes and pull requests.
+- Node.js 24+ and TypeScript application, Fastify loopback API, and a `conchbase` CLI.
+- Phase 1 connects a real model through Magpie's local OpenAI Chat Completions-compatible gateway. The provider uses a narrow adapter, injectable `fetch`, an `AbortSignal`, and normalized errors; it does not execute model-requested tools.
+- `POST /v1/tasks` creates and starts one bounded text task; `GET /v1/tasks` and `GET /v1/tasks/{taskId}` read persisted task state. `POST .../cancel` and `POST .../retry` expose cancellation and explicit retry.
+- `GET /v1/models` reads Magpie's model catalog. `GET /v1/events?after=<eventId>` reads durable, globally ordered events. See `docs/openapi.yaml` and `docs/API.md`.
+- Tasks, attempts, outputs, errors, and events are persisted by `SqliteTaskStore` using Node 24's built-in `node:sqlite` `DatabaseSync`. Task state and its event commit in one transaction. WAL and foreign keys are enabled.
+- A process restart marks nonterminal tasks as `interrupted`. It does not resume an in-flight model call. An explicit retry creates a new attempt from the original prompt and preserves previous events.
+- One immutable, content-addressed configuration revision is pinned to each task attempt. There is no public configuration write API or profile file schema yet.
+- Automated tests cover provider parsing and failures, task completion, durable event replay, restart interruption, explicit retry, HTTP error behavior, loopback configuration, the internal task runner, policy gate, and deterministic repository guardrails. Tests use fake `fetch` and temporary databases; CI does not call a model provider.
+- GitHub Actions runs `npm run check`, `npm test`, and `npm run build`.
 
 Not implemented yet:
 
-- Agent/model loop, sessions, task creation, user-defined agent composition, role registry, tool registry, MCP client, Skills loader, policy engine, approvals, persistence, memory, artifacts, SSE events, authentication/pairing, or writable API routes.
+- User-defined agent composition, role registry, multi-turn model context, model-driven tool execution, MCP client, Skills loader, policy/configuration write API, approval workflow, plugin host, memory, artifacts, SSE event stream, event retention policy, production driver compatibility matrix, authentication/pairing, or remote binding.
+- A Magpie upstream Agents-page adapter. Magpie currently requires such an adapter in its own source; Conchbase phase 1 uses the local gateway directly.
 
-Do not claim that Conchbase can already run an agent task. The present service is a health/status scaffold.
+Do not describe planned features as implemented. Do not describe the phase-1 single-turn loop as an accepted composition schema.
 
 ## Accepted architectural boundaries
 
-- Runtime owns task execution, tool dispatch, policy enforcement, approvals, persisted task state, and the authoritative event log.
+- Conchbase is the agent execution authority. It owns task state, provider calls, the narrow model adapter boundary, persisted state, and the authoritative event log.
 - Every client uses the public Runtime API. A client never reads or writes private runtime files or database tables.
-- Conchbase owns a task state machine. Provider SDKs may sit behind a replaceable adapter; they must not own security decisions or durable task state.
-- MCP is a tool-service protocol. ACP may be an optional client compatibility adapter. Neither replaces the Runtime API.
-- Skills are instruction content and do not grant capabilities.
+- Model-provider output is untrusted data. No tool executes outside the runtime policy and approval path. Skills are instruction content and do not grant capabilities.
+- Provider SDKs are replaceable inputs and never own security decisions or durable task state. The phase-1 provider uses direct HTTP, not a provider SDK.
 - A task binds to one configuration revision for its lifetime; future configuration changes affect later tasks.
-- The runtime must not hardcode an agent topology, layer count, role name, or coordination pattern. Composition data is user-authored and versioned; it is not yet implemented.
-- Bind to loopback only until a reviewed authentication and pairing design exists.
+- The runtime must not hardcode an agent topology, layer count, role name, or coordination pattern.
+- Bind to loopback only until a reviewed authentication and pairing design exists. The local loopback API is a development boundary, not an authenticated remote deployment design.
 - Do not load arbitrary plugins in-process before isolation and grants are designed.
 
 ## Current API contract
 
-Conchbase is the source of truth for [`docs/openapi.yaml`](openapi.yaml). Current API base URL: `http://127.0.0.1:4318`; current endpoints are read-only health and runtime status. Pagurus's development server proxies `/v1` to this address.
+Conchbase owns [`docs/openapi.yaml`](openapi.yaml). Current API base URL: `http://127.0.0.1:4318`. Pagurus's development server proxies `/v1` to this address. The health endpoint reports API version `1`; the OpenAPI document version is `0.2.0` for the phase-1 route set.
 
-Before adding an endpoint, specify request/response schemas, error behavior, authorization requirements, and versioning. Do not add task/config write routes as an undocumented shortcut.
+Before adding an endpoint, specify request/response schemas, error behavior, authorization requirements, and versioning. Keep public schemas and implementation aligned. Do not add configuration writes, tool execution, or remote access as undocumented shortcuts.
 
 ## Technology and commands
 
-- Node.js 24+, TypeScript, Fastify, npm.
-- Start locally: `npm ci`, then `npm run dev`.
+- Node.js 24+, TypeScript, Fastify, `node:sqlite`, npm. No provider or storage npm SDK is installed.
+- Install and run: `npm ci`, then `npm run dev` (`conchbase serve`).
+- CLI: `npm run cli -- models`, `npm run cli -- run "prompt"`, `npm run cli -- tasks`, `npm run cli -- task <id>`, `npm run cli -- events [cursor]`, `npm run cli -- retry <id>`.
 - Validate changes: `npm run check`, `npm test`, and `npm run build`.
-- Type check: `npm run check`.
-- Production compile: `npm run build` (clears `dist/` before compiling).
-- Runtime port: `CONCHBASE_PORT`, default `4318`.
-- Runtime host: `CONCHBASE_HOST`, restricted to `localhost`, `127.0.0.1`, or `::1`.
-- Repository: <https://github.com/2648782102/conchbase>.
-- Companion UI: <https://github.com/2648782102/pagurus>.
+- Runtime host and port: `CONCHBASE_HOST` (loopback only) and `CONCHBASE_PORT`, defaults `127.0.0.1:4318`.
+- Model gateway: `CONCHBASE_MAGPIE_URL`, default `http://127.0.0.1:3425`; optional `CONCHBASE_MAGPIE_APP_KEY` must match `magpie-<app-id>` and names calls in Magpie.
+- Model id: `CONCHBASE_MODEL`; use `conchbase models` to select an id from the user's Magpie catalog. No model id is hardcoded in the product.
+- Runtime database: `CONCHBASE_DB`, default `.conchbase/runtime.sqlite` (git-ignored). Do not put credentials, personal prompts, or user runtime data in the repository.
+- Repository: <https://github.com/2648782102/conchbase>. Companion UI: <https://github.com/2648782102/pagurus>.
 
 ## Decisions still open
 
 Do not silently treat these as settled:
 
-- Task/session API, event envelope, replay/cursor semantics, and SSE details.
-- User-authored composition schema, identity, validation, delegation, concurrency, and cancellation propagation; ADR `0005` is a proposal, not a contract.
-- Persistence schema, production SQLite driver, and supported-platform compatibility matrix; [ADR 0008](decisions/0008-sqlite-driver-compatibility-proposal.md) records local evidence only.
-- Provider SDK and provider/model support order.
-- Profile/config file format, migration policy, and exact secret-store interface.
-- Memory data model, retention, import/export, and retrieval strategy.
-- MCP process lifecycle, sandboxing, per-tool grants, and approval UX.
-- Plugin API and isolation model.
-- Remote runtime authentication/pairing and desktop packaging.
+- User-authored composition schema, identity, validation, delegation, concurrency, cancellation propagation, and public configuration API.
+- Portable profile/config file format, migrations, rollback, secret references, Skill/plugin/MCP bundle schemas, and approval UX.
+- Provider capability discovery, streaming, structured tool calls, multi-turn context, token limits, error classification, and direct vendor provider order.
+- Production SQLite driver choice, supported-platform CI matrix, WAL crash recovery, multi-process ownership, event retention, and SSE/Last-Event-ID semantics.
+- MCP lifecycle and sandboxing, per-tool grants, plugin isolation, memory model, remote authentication/pairing, and desktop packaging.
 
-When an implementation depends on one of these, write a short ADR with options, consequences, and an explicit recommendation, then obtain product direction before locking the public contract.
-
-## Recommended first implementation sequence
-
-1. Read `docs/AI_TASK_QUEUE.md`, `docs/REFERENCE_PROJECTS.md`, [ADR 0009](decisions/0009-ai-development-guardrails.md), and proposal ADRs `0002`–`0008`; do not treat the proposals as accepted public contracts.
-2. Obtain product direction on task IDs, event envelopes/cursors, and configuration schema before changing `docs/openapi.yaml`.
-3. ~~Add provider-independent acceptance tests and policy fixtures around the existing deterministic core.~~ Done for the current internal core; see `docs/AI_TASK_QUEUE.md`.
-4. ~~Run the storage compatibility spike in a scratch branch~~ Done as local compatibility evidence in [ADR 0008](decisions/0008-sqlite-driver-compatibility-proposal.md); no production driver was selected. Select persistence and provider drivers only after ADRs `0002`–`0007` receive product direction and supported-platform checks are defined; add restart/resume behavior only after an accepted schema.
-5. Wait for explicit product direction on the open ADRs, beginning with task lifecycle, event envelope, configuration revision, and user-authored composition. Only after an ADR is accepted, add versioned schemas to OpenAPI and expose task or event routes.
-
-Keep each change small enough to verify with deterministic local fixtures. Never use real user credentials in fixture data.
+When an implementation depends on one of these, record options, consequences, and an explicit recommendation in an ADR before changing the public contract. Keep each change small enough to verify with deterministic local fixtures.

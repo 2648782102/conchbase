@@ -8,6 +8,8 @@ export interface RuntimeEvent {
   readonly type: TaskEventType;
   readonly state: TaskState;
   readonly configurationRevisionId: ConfigurationRevisionId;
+  readonly attempt: number;
+  readonly data: Readonly<Record<string, string | number | boolean | null>>;
 }
 
 export interface EventAppendInput {
@@ -15,6 +17,8 @@ export interface EventAppendInput {
   readonly type: TaskEventType;
   readonly state: TaskState;
   readonly configurationRevisionId: ConfigurationRevisionId;
+  readonly attempt: number;
+  readonly data?: Readonly<Record<string, string | number | boolean | null>>;
 }
 
 function formatEventId(sequence: number): string {
@@ -49,6 +53,8 @@ export function appendEvent(
     type: input.type,
     state: input.state,
     configurationRevisionId: input.configurationRevisionId,
+    attempt: input.attempt,
+    data: Object.freeze({ ...(input.data ?? {}) }),
   });
 
   return { events: Object.freeze([...log.events, event]) };

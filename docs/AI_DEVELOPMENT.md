@@ -16,17 +16,18 @@ Prefer explicit types, local ownership, small vertical slices, and executable ch
 
 ## Runtime code boundaries
 
-- `src/main.ts` owns process startup and listener lifecycle.
+- `src/main.ts` owns server startup and listener lifecycle; `src/cli.ts` owns CLI commands.
 - `src/config/` parses environment and validates startup configuration.
 - `src/http/` translates the versioned HTTP API to and from runtime behavior.
-- Future runtime capabilities should be added as bounded vertical slices. Keep domain decisions independent of Fastify, model-provider SDKs, and storage drivers.
-- Do not settle an open product/API decision by inventing an endpoint or persistence format. Record options in an ADR and ask for direction when the public contract depends on it.
+- `src/runtime/task-service.ts` owns orchestration; `task-store.ts` owns SQLite persistence; `magpie-provider.ts` owns the accepted provider adapter. Keep domain decisions independent of Fastify and storage driver types.
+- Add runtime capabilities as bounded vertical slices. Keep provider output untrusted and never execute model-requested tools outside the accepted policy and approval path.
+- Do not settle an open product/API decision by inventing an endpoint, profile schema, or composition format. Record options in an ADR and record direction before changing the public contract.
 - Do not hardcode an illustrative agent composition, layer count, role name, hierarchy, or coordination pattern. ADR `0005` records topology-neutral product direction; its schema remains unresolved.
 
 ## Machine feedback
 
 - `npm run check`: TypeScript validation for application and test files.
-- `npm test`: Node's built-in test runner with the `tsx` loader; covers startup configuration, HTTP/OpenAPI response contracts, internal deterministic runtime fixtures, and repository guardrails. Add new test files to the `test` script in `package.json`. Update `tests/repository-guardrails.test.ts` only alongside an accepted ADR or a documented development-boundary change.
+- `npm test`: Node's built-in test runner with the `tsx` loader; covers startup configuration, provider parsing, task persistence and recovery, HTTP/OpenAPI contracts, internal deterministic runtime fixtures, and repository guardrails. Add new test files to the `test` script in `package.json`. Update `tests/repository-guardrails.test.ts` only alongside an accepted ADR or a documented development-boundary change.
 - `npm run build`: clean output directory, then production compilation.
 - CI runs all three commands.
 - Use deterministic local data. Never use real credentials or personal runtime data as fixtures.

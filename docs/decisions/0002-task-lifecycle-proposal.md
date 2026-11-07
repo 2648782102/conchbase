@@ -2,6 +2,8 @@
 
 Status: **proposed, not accepted as a public contract**
 
+Accepted direction: [ADR 0010](0010-first-real-model-slice.md) accepts this state machine for the first real-model slice and adds a terminal `interrupted` state. The public task routes and their response shapes are defined by `docs/openapi.yaml` and implemented in that slice; this record remains a proposal for the broader unresolved lifecycle contract.
+
 ## Context
 
 `AGENTS.md` and `docs/AI_HANDOFF.md` require task lifecycle, cancellation, event ordering/replay, and configuration revision pinning to be decided through an ADR before a public task API is exposed. The runtime currently has read-only status endpoints and no agent loop.

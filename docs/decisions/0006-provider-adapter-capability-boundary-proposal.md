@@ -2,6 +2,8 @@
 
 Status: **proposed, not accepted as a public contract**
 
+Accepted direction: [ADR 0010](0010-first-real-model-slice.md) accepts a narrow, runtime-owned provider adapter and selects a direct OpenAI Chat Completions-compatible implementation for Magpie in phase 1. Broader provider capability discovery, streaming, structured tool calls, and vendor SDK selection remain open.
+
 ## Context
 
 `docs/AI_HANDOFF.md` already requires provider SDKs to sit behind a replaceable adapter and forbids them from owning security decisions or durable task state. `docs/REFERENCE_PROJECTS.md` records that OpenBot and T3 Code support multiple provider CLIs, while OpenBot's own README warns that its default full-access mode bypasses per-action approval.
