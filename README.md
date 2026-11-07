@@ -2,6 +2,8 @@
 
 **A headless-capable runtime for personal AI agents.**
 
+[![CI](https://img.shields.io/github/actions/workflow/status/2648782102/conchbase/ci.yml?branch=main&label=CI)](https://github.com/2648782102/conchbase/actions/workflows/ci.yml) [![MIT License](https://img.shields.io/github/license/2648782102/conchbase)](LICENSE) [![Node.js 24+](https://img.shields.io/badge/Node.js-24%2B-43853d)](https://nodejs.org/)
+
 Conchbase owns agent execution: tasks, model and tool orchestration, policy enforcement, runtime events, and persisted state. It can run from the CLI without a graphical interface. Pagurus and other clients connect through a versioned API.
 
 The first scaffold exposes a local health endpoint. Agent execution, MCP connections, persistent state, and the public task API are planned work.
@@ -35,6 +37,7 @@ Set `CONCHBASE_HOST` to `localhost`, `127.0.0.1`, or `::1`, and `CONCHBASE_PORT`
 - A task uses a stable configuration snapshot for its lifetime.
 
 See [the architecture notes](docs/ARCHITECTURE.md) and [API notes](docs/API.md). Chinese: [README.zh-CN.md](README.zh-CN.md).
+See also [the planned technology stack](docs/TECH_STACK.md) and [roadmap](docs/ROADMAP.md). The companion console is [Pagurus](https://github.com/2648782102/pagurus).
 
 ## License
 
