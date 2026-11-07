@@ -6,7 +6,7 @@
 
 Conchbase owns agent execution: tasks, model and tool orchestration, policy enforcement, runtime events, and persisted state. It can run from the CLI without a graphical interface. Pagurus and other clients connect through a versioned API.
 
-The first scaffold exposes a local health endpoint. Agent execution, MCP connections, persistent state, and the public task API are planned work.
+The current scaffold exposes local health and runtime status endpoints. It also includes internal, tested domain primitives for future task lifecycle, event ordering, configuration revisions, and tool policy decisions. Agent execution, MCP connections, persistent state, and the public task API are planned work; the internal primitives are not wired into HTTP.
 
 ## Current status
 
@@ -36,7 +36,7 @@ Set `CONCHBASE_HOST` to `localhost`, `127.0.0.1`, or `::1`, and `CONCHBASE_PORT`
 - MCP provides tool connections; Skills provide agent instructions.
 - A task uses a stable configuration snapshot for its lifetime.
 
-See [the architecture notes](docs/ARCHITECTURE.md), [current API](docs/API.md), and [OpenAPI contract](docs/openapi.yaml). New coding models should start with the [AI handoff](docs/AI_HANDOFF.md). Chinese: [README.zh-CN.md](README.zh-CN.md).
+See [the architecture notes](docs/ARCHITECTURE.md), [current API](docs/API.md), and [OpenAPI contract](docs/openapi.yaml). New coding models should start with the [AI handoff](docs/AI_HANDOFF.md), then the [AI task queue](docs/AI_TASK_QUEUE.md) and the proposal ADRs in `docs/decisions/`. Chinese: [README.zh-CN.md](README.zh-CN.md).
 See also the [technology baseline](docs/TECH_STACK.md), [roadmap](docs/ROADMAP.md), and [validation plan](docs/VALIDATION_PLAN.md). The companion console is [Pagurus](https://github.com/2648782102/pagurus).
 
 ## AI-first development

@@ -18,6 +18,7 @@ Target users are open-ended. CLI is one entry point; graphical clients and third
 4. `docs/API.md` and `docs/openapi.yaml` — actual API surface.
 5. `docs/TECH_STACK.md` — chosen and deferred technology.
 6. `docs/ROADMAP.md` and `docs/decisions/` — intended sequencing and recorded decisions.
+7. `docs/AI_TASK_QUEUE.md` — bounded work that is ready for the next coding model.
 
 ## Current repository facts
 
@@ -28,7 +29,9 @@ Implemented:
 - `GET /v1/health` and `GET /v1/runtime`, matching `docs/openapi.yaml`.
 - Explicit rejection of non-loopback host values.
 - npm scripts: `npm run dev`, `npm run check`, `npm test`, and `npm run build`.
-- Automated tests cover loopback/port validation and current read-only HTTP response bodies.
+- Automated tests cover loopback/port validation, current read-only HTTP response bodies, legal task transitions, cancellation, event ordering/replay, configuration revision pinning, and a tool policy gate.
+- Deterministic internal modules under `src/runtime/` are not exposed through HTTP and do not execute real tools.
+- Proposal ADRs `0002`–`0004` record options and recommendations for the still-open public task/event/configuration contracts.
 - GitHub Actions runs type checks, tests, and a production build on pushes and pull requests.
 
 Not implemented yet:
@@ -83,10 +86,10 @@ When an implementation depends on one of these, write a short ADR with options, 
 
 ## Recommended first implementation sequence
 
-1. Draft ADRs for task lifecycle, cancellation, event ordering/replay, and configuration revision pinning. Record options and a recommendation; get product direction before locking public behavior.
-2. Implement the accepted task state machine and event envelope as deterministic, provider-independent modules with transition tests.
-3. Add their versioned schemas to OpenAPI before exposing task or event routes.
-4. Add fake provider/MCP harnesses and policy/approval gates; prove denied or unapproved actions never execute.
-5. Select persistence and provider drivers through focused compatibility checks, then add restart/resume behavior.
+1. Read `docs/AI_TASK_QUEUE.md` and the three proposal ADRs; do not treat them as accepted public contracts.
+2. Obtain product direction on task IDs, event envelopes/cursors, and configuration schema before changing `docs/openapi.yaml`.
+3. Add provider-independent acceptance tests and policy fixtures around the existing deterministic core.
+4. Select persistence and provider drivers through focused compatibility checks, then add restart/resume behavior.
+5. Only after an ADR is accepted, add versioned schemas to OpenAPI and expose task or event routes.
 
 Keep each change small enough to verify with deterministic local fixtures. Never use real user credentials in fixture data.

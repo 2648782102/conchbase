@@ -19,7 +19,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:tests": "tsc -p tsconfig.test.json",
     "check": "npm run typecheck && npm run typecheck:tests",
-    "test": "node --import tsx --test tests/runtime-config.test.ts tests/http-api.test.ts"
+    "test": "node --import tsx --test tests/runtime-config.test.ts tests/http-api.test.ts tests/configuration-revision.test.ts tests/task-lifecycle.test.ts tests/event-log.test.ts tests/policy-gate.test.ts"
   },
   "dependencies": {
     "fastify": "^5.12.8"
