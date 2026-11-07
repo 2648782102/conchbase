@@ -82,6 +82,22 @@ export class TaskConflictError extends Error {
   }
 }
 
+export class DatabaseInstanceError extends Error {
+  constructor() {
+    super('Runtime database is already owned by another Conchbase process or handle.');
+    this.name = 'DatabaseInstanceError';
+  }
+}
+
+function isDatabaseLocked(cause: unknown): boolean {
+  if (typeof cause !== 'object' || cause === null) return false;
+  const error = cause as { code?: unknown; errcode?: unknown; message?: unknown };
+  return error.code === 'ERR_SQLITE_ERROR'
+    && error.errcode === 5
+    && typeof error.message === 'string'
+    && error.message.toLowerCase().includes('database is locked');
+}
+
 function toSnapshot(row: TaskRow): TaskSnapshot {
   return {
     id: row.id,
@@ -128,7 +144,11 @@ export class SqliteTaskStore implements TaskStore {
   constructor(filename: string) {
     this.database = new DatabaseSync(filename);
     try {
-      this.database.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
+      this.database.exec('PRAGMA busy_timeout = 0;');
+      this.database.exec('PRAGMA foreign_keys = ON;');
+      this.database.exec('PRAGMA locking_mode = EXCLUSIVE;');
+      this.database.exec('PRAGMA journal_mode = WAL;');
+      this.database.exec('BEGIN EXCLUSIVE; COMMIT;');
       this.database.exec(`
         CREATE TABLE IF NOT EXISTS tasks (
           id TEXT PRIMARY KEY,
@@ -153,6 +173,7 @@ export class SqliteTaskStore implements TaskStore {
       `);
     } catch (cause) {
       this.database.close();
+      if (isDatabaseLocked(cause)) throw new DatabaseInstanceError();
       throw cause;
     }
   }

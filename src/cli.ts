@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { loadRuntimeConfig } from './config/runtime-config.js';
 import { createApp } from './http/create-app.js';
+import { MagpieModelCatalog } from './runtime/model-catalog.js';
 import { createTaskService } from './runtime/task-service.js';
 
 function usage(): string {
@@ -58,18 +59,12 @@ async function main(argv: readonly string[]): Promise<void> {
   }
 
   if (command === 'models') {
-    mkdirSync(path.dirname(config.databasePath), { recursive: true });
-    const service = createTaskService(config.databasePath, {
-      magpieBaseUrl: config.magpieBaseUrl,
-      ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
-      defaultModel: config.defaultModel,
+    const catalog = new MagpieModelCatalog({
+      baseUrl: config.magpieBaseUrl,
+      ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
     });
-    try {
-      const models = await service.listModels();
-      for (const model of models) process.stdout.write(`${model.id}\t${model.displayName}\n`);
-    } finally {
-      service.close();
-    }
+    const models = await catalog.listModels();
+    for (const model of models) process.stdout.write(`${model.id}\t${model.displayName}\n`);
     return;
   }
 

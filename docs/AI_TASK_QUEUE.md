@@ -5,6 +5,7 @@ This queue is for coding models continuing from the repository. It records bound
 ## Current state
 
 - [ADR 0010](decisions/0010-first-real-model-slice.md) accepts phase-1 direction: Conchbase owns the agent loop, Magpie is the first real-model provider, and durable events plus explicit retry cover interruption. A process restart recognizes interrupted work; it does not continue an in-flight model request.
+- [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md) accepts an internal single-owner database boundary. The SQLite store rejects a second simultaneous owner; `conchbase models` is database-free. Cross-platform crash recovery, migrations, and deliberate multi-process execution remain open.
 - Conchbase exposes versioned task, retry, cancel, event, and Magpie model-catalog routes. The CLI and Pagurus use the same API. The OpenAPI contract is the source of truth.
 - The phase-1 model loop is single-turn. This is an implementation boundary for validating the runtime, not a default or canonical agent topology. User-defined composition remains topology-neutral product intent, not an implemented schema.
 - `node:sqlite` persists tasks and events behind `TaskStore`. Provider calls use direct HTTP through a narrow adapter. No provider SDK, storage SDK, MCP SDK, or plugin host is installed.
@@ -29,11 +30,13 @@ Each item requires an accepted ADR before its public contract changes. Do not st
 4. **Composition slice.** Define topology-neutral user-authored composition with at least one single-node and two distinct multi-node fixtures. Do not hardcode layer counts, role names, or a hierarchy.
 5. **Persistence hardening.** Add supported OS/architecture/Node CI coverage, migrations, WAL crash recovery, retention, and multi-process ownership before calling the storage layer production-ready.
 6. **Magpie upstream adapter.** Once the Conchbase config format is stable, evaluate a pull request to Magpie's `internal/agent` so Conchbase appears on its Agents page. This is optional integration work, not required for the gateway.
+7. **Authoritative client reads.** Replace direct CLI database reads with a documented Runtime API client path after API parity and authentication direction are accepted. Keep the single-owner lock until that contract exists.
 
 ## Blocked until direction
 
 - Configuration write routes and generated client types built from an unaccepted schema.
 - Automatic continuation of in-flight model or tool work after a crash.
+- Running task-state CLI commands concurrently with `conchbase serve`, or treating SQLite exclusive locking as multi-process support.
 - MCP process lifecycle, per-tool grants, arbitrary plugin loading, remote binding, authentication/pairing, and desktop packaging.
 - Pagurus configuration forms that present one topology as the only supported shape.
 
@@ -41,7 +44,7 @@ Do not weaken or delete the repository guardrails to bypass this queue. Update t
 
 ## Definition of done for each task
 
-- Read `AGENTS.md`, `docs/AI_HANDOFF.md`, `docs/AI_DEVELOPMENT.md`, ADR `0010`, and the owning architecture/API document first.
+- Read `AGENTS.md`, `docs/AI_HANDOFF.md`, `docs/AI_DEVELOPMENT.md`, ADRs `0010`–`0011`, and the owning architecture/API document first.
 - Keep implemented behavior separate from planned behavior in every doc/README update.
 - Add deterministic tests; never use real credentials, personal data, public-network dependencies, or user runtime data in fixtures.
 - Run `npm run check`, `npm test`, and `npm run build` in the affected repository.

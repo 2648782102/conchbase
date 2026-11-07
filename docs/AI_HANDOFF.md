@@ -15,11 +15,12 @@ Users should eventually define highly customizable agent compositions. Compositi
 1. `AGENTS.md` — mandatory coding constraints and AI-first development rule.
 2. This handoff, then `docs/AI_DEVELOPMENT.md`.
 3. [ADR 0010](decisions/0010-first-real-model-slice.md) — accepted phase-1 direction, trade-offs, and explicit non-goals.
-4. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
-5. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
-6. `docs/TECH_STACK.md` — chosen and deferred technology.
-7. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` — wider intended sequencing and still-open contracts.
-8. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
+4. [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md) — accepted phase-1 single-instance persistence boundary.
+5. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
+6. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
+7. `docs/TECH_STACK.md` — chosen and deferred technology.
+8. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` — wider intended sequencing and still-open contracts.
+9. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
 
 ## Current repository facts
 
@@ -30,6 +31,7 @@ Implemented:
 - `POST /v1/tasks` creates and starts one bounded text task; `GET /v1/tasks` and `GET /v1/tasks/{taskId}` read persisted task state. `POST .../cancel` and `POST .../retry` expose cancellation and explicit retry.
 - `GET /v1/models` reads Magpie's model catalog. `GET /v1/events?after=<eventId>` reads durable, globally ordered events. See `docs/openapi.yaml` and `docs/API.md`.
 - Tasks, attempts, outputs, errors, and events are persisted by `SqliteTaskStore` using Node 24's built-in `node:sqlite` `DatabaseSync`. Task state and its event commit in one transaction. WAL and foreign keys are enabled.
+- `SqliteTaskStore` holds a SQLite exclusive lock for the database and normalizes a second owner to `DatabaseInstanceError`. This is a single-owner development boundary, not multi-process support or a production recovery matrix. `conchbase models` uses a standalone `MagpieModelCatalog` and does not open the runtime database.
 - A process restart marks nonterminal tasks as `interrupted`. It does not resume an in-flight model call. An explicit retry creates a new attempt from the original prompt and preserves previous events.
 - One immutable, content-addressed configuration revision is pinned to each task attempt. There is no public configuration write API or profile file schema yet.
 - Automated tests cover provider parsing and failures, task completion, durable event replay, restart interruption, explicit retry, HTTP error behavior, loopback configuration, the internal task runner, policy gate, and deterministic repository guardrails. Tests use fake `fetch` and temporary databases; CI does not call a model provider.
@@ -64,6 +66,7 @@ Before adding an endpoint, specify request/response schemas, error behavior, aut
 - Node.js 24+, TypeScript, Fastify, `node:sqlite`, npm. No provider or storage npm SDK is installed.
 - Install and run: `npm ci`, then `npm run dev` (`conchbase serve`).
 - CLI: `npm run cli -- models`, `npm run cli -- run "prompt"`, `npm run cli -- tasks`, `npm run cli -- task <id>`, `npm run cli -- events [cursor]`, `npm run cli -- retry <id>`.
+- Database commands other than `models` take short-lived ownership of the runtime database; do not run them while `conchbase serve` is active. Use the Runtime API for concurrent task inspection.
 - Validate changes: `npm run check`, `npm test`, and `npm run build`.
 - Runtime host and port: `CONCHBASE_HOST` (loopback only) and `CONCHBASE_PORT`, defaults `127.0.0.1:4318`.
 - Model gateway: `CONCHBASE_MAGPIE_URL`, default `http://127.0.0.1:3425`; optional `CONCHBASE_MAGPIE_APP_KEY` must match `magpie-<app-id>` and names calls in Magpie.
@@ -79,6 +82,7 @@ Do not silently treat these as settled:
 - Portable profile/config file format, migrations, rollback, secret references, Skill/plugin/MCP bundle schemas, and approval UX.
 - Provider capability discovery, streaming, structured tool calls, multi-turn context, token limits, error classification, and direct vendor provider order.
 - Production SQLite driver choice, supported-platform CI matrix, WAL crash recovery, multi-process ownership, event retention, and SSE/Last-Event-ID semantics.
+- The authoritative client API that will eventually replace direct CLI database reads, including its authentication and parity contract.
 - MCP lifecycle and sandboxing, per-tool grants, plugin isolation, memory model, remote authentication/pairing, and desktop packaging.
 
 When an implementation depends on one of these, record options, consequences, and an explicit recommendation in an ADR before changing the public contract. Keep each change small enough to verify with deterministic local fixtures.

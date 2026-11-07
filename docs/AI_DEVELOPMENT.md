@@ -19,7 +19,7 @@ Prefer explicit types, local ownership, small vertical slices, and executable ch
 - `src/main.ts` owns server startup and listener lifecycle; `src/cli.ts` owns CLI commands.
 - `src/config/` parses environment and validates startup configuration.
 - `src/http/` translates the versioned HTTP API to and from runtime behavior.
-- `src/runtime/task-service.ts` owns orchestration; `task-store.ts` owns SQLite persistence; `magpie-provider.ts` owns the accepted provider adapter. Keep domain decisions independent of Fastify and storage driver types.
+- `src/runtime/task-service.ts` owns orchestration; `task-store.ts` owns SQLite persistence and single-instance locking; `magpie-provider.ts` owns the accepted provider adapter; `model-catalog.ts` owns database-free model discovery. Keep domain decisions independent of Fastify and storage driver types.
 - Add runtime capabilities as bounded vertical slices. Keep provider output untrusted and never execute model-requested tools outside the accepted policy and approval path.
 - Do not settle an open product/API decision by inventing an endpoint, profile schema, or composition format. Record options in an ADR and record direction before changing the public contract.
 - Do not hardcode an illustrative agent composition, layer count, role name, hierarchy, or coordination pattern. ADR `0005` records topology-neutral product direction; its schema remains unresolved.

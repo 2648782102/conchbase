@@ -192,6 +192,14 @@ test('decision records separate accepted phase-1 direction from proposals', () =
     read(`${decisionsDir}/0009-ai-development-guardrails.md`),
     /^Status: accepted for repository development guardrails, not a public API contract\.$/m,
   );
+  assert.match(
+    read(`${decisionsDir}/0011-phase-one-database-instance-ownership.md`),
+    /^Status: \*\*accepted internal persistence boundary; no public API contract changes\*\*$/m,
+  );
+  assert.match(
+    read(`${decisionsDir}/0011-phase-one-database-instance-ownership.md`),
+    /single-owner development boundary/,
+  );
 });
 
 test('the public contract remains loopback-only and records accepted task routes', () => {
@@ -221,6 +229,16 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
     read('src/runtime/task-store.ts'),
     /from 'node:sqlite'/,
     'the accepted phase-1 persistence driver must be the built-in module',
+  );
+  assert.match(
+    read('src/runtime/task-store.ts'),
+    /PRAGMA locking_mode = EXCLUSIVE/,
+    'the accepted phase-1 database must reject a second owner',
+  );
+  assert.match(
+    read('src/cli.ts'),
+    /new MagpieModelCatalog\(/,
+    'model catalog commands must not need the runtime database',
   );
 });
 

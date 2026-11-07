@@ -34,7 +34,8 @@ The internal `src/runtime/task-runner.ts` and `policy-gate.ts` remain determinis
 
 ## State and configuration
 
-- `SqliteTaskStore` owns normalized task and event rows in a private SQLite database. WAL and foreign keys are enabled. Driver types and errors do not leave the store boundary.
+- `SqliteTaskStore` owns normalized task and event rows in a private SQLite database. WAL and foreign keys are enabled; an exclusive SQLite lock rejects a second simultaneous owner with a normalized `DatabaseInstanceError`. This is a single-owner development boundary from [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md), not multi-process support or a production recovery matrix. Driver types and errors do not leave the store boundary.
+- `MagpieModelCatalog` reads the local model list without opening the runtime database, so `conchbase models` can run while the HTTP service owns tasks. Other task-state CLI commands take short-lived database ownership and must not overlap `conchbase serve`.
 - A content-addressed, immutable revision identifies the phase-1 configuration. Each task attempt pins its revision id. There is no public configuration write API or portable profile schema yet.
 - Artifacts, secrets, MCP servers, Skills, approvals, and plugin hosts are not implemented. Provider credentials stay in Magpie's own configuration; Conchbase sends only the optional `magpie-<app-id>` naming key.
 - The phase-1 database schema has no migration policy or cross-platform production guarantee. See the open decisions in `docs/AI_HANDOFF.md`.
@@ -51,6 +52,7 @@ src/
 │   └── routes/v1/                  # versioned HTTP route handlers
 └── runtime/
     ├── magpie-provider.ts          # real local model adapter
+    ├── model-catalog.ts            # database-free local model discovery
     ├── task-service.ts             # orchestration, cancellation, retry, recovery
     ├── task-store.ts               # SQLite task/event persistence interface
     ├── event-log.ts                # deterministic in-memory event invariants

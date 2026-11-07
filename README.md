@@ -10,6 +10,8 @@ Conchbase owns agent execution: task lifecycle, model calls, cancellation, expli
 
 Phase 1 runs a real model through a local [Magpie](https://usemagpie.ai/docs/integrate) gateway. A task makes one bounded text completion; its state, output, error, and events are stored in a local SQLite database. CLI and Pagurus can create, inspect, cancel, and retry tasks. A process restart marks unfinished tasks as `interrupted`; explicit retry creates a new attempt and preserves history. The runtime does not silently continue an in-flight model call.
 
+The phase-1 SQLite database has one process owner at a time. A second CLI or service owner fails fast instead of interrupting the live runtime's tasks. `conchbase models` reads Magpie directly and does not open the database; other task-state CLI commands must not run while `conchbase serve` is active. Use the Runtime API to inspect tasks concurrently. This is a development boundary, not production multi-process support. See [ADR 0011](docs/decisions/0011-phase-one-database-instance-ownership.md).
+
 Model-driven tool execution, MCP, Skills, plugins, approvals, public configuration writes, streaming, composition management, authentication, and remote access are planned work. The single-turn phase-1 loop is not a hardcoded agent topology; user-defined composition remains topology-neutral product intent. See [ADR 0005](docs/decisions/0005-user-defined-agent-topology-proposal.md) and [ADR 0010](docs/decisions/0010-first-real-model-slice.md).
 
 Deterministic repository guardrail tests keep the accepted phase-1 contracts and AI-first boundaries explicit. CI uses fake provider responses and temporary databases; it does not call a real model.
@@ -55,6 +57,7 @@ See [the API guide](docs/API.md) and [OpenAPI contract](docs/openapi.yaml) for t
 - Conchbase owns task state and permissions; CLI, Pagurus, and third-party interfaces are clients.
 - Magpie is a replaceable local provider behind a narrow adapter. Its response is untrusted data.
 - Tasks and ordered events commit atomically through a private `TaskStore`; a UI never reads the database.
+- Model discovery is database-free; one process owns the task database during runtime execution.
 - One content-addressed configuration revision is pinned per task attempt.
 - A Skill supplies instructions, never tool permissions; model-requested tools are rejected in phase 1.
 
@@ -62,7 +65,7 @@ See [architecture](docs/ARCHITECTURE.md), [technology baseline](docs/TECH_STACK.
 
 ## AI-first development
 
-This project is developed primarily by AI coding agents. Architecture, documentation, and validation optimize for fast context loading, bounded changes, and deterministic verification; future human handoff is not a product requirement. Start with [`AGENTS.md`](AGENTS.md), then read the [AI handoff](docs/AI_HANDOFF.md), [ADR 0010](docs/decisions/0010-first-real-model-slice.md), [development guide](docs/AI_DEVELOPMENT.md), and [task queue](docs/AI_TASK_QUEUE.md).
+This project is developed primarily by AI coding agents. Architecture, documentation, and validation optimize for fast context loading, bounded changes, and deterministic verification; future human handoff is not a product requirement. Start with [`AGENTS.md`](AGENTS.md), then read the [AI handoff](docs/AI_HANDOFF.md), [ADR 0010](docs/decisions/0010-first-real-model-slice.md), [ADR 0011](docs/decisions/0011-phase-one-database-instance-ownership.md), [development guide](docs/AI_DEVELOPMENT.md), and [task queue](docs/AI_TASK_QUEUE.md).
 
 Run `npm run check`, `npm test`, and `npm run build` after code changes.
 

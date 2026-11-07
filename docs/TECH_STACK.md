@@ -6,7 +6,8 @@
 | HTTP server | Fastify | In use |
 | API contract | Versioned HTTP/JSON, JSON Schema, OpenAPI | In use for phase-1 status, task, event, and model routes |
 | Model provider | Direct OpenAI Chat Completions-compatible HTTP to local Magpie | In use for phase 1; no provider SDK |
-| Task and event state | `node:sqlite` `DatabaseSync` behind `TaskStore` | In use for local phase 1; production platform matrix and migrations pending |
+| Task and event state | `node:sqlite` `DatabaseSync` behind `TaskStore`, with one exclusive owner per database | In use for local phase 1; production platform matrix and migrations pending |
+| Model discovery | Direct HTTP to Magpie's `/v1/models` behind `MagpieModelCatalog` | In use; database-free and independent of `TaskService` |
 | Runtime events | Global monotonic event IDs and polling cursor | In use; SSE and retention pending |
 | Tool protocol | MCP TypeScript SDK | Deferred until lifecycle, sandboxing, and per-tool grants are accepted |
 | Agent orchestration | Conchbase-owned task state machine with a narrow provider adapter | In use for one bounded text turn; composition and tool loops pending |
@@ -14,7 +15,7 @@
 
 The runtime is primarily I/O orchestration. Model inference belongs to a local gateway or external provider, so a separate inference language is not part of the baseline. The public API stays language-neutral for non-TypeScript clients.
 
-`node:sqlite` is experimental in Node 24. It avoids a native npm dependency for this local slice, but production choice, supported OS/CPU/Node combinations, WAL crash recovery, migrations, and multi-process ownership remain open. [ADR 0008](decisions/0008-sqlite-driver-compatibility-proposal.md) records dated single-machine evidence; [ADR 0010](decisions/0010-first-real-model-slice.md) accepts only the phase-1 internal schema.
+`node:sqlite` is experimental in Node 24. It avoids a native npm dependency for this local slice, but production choice, supported OS/CPU/Node combinations, WAL crash recovery, migrations, and multi-process ownership remain open. [ADR 0008](decisions/0008-sqlite-driver-compatibility-proposal.md) records dated single-machine evidence; [ADR 0010](decisions/0010-first-real-model-slice.md) accepts only the phase-1 internal schema; [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md) accepts a fail-fast single-owner boundary.
 
 Repository guardrails use Node's built-in test runner and local-file assertions; they are development checks, not runtime technology.
 

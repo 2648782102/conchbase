@@ -3,8 +3,12 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import type {
+  ModelCatalogClient,
+  ModelCatalogEntry,
+} from '../src/runtime/model-catalog.js';
 import { TaskService } from '../src/runtime/task-service.js';
-import { SqliteTaskStore } from '../src/runtime/task-store.js';
+import { DatabaseInstanceError, SqliteTaskStore } from '../src/runtime/task-store.js';
 
 function fixtureFetch(): typeof globalThis.fetch {
   return async () => new Response(JSON.stringify({
@@ -12,13 +16,21 @@ function fixtureFetch(): typeof globalThis.fetch {
   }), { status: 200, headers: { 'content-type': 'application/json' } });
 }
 
+const modelCatalog: ModelCatalogClient = {
+  async listModels(): Promise<readonly ModelCatalogEntry[]> {
+    return Object.freeze([
+      Object.freeze({ id: 'fixture/model', displayName: 'Fixture Model' }),
+    ]);
+  },
+};
+
 function createService(filename: string): TaskService {
   const store = new SqliteTaskStore(filename);
   return new TaskService(store, {
     magpieBaseUrl: 'http://127.0.0.1:3425',
     defaultModel: 'fixture/model',
     fetch: fixtureFetch(),
-  });
+  }, modelCatalog);
 }
 
 test('a task completes with durable ordered events and pinned configuration', async () => {
@@ -89,4 +101,23 @@ test('restart interrupts unfinished work and explicit retry creates a new attemp
     second.close();
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test('one runtime database rejects a second simultaneous owner', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-instance-lock-'));
+  const filename = path.join(directory, 'runtime.sqlite');
+  const first = new SqliteTaskStore(filename);
+
+  try {
+    assert.throws(
+      () => new SqliteTaskStore(filename),
+      DatabaseInstanceError,
+    );
+  } finally {
+    first.close();
+  }
+
+  const reopened = new SqliteTaskStore(filename);
+  reopened.close();
+  rmSync(directory, { recursive: true, force: true });
 });

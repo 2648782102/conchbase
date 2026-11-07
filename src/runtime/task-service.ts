@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { createConfigurationRevisionStore } from './configuration-revision.js';
 import type { ModelAdapterInput, ModelTurn } from './model-adapter.js';
+import {
+  MagpieModelCatalog,
+  type ModelCatalogClient,
+  type ModelCatalogEntry,
+} from './model-catalog.js';
 import { OpenAiChatCompletionsProvider } from './magpie-provider.js';
 import { isTerminalTaskState, type TaskEventType } from './task-lifecycle.js';
 import {
@@ -52,17 +57,32 @@ export function createTaskService(
   config: TaskServiceConfig,
 ): TaskService {
   const store = new SqliteTaskStore(filename);
-  return new TaskService(store, config);
+  const catalog = new MagpieModelCatalog({
+    baseUrl: config.magpieBaseUrl,
+    ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
+    ...(config.fetch ? { fetch: config.fetch } : {}),
+  });
+  return new TaskService(store, config, catalog);
 }
 
 export class TaskService {
   readonly store: TaskStore;
   private readonly active = new Map<string, AbortController>();
   private readonly config: TaskServiceConfig;
+  private readonly catalog: ModelCatalogClient;
 
-  constructor(store: TaskStore, config: TaskServiceConfig) {
+  constructor(
+    store: TaskStore,
+    config: TaskServiceConfig,
+    catalog?: ModelCatalogClient,
+  ) {
     this.store = store;
     this.config = config;
+    this.catalog = catalog ?? new MagpieModelCatalog({
+      baseUrl: config.magpieBaseUrl,
+      ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
+      ...(config.fetch ? { fetch: config.fetch } : {}),
+    });
     this.interruptIncompleteTasks();
   }
 
@@ -161,36 +181,7 @@ export class TaskService {
   }
 
   listModels(fetchImpl?: typeof globalThis.fetch): Promise<readonly ModelCatalogEntry[]> {
-    const providerFetch = fetchImpl ?? this.config.fetch ?? globalThis.fetch;
-    const baseUrl = this.config.magpieBaseUrl.replace(/\/+$/, '');
-    const headers: Record<string, string> = {
-      Accept: 'application/json',
-      'User-Agent': 'Conchbase/0.2.0',
-    };
-    if (this.config.magpieAppKey) {
-      headers.Authorization = `Bearer ${this.config.magpieAppKey}`;
-    }
-    return providerFetch(`${baseUrl}/v1/models`, { headers, signal: AbortSignal.timeout(5000) })
-      .then(async (response) => {
-        if (!response.ok) throw new Error('Model catalog request failed.');
-        const payload: unknown = await response.json();
-        const entries = (payload as { data?: unknown }).data;
-        if (!Array.isArray(entries)) throw new Error('Model catalog response is invalid.');
-        return Object.freeze(entries.flatMap((entry) => {
-          if (typeof entry !== 'object' || entry === null) return [];
-          const record = entry as Record<string, unknown>;
-          if (typeof record.id !== 'string' || record.id.length === 0) return [];
-          return [{
-            id: record.id,
-            displayName: typeof record.display_name === 'string'
-              ? record.display_name
-              : record.id,
-          }];
-        }));
-      })
-      .catch(() => {
-        throw new Error('Model catalog is unavailable.');
-      });
+    return this.catalog.listModels(fetchImpl);
   }
 
   close(): void {
@@ -290,9 +281,4 @@ export class TaskService {
       );
     }
   }
-}
-
-export interface ModelCatalogEntry {
-  readonly id: string;
-  readonly displayName: string;
 }
