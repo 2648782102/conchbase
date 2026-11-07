@@ -19,7 +19,7 @@ Users should be able to define a highly customizable agent composition. Composit
 3. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
 4. `docs/API.md` and `docs/openapi.yaml` — actual API surface.
 5. `docs/TECH_STACK.md` — chosen and deferred technology.
-6. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and `docs/decisions/` — intended sequencing, dated external research, and recorded decisions.
+6. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and `docs/decisions/` — intended sequencing, dated external research, and recorded decisions; ADR `0009` is an accepted development guardrail, not a public contract.
 7. `docs/AI_TASK_QUEUE.md` — bounded work that is ready for the next coding model.
 
 ## Current repository facts
@@ -31,9 +31,9 @@ Implemented:
 - `GET /v1/health` and `GET /v1/runtime`, matching `docs/openapi.yaml`.
 - Explicit rejection of non-loopback host values.
 - npm scripts: `npm run dev`, `npm run check`, `npm test`, and `npm run build`.
-- Automated tests cover loopback/port validation, current read-only HTTP response bodies and OpenAPI shapes, legal task transitions, cancellation, event ordering/replay, configuration revision pinning, a tool policy gate, and provider-independent fake-model terminal-state paths.
+- Automated tests cover loopback/port validation, current read-only HTTP response bodies and OpenAPI shapes, legal task transitions, cancellation, event ordering/replay, configuration revision pinning, a tool policy gate, provider-independent fake-model terminal-state paths, and deterministic repository guardrails. See [ADR 0009](decisions/0009-ai-development-guardrails.md) for the guardrail boundary and `tests/repository-guardrails.test.ts` for the checks.
 - Deterministic internal modules under `src/runtime/` are not exposed through HTTP. Their fake model and tool callbacks are test fixtures; they do not execute real tools or call a model provider.
-- Proposal ADRs `0002`–`0004` record options and recommendations for the still-open public task/event/configuration contracts. `0005` records topology-neutral product direction; `0006`–`0007` propose provider and configuration boundaries. `0008` records a dated local SQLite driver compatibility spike, not a production driver choice. `docs/REFERENCE_PROJECTS.md` records a dated GitHub Trending snapshot and its explicitly rejected patterns.
+- Proposal ADRs `0002`–`0004` record options and recommendations for the still-open public task/event/configuration contracts. `0005` records topology-neutral product direction; `0006`–`0007` propose provider and configuration boundaries. `0008` records a dated local SQLite driver compatibility spike, not a production driver choice. ADR `0009` accepts executable development guardrails only; it is not a public contract. `docs/REFERENCE_PROJECTS.md` records a dated GitHub Trending snapshot and its explicitly rejected patterns.
 - GitHub Actions runs type checks, tests, and a production build on pushes and pull requests.
 
 Not implemented yet:
@@ -90,7 +90,7 @@ When an implementation depends on one of these, write a short ADR with options, 
 
 ## Recommended first implementation sequence
 
-1. Read `docs/AI_TASK_QUEUE.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008`; do not treat them as accepted public contracts.
+1. Read `docs/AI_TASK_QUEUE.md`, `docs/REFERENCE_PROJECTS.md`, [ADR 0009](decisions/0009-ai-development-guardrails.md), and proposal ADRs `0002`–`0008`; do not treat the proposals as accepted public contracts.
 2. Obtain product direction on task IDs, event envelopes/cursors, and configuration schema before changing `docs/openapi.yaml`.
 3. ~~Add provider-independent acceptance tests and policy fixtures around the existing deterministic core.~~ Done for the current internal core; see `docs/AI_TASK_QUEUE.md`.
 4. ~~Run the storage compatibility spike in a scratch branch~~ Done as local compatibility evidence in [ADR 0008](decisions/0008-sqlite-driver-compatibility-proposal.md); no production driver was selected. Select persistence and provider drivers only after ADRs `0002`–`0007` receive product direction and supported-platform checks are defined; add restart/resume behavior only after an accepted schema.

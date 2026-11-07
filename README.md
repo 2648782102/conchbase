@@ -6,7 +6,7 @@
 
 Conchbase owns agent execution: tasks, user-defined agent composition, model and tool orchestration, policy enforcement, runtime events, and persisted state. It can run from the CLI without a graphical interface. Pagurus and other clients connect through a versioned API. User-authored composition is intended to be topology-neutral; a layered multi-role setup is one example, not a built-in structure or default. See the [proposal ADR](docs/decisions/0005-user-defined-agent-topology-proposal.md).
 
-The current scaffold exposes local health and runtime status endpoints. It also includes internal, tested domain primitives for future task lifecycle, event ordering, configuration revisions, tool policy decisions, and a provider-independent fake-model acceptance fixture. Agent execution, MCP connections, persistent state, and the public task API are planned work; the internal primitives are not wired into HTTP and do not call a real model or tool.
+The current scaffold exposes local health and runtime status endpoints. It also includes internal, tested domain primitives for future task lifecycle, event ordering, configuration revisions, tool policy decisions, and a provider-independent fake-model acceptance fixture. Agent execution, MCP connections, persistent state, and the public task API are planned work; the internal primitives are not wired into HTTP and do not call a real model or tool. Deterministic repository guardrail tests keep the current read-only contract and AI-first boundaries explicit.
 
 ## Current status
 

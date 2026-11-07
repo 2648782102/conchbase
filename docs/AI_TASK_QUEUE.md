@@ -11,6 +11,7 @@ This queue is for coding models continuing from the repository. It records bound
 - `docs/REFERENCE_PROJECTS.md` and ADRs `0005`–`0007` record dated external research, topology-neutral product intent, and proposed provider/configuration boundaries. ADR `0008` records a local SQLite driver compatibility spike. These are documentation only; no composition schema, provider adapter, plugin host, configuration route, or persistence driver is implemented.
 - Pagurus is a read-only status client with an explicit unsupported-API-version state and tests. It must not invent a second API schema.
 - `main` is protected against force pushes and deletion by an active GitHub ruleset; normal pushes remain allowed.
+- `tests/repository-guardrails.test.ts` and [ADR 0009](decisions/0009-ai-development-guardrails.md) make the development boundary executable in `npm test`. ADR `0009` is not a public API contract.
 
 ## Before locking any public contract
 
@@ -44,6 +45,10 @@ Do not add write routes, generate client types, build configuration forms, intro
 
 5. **Pagurus incompatibility state.** The shipped Pagurus scaffold has an explicit unsupported-API-version state, recovery guidance, and API/component tests. It is a client-side guard against the current `/v1/health` version, not a negotiated versioning protocol. Do not repeat this work or treat it as approval of new API shapes.
 
+### Done in the executable guardrails slice
+
+8. **AI development guardrails.** `tests/repository-guardrails.test.ts` checks AI-first entry documents, ADR statuses, the read-only/loopback OpenAPI surface, source-boundary isolation, and the absence of premature provider/storage dependencies. Synthetic violation fixtures prove the helpers reject representative boundary breaks. [ADR 0009](decisions/0009-ai-development-guardrails.md) records why these canaries exist and how they must evolve. No public contract, provider, driver, or runtime feature was added.
+
 ### Done in the isolated storage spike
 
 4. **Storage compatibility spike.** [ADR 0008](decisions/0008-sqlite-driver-compatibility-proposal.md) records a dated `darwin/arm64`, Node `v24.22.2` check of `node:sqlite`, `better-sqlite3@13.0.3`, and `sqlite3@6.0.1`. All three passed a temporary task/event transaction rollback, commit, and reopen fixture. The check ran outside the repository on a scratch branch; Conchbase runtime dependencies, source, lockfile, OpenAPI, and CI are unchanged. It is not cross-platform CI evidence and does not select a production driver.
@@ -51,9 +56,9 @@ Do not add write routes, generate client types, build configuration forms, intro
 ### Blocked
 
 6. **Pagurus accessibility pass.** Wait for a real write form before adding deterministic keyboard-focus, 320px layout, and reduced-motion CSS tests; do not convert navigation placeholders into fake workflows.
-7. **Next implementation slice.** Wait for explicit product direction on the open ADRs, beginning with task lifecycle, event envelope, configuration revision, and user-authored composition. Do not add write routes, provider SDKs, a storage driver, client-generated types, or plugin loading to fill the queue.
+7. **Next implementation slice.** Wait for explicit product direction on the open ADRs, beginning with task lifecycle, event envelope, configuration revision, and user-authored composition. Do not add write routes, provider SDKs, a storage driver, client-generated types, or plugin loading to fill the queue. Do not weaken or delete the repository guardrails to bypass this gate; update them only in the same slice as an accepted ADR or a documented development-boundary change.
 
-Proposal ADRs `0002`–`0008` remain **product-direction blocked**. Their public task, event, composition, provider, configuration, and persistence contracts must not be implemented, generated into clients, or exposed as write routes until accepted.
+Proposal ADRs `0002`–`0008` remain **product-direction blocked**. Their public task, event, composition, provider, configuration, and persistence contracts must not be implemented, generated into clients, or exposed as write routes until accepted. ADR `0009` is an accepted development guardrail decision only.
 
 ## Definition of done for each task
 

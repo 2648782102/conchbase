@@ -13,6 +13,8 @@ This records the initial implementation choices. Revisit a choice through a shor
 | Operational state | SQLite behind a storage interface | Planned; local driver compatibility evidence in [ADR 0008](decisions/0008-sqlite-driver-compatibility-proposal.md), production driver not selected |
 | Configuration and Skills | Portable profile files and Markdown Skills, validated by versioned schemas | Planned |
 
+Repository guardrails use Node's built-in test runner and local-file assertions; they are development checks, not runtime technology. See [ADR 0009](decisions/0009-ai-development-guardrails.md).
+
 The runtime is primarily I/O orchestration. A separate language is not justified by model inference, which is performed by model providers or external local-model processes. The public API remains language-neutral for non-TypeScript clients.
 
 ## Deferred choices

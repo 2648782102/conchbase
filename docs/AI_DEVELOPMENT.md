@@ -26,7 +26,7 @@ Prefer explicit types, local ownership, small vertical slices, and executable ch
 ## Machine feedback
 
 - `npm run check`: TypeScript validation for application and test files.
-- `npm test`: Node's built-in test runner with the `tsx` loader; covers startup configuration, HTTP/OpenAPI response contracts, and internal deterministic runtime fixtures. Add new test files to the `test` script in `package.json`.
+- `npm test`: Node's built-in test runner with the `tsx` loader; covers startup configuration, HTTP/OpenAPI response contracts, internal deterministic runtime fixtures, and repository guardrails. Add new test files to the `test` script in `package.json`. Update `tests/repository-guardrails.test.ts` only alongside an accepted ADR or a documented development-boundary change.
 - `npm run build`: clean output directory, then production compilation.
 - CI runs all three commands.
 - Use deterministic local data. Never use real credentials or personal runtime data as fixtures.

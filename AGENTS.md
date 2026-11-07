@@ -20,5 +20,6 @@ Read `docs/AI_HANDOFF.md` first, then `docs/AI_DEVELOPMENT.md` and the linked ar
 - Record meaningful architectural choices in `docs/decisions/` and mark undecided choices as proposals.
 - Do not introduce real credentials, user data, external service calls, or machine-specific paths.
 - Before changing an unresolved decision in `docs/AI_HANDOFF.md`, surface the trade-off and record the decision.
+- Keep `tests/repository-guardrails.test.ts` passing; update it only alongside an accepted ADR or a documented development-boundary change.
 - Run `npm run check`, `npm test`, and `npm run build` after code changes. CI runs all three commands.
 
