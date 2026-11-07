@@ -10,6 +10,8 @@ Conchbase (海螺) is a local-first, headless-capable personal agent runtime. It
 
 Target users are open-ended. CLI is one entry point; graphical clients and third-party integrations must remain first-class. Do not design the runtime around one specific UI.
 
+Users should be able to define a highly customizable agent composition. Composition must remain topology-neutral: a layered arrangement with several specialized roles is an illustrative example, not a built-in structure, default template, required hierarchy, or accepted schema. See [ADR 0005](decisions/0005-user-defined-agent-topology-proposal.md). This is product intent only; no agent composition is implemented in the current scaffold.
+
 ## Read in this order
 
 1. `AGENTS.md` — mandatory coding constraints and AI-first development rule.
@@ -17,7 +19,7 @@ Target users are open-ended. CLI is one entry point; graphical clients and third
 3. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
 4. `docs/API.md` and `docs/openapi.yaml` — actual API surface.
 5. `docs/TECH_STACK.md` — chosen and deferred technology.
-6. `docs/ROADMAP.md` and `docs/decisions/` — intended sequencing and recorded decisions.
+6. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and `docs/decisions/` — intended sequencing, dated external research, and recorded decisions.
 7. `docs/AI_TASK_QUEUE.md` — bounded work that is ready for the next coding model.
 
 ## Current repository facts
@@ -31,12 +33,12 @@ Implemented:
 - npm scripts: `npm run dev`, `npm run check`, `npm test`, and `npm run build`.
 - Automated tests cover loopback/port validation, current read-only HTTP response bodies and OpenAPI shapes, legal task transitions, cancellation, event ordering/replay, configuration revision pinning, a tool policy gate, and provider-independent fake-model terminal-state paths.
 - Deterministic internal modules under `src/runtime/` are not exposed through HTTP. Their fake model and tool callbacks are test fixtures; they do not execute real tools or call a model provider.
-- Proposal ADRs `0002`–`0004` record options and recommendations for the still-open public task/event/configuration contracts.
+- Proposal ADRs `0002`–`0004` record options and recommendations for the still-open public task/event/configuration contracts. `0005` records topology-neutral product direction; `0006`–`0007` propose provider and configuration boundaries. `docs/REFERENCE_PROJECTS.md` records a dated GitHub Trending snapshot and its explicitly rejected patterns.
 - GitHub Actions runs type checks, tests, and a production build on pushes and pull requests.
 
 Not implemented yet:
 
-- Agent/model loop, sessions, task creation, tool registry, MCP client, Skills loader, policy engine, approvals, persistence, memory, artifacts, SSE events, authentication/pairing, or writable API routes.
+- Agent/model loop, sessions, task creation, user-defined agent composition, role registry, tool registry, MCP client, Skills loader, policy engine, approvals, persistence, memory, artifacts, SSE events, authentication/pairing, or writable API routes.
 
 Do not claim that Conchbase can already run an agent task. The present service is a health/status scaffold.
 
@@ -48,6 +50,7 @@ Do not claim that Conchbase can already run an agent task. The present service i
 - MCP is a tool-service protocol. ACP may be an optional client compatibility adapter. Neither replaces the Runtime API.
 - Skills are instruction content and do not grant capabilities.
 - A task binds to one configuration revision for its lifetime; future configuration changes affect later tasks.
+- The runtime must not hardcode an agent topology, layer count, role name, or coordination pattern. Composition data is user-authored and versioned; it is not yet implemented.
 - Bind to loopback only until a reviewed authentication and pairing design exists.
 - Do not load arbitrary plugins in-process before isolation and grants are designed.
 
@@ -74,6 +77,7 @@ Before adding an endpoint, specify request/response schemas, error behavior, aut
 Do not silently treat these as settled:
 
 - Task/session API, event envelope, replay/cursor semantics, and SSE details.
+- User-authored composition schema, identity, validation, delegation, concurrency, and cancellation propagation; ADR `0005` is a proposal, not a contract.
 - Persistence schema and Node SQLite driver.
 - Provider SDK and provider/model support order.
 - Profile/config file format, migration policy, and exact secret-store interface.
@@ -86,7 +90,7 @@ When an implementation depends on one of these, write a short ADR with options, 
 
 ## Recommended first implementation sequence
 
-1. Read `docs/AI_TASK_QUEUE.md` and the three proposal ADRs; do not treat them as accepted public contracts.
+1. Read `docs/AI_TASK_QUEUE.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0007`; do not treat them as accepted public contracts.
 2. Obtain product direction on task IDs, event envelopes/cursors, and configuration schema before changing `docs/openapi.yaml`.
 3. ~~Add provider-independent acceptance tests and policy fixtures around the existing deterministic core.~~ Done for the current internal core; see `docs/AI_TASK_QUEUE.md`.
 4. Run the storage compatibility spike in a scratch branch, then select persistence and provider drivers through focused checks before adding restart/resume behavior.

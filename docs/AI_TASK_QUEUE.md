@@ -8,18 +8,28 @@ This queue is for coding models continuing from the repository. It records bound
 - Conchbase exposes only `GET /v1/health` and `GET /v1/runtime`; see `docs/API.md` and `docs/openapi.yaml`.
 - Conchbase has deterministic, **internal-only** modules and tests for task transitions, event ordering, configuration revisions, a tool policy gate, and provider-independent fake-model terminal paths. They are not wired into HTTP; fixture model/tool callbacks do not call real providers or execute real tools.
 - A dependency-free OpenAPI contract test treats `docs/openapi.yaml` as the source of truth for the current read-only response fixtures. It does not implement a general generated validator.
+- `docs/REFERENCE_PROJECTS.md` and ADRs `0005`–`0007` record dated external research, topology-neutral product intent, and proposed provider/configuration boundaries. These are documentation only; no composition schema, provider adapter, plugin host, or configuration route is implemented.
 - Pagurus is a read-only status client with an explicit unsupported-API-version state and tests. It must not invent a second API schema.
 - `main` is protected against force pushes and deletion by an active GitHub ruleset; normal pushes remain allowed.
 
 ## Before locking any public contract
 
-The following proposals in `docs/decisions/` require explicit product direction:
+The following proposals in `docs/decisions/` require explicit product direction before any public contract is locked:
 
 - `0002-task-lifecycle-proposal.md`: states, cancellation, retry/failure details, and task IDs.
 - `0003-event-ordering-proposal.md`: SSE envelope, cursor mapping, retention, durable transactions, and multi-process ownership.
 - `0004-configuration-revision-proposal.md`: profile schema, validation errors, migrations, rollback, secret references, and display ordinals.
+- `0005-user-defined-agent-topology-proposal.md`: user-authored composition schema, identity, delegation, concurrency, cancellation propagation, and event shape. A layered multi-role arrangement is only an example; never hardcode it.
+- `0006-provider-adapter-capability-boundary-proposal.md`: provider capability discovery, streaming, tool calls, cancellation, error semantics, credential references, and provider order.
+- `0007-skill-plugin-mcp-configuration-proposal.md`: declarative bundle format, validation preview, MCP lifecycle/sandboxing, per-tool grants, plugin isolation, secret references, and rollback.
 
-Do not add write routes, generate client types, or build configuration forms from these internal shapes before their owning ADR is accepted.
+Do not add write routes, generate client types, build configuration forms, introduce a real provider SDK, load plugin code, or hardcode a role hierarchy from these internal shapes before their owning ADR is accepted. A Skill never grants tool permissions.
+
+## Product direction added in this slice
+
+- **Accepted as intent only:** Conchbase should support highly customizable, user-defined agent composition. The composition must remain topology-neutral; no layer count, role name, hierarchy, coordination pattern, or single example becomes a built-in product shape.
+- **Still blocked:** composition schema/API, provider SDK/conformance, Skill/plugin/MCP bundle format, and any Pagurus write form. See ADRs `0005`–`0007`.
+- **Boundary preserved:** runtime owns task state, policy, approvals, events, and tool execution. Provider adapters and declarative extensions are replaceable inputs, not authorities.
 
 ## Task status
 
@@ -41,7 +51,7 @@ Do not add write routes, generate client types, or build configuration forms fro
 
 6. **Pagurus accessibility pass.** Wait for a real write form before adding deterministic keyboard-focus, 320px layout, and reduced-motion CSS tests; do not convert navigation placeholders into fake workflows.
 
-The three proposal ADRs above remain **product-direction blocked**. Their public task, event, and configuration contracts must not be implemented, generated into clients, or exposed as write routes until accepted.
+Proposal ADRs `0002`–`0007` remain **product-direction blocked**. Their public task, event, composition, provider, and configuration contracts must not be implemented, generated into clients, or exposed as write routes until accepted.
 
 ## Definition of done for each task
 

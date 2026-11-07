@@ -21,6 +21,7 @@ Prefer explicit types, local ownership, small vertical slices, and executable ch
 - `src/http/` translates the versioned HTTP API to and from runtime behavior.
 - Future runtime capabilities should be added as bounded vertical slices. Keep domain decisions independent of Fastify, model-provider SDKs, and storage drivers.
 - Do not settle an open product/API decision by inventing an endpoint or persistence format. Record options in an ADR and ask for direction when the public contract depends on it.
+- Do not hardcode an illustrative agent composition, layer count, role name, hierarchy, or coordination pattern. ADR `0005` records topology-neutral product direction; its schema remains unresolved.
 
 ## Machine feedback
 

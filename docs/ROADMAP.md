@@ -7,6 +7,7 @@ This is a direction for staged validation, not a release commitment.
 - Version the runtime, task, configuration, and event contracts.
 - Add profile validation and an explicit active configuration revision.
 - Define task lifecycle, cancellation, and event replay behavior.
+- Design a topology-neutral, user-authored agent composition model without hardcoding an example hierarchy; see ADR `0005`.
 
 ## First usable runtime
 
@@ -14,6 +15,7 @@ This is a direction for staged validation, not a release commitment.
 - Persist sessions, tasks, approvals, and ordered events.
 - Add a policy gate before every tool execution.
 - Connect one local MCP server and one Skill directory.
+- Validate user-defined composition inputs with deterministic local fixtures before exposing any composition management route.
 
 ## Interoperability
 
@@ -25,4 +27,5 @@ This is a direction for staged validation, not a release commitment.
 
 - Portable memory import/export and retrieval providers.
 - Process-isolated plugin host after the trust and capability model is defined.
+- Provider conformance and declarative Skill/plugin/MCP bundle validation, after ADRs `0006`–`0007` receive product direction.
 - Packaging and desktop service lifecycle.
