@@ -18,7 +18,7 @@ test('read-only status routes return the documented API shapes', async () => {
     assert.equal(runtime.statusCode, 200);
     assert.deepEqual(runtime.json(), {
       name: 'Conchbase',
-      version: '0.5.0',
+      version: '0.6.0',
       state: 'ready',
       capabilities: [],
     });
@@ -39,6 +39,7 @@ test('read-only status routes return the documented API shapes', async () => {
       'streaming-output',
       'configuration-revisions',
       'composition-execution',
+      'tool-approval-ledger',
     ]);
   } finally {
     await configured.close();

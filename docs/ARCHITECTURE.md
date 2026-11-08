@@ -12,8 +12,9 @@ Pagurus ────────┼── versioned Runtime API ── Conchbase
 External clients┘                              ├─ OpenAiChatCompletionsProvider (v1 streaming)
                                                │    └── local Magpie gateway
                                                ├─ CompositionExecution (v2 deterministic)
+                                               ├─ ToolRequestLedger (public records, no executor)
                                                └─ TaskStore
-                                                    └── node:sqlite tasks + events + revisions
+                                                    └── node:sqlite tasks + events + revisions + tool requests
 ```
 
 ## Interface rules
@@ -32,17 +33,17 @@ External clients┘                              ├─ OpenAiChatCompletionsPro
 4. On process startup, `TaskService` converts persisted nonterminal states to `interrupted` and records one event per task. It never replays an in-flight provider call or automatically continues a composition.
 5. `POST /v1/tasks/{taskId}/retry` creates a new attempt from the original prompt and the original pinned configuration revision while preserving the task ID and all previous events.
 
-The internal `src/runtime/task-runner.ts` and `policy-gate.ts` remain deterministic acceptance primitives for a future tool-capable loop. `src/runtime/tool-capability.ts` adds an internal, fixture-only `ToolRegistry` and `ToolCapabilityKernel` with exact versioned approvals, per-attempt idempotency, bounded audit scalars, and replayable normalized failures. These modules are not wired into the HTTP task path, do not emit durable SQLite events, and do not execute real host tools. Tool-prefixed event names in the internal lifecycle union are deterministic test vocabulary only; `docs/openapi.yaml` `0.5.0` remains the public event contract. See [ADR 0013](decisions/0013-bounded-tool-capability-kernel.md).
+The internal `src/runtime/task-runner.ts` and `policy-gate.ts` remain deterministic acceptance primitives for a future tool-capable loop. `src/runtime/tool-capability.ts` adds an internal, fixture-only `ToolRegistry` and `ToolCapabilityKernel` with exact versioned approvals, per-attempt idempotency, bounded audit scalars, and replayable normalized failures. These modules are not wired into the HTTP task path, do not emit durable SQLite events, and do not execute real host tools. `src/runtime/tool-request.ts` is a separate public provider-neutral ledger boundary: `TaskService` uses it to derive composition-scoped identity, validate normalized tool call proposals, and emit durable request/decision events. It never imports `ToolCapabilityKernel` and never calls an executor. Public ledger events are `tool.requested`, `tool.approval_required`, `tool.approved`, and `tool.rejected`; `tool.executed`, `tool.failed`, `tool.denied`, and `tool.replayed` remain internal deterministic-test vocabulary. `docs/openapi.yaml` `0.6.0` is the public event contract. See [ADR 0013](decisions/0013-bounded-tool-capability-kernel.md) and [ADR 0017](decisions/0017-public-tool-request-approval-ledger.md).
 
 `src/runtime/composition-document.ts` is the internal identity kernel under [ADR 0015](decisions/0015-composition-identity-kernel.md). `src/runtime/configuration-document.ts` exposes its user-authored fields as the public `schemaVersion: 2` composition section. `src/runtime/composition-execution.ts` derives deterministic node order, terminal ids, `cmp_` identity, and bounded output. [ADR 0016](decisions/0016-composition-execution-and-public-schema.md) defines the accepted public graph representation, node events, and cancellation propagation; general concurrency, delegation, model-driven node work, and tool audit scope remain open.
 
 ## State and configuration
 
-- `SqliteTaskStore` owns normalized task, `partialOutput`, event, configuration revision, and active-pointer rows in one private SQLite database. WAL and foreign keys are enabled; an exclusive SQLite lock rejects a second simultaneous owner with a normalized `DatabaseInstanceError`. This is a single-owner development boundary from [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md), not multi-process support or a production recovery matrix. Driver types and errors do not leave the store boundary.
+- `SqliteTaskStore` owns normalized task, `partialOutput`, event, configuration revision, tool request, and active-pointer rows in one private SQLite database. WAL and foreign keys are enabled; an exclusive SQLite lock rejects a second simultaneous owner with a normalized `DatabaseInstanceError`. This is a single-owner development boundary from [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md), not multi-process support or a production recovery matrix. Driver types and errors do not leave the store boundary.
 - `MagpieModelCatalog` reads the local model list without opening the runtime database, so `conchbase models` can run while the HTTP service owns tasks. Other task-state CLI commands take short-lived database ownership and must not overlap `conchbase serve`.
 - A content-addressed, immutable revision identifies the active configuration. Each task attempt pins its revision id. Portable profile files, secret resolution, and capability lifecycle schemas are not implemented.
 - The active configuration revision comes from durable `configuration_state`. Applying a document appends an immutable content-addressed revision if new; rollback changes only the pointer. Existing tasks keep their pinned id. v1 documents carry bounded opaque references; v2 documents also carry user-authored topology-neutral composition data. Neither version stores installation state, grants, or secret values.
-- Artifacts, secrets, MCP servers, Skills, approvals, and plugin hosts are not implemented. Provider credentials stay in Magpie's own configuration; Conchbase sends only the optional `magpie-<app-id>` naming key.
+- Artifacts, secrets, MCP servers, Skills, executable tool approvals, execution results, and plugin hosts are not implemented. The public tool request/approval ledger stores digest-only records and audit events, not side effects. Provider credentials stay in Magpie's own configuration; Conchbase sends only the optional `magpie-<app-id>` naming key.
 - The phase-1 database schema has no migration policy or cross-platform production guarantee. See the open decisions in `docs/AI_HANDOFF.md`.
 
 ## Source layout
@@ -63,6 +64,7 @@ src/
     ├── configuration-document.ts   # public v1/v2 document validation and identity
     ├── composition-document.ts     # internal topology-neutral composition identity
     ├── composition-execution.ts    # deterministic topology-neutral composition plan
+    ├── tool-request.ts             # public normalized tool request/approval ledger boundary
     ├── event-log.ts                # deterministic in-memory event invariants
     ├── task-lifecycle.ts           # state machine
     ├── task-runner.ts              # provider-independent tool-loop acceptance harness

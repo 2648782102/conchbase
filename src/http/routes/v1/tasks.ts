@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import {
   TaskValidationError,
+  ToolRequestConflictError,
+  ToolRequestNotFoundError,
 } from '../../../runtime/task-service.js';
 import {
   TaskConflictError,
@@ -62,6 +64,14 @@ export function registerTaskRoutes(
       return;
     }
     if (cause instanceof TaskConflictError) {
+      void reply.code(409).send({ error: cause.message });
+      return;
+    }
+    if (cause instanceof ToolRequestNotFoundError) {
+      void reply.code(404).send({ error: cause.message });
+      return;
+    }
+    if (cause instanceof ToolRequestConflictError) {
       void reply.code(409).send({ error: cause.message });
       return;
     }

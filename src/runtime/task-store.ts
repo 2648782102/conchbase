@@ -11,6 +11,12 @@ import {
 } from './configuration-document.js';
 import { EventOrderError, type RuntimeEvent } from './event-log.js';
 import type { TaskEventType, TaskState } from './task-lifecycle.js';
+import {
+  ToolRequestConflictError,
+  ToolRequestNotFoundError,
+  type ToolRequestDecision,
+  type ToolRequestRecord,
+} from './tool-request.js';
 
 export interface TaskSnapshot {
   readonly id: string;
@@ -41,6 +47,39 @@ export interface TaskEventInput {
   readonly data?: Readonly<Record<string, string | number | boolean | null>>;
 }
 
+export interface ToolRequestCreateInput {
+  readonly id: string;
+  readonly taskId: string;
+  readonly attempt: number;
+  readonly configurationRevisionId: ConfigurationRevisionId;
+  readonly compositionDocumentId: string;
+  readonly compositionNodeId: string;
+  readonly toolName: string;
+  readonly argumentsDigest: string;
+  readonly idempotencyKey: string;
+  readonly createdAt: string;
+  readonly requestedEvent: TaskEventInput;
+  readonly approvalRequiredEvent: TaskEventInput;
+}
+
+export interface ToolRequestCreateResult {
+  readonly record: ToolRequestRecord;
+  readonly created: boolean;
+}
+
+export interface ToolRequestDecisionInput {
+  readonly approvalId: string;
+  readonly decision: ToolRequestDecision;
+  readonly reasonDigest: string;
+  readonly decidedAt: string;
+  readonly event: TaskEventInput;
+}
+
+export interface ToolRequestDecisionResult {
+  readonly record: ToolRequestRecord;
+  readonly changed: boolean;
+}
+
 export interface TaskStore {
   createTask(input: TaskCreateInput): TaskSnapshot;
   getTask(taskId: string): TaskSnapshot | null;
@@ -54,6 +93,9 @@ export interface TaskStore {
   resetTask(taskId: string, attempt: number, event: TaskEventInput): TaskSnapshot;
   recordOutputDelta(taskId: string, event: TaskEventInput, partialOutput: string): TaskSnapshot;
   recordEvent(taskId: string, event: TaskEventInput): TaskSnapshot;
+  createToolRequest(input: ToolRequestCreateInput): ToolRequestCreateResult;
+  getToolRequest(requestId: string): ToolRequestRecord | null;
+  decideToolRequest(requestId: string, input: ToolRequestDecisionInput): ToolRequestDecisionResult;
   listEvents(afterEventId: string | null): readonly RuntimeEvent[];
   getConfigurationState(): ConfigurationState;
   getConfigurationRevision(id: string): ConfigurationRevision | null;
@@ -85,6 +127,24 @@ interface EventRow {
   readonly data: string;
 }
 
+interface ToolRequestRow {
+  readonly id: string;
+  readonly task_id: string;
+  readonly attempt: number;
+  readonly configuration_revision_id: string;
+  readonly composition_document_id: string;
+  readonly composition_node_id: string;
+  readonly tool_name: string;
+  readonly arguments_digest: string;
+  readonly idempotency_key: string;
+  readonly status: string;
+  readonly created_at: string;
+  readonly approval_id: string | null;
+  readonly approval_decision: string | null;
+  readonly approval_reason_digest: string | null;
+  readonly approval_decided_at: string | null;
+}
+
 export class TaskNotFoundError extends Error {
   constructor() {
     super('Task not found.');
@@ -112,6 +172,8 @@ export class ConfigurationRevisionNotFoundError extends Error {
     this.name = 'ConfigurationRevisionNotFoundError';
   }
 }
+
+export { ToolRequestConflictError, ToolRequestNotFoundError };
 
 export interface ConfigurationState {
   readonly active: ConfigurationRevision;
@@ -192,6 +254,35 @@ function toConfigurationRevision(row: ConfigurationRevisionRow): ConfigurationRe
   });
 }
 
+function toToolRequestRecord(row: ToolRequestRow): ToolRequestRecord {
+  const approval = row.approval_id !== null
+    && row.approval_decision !== null
+    && row.approval_reason_digest !== null
+    && row.approval_decided_at !== null
+    ? Object.freeze({
+      id: row.approval_id,
+      decision: row.approval_decision as ToolRequestDecision,
+      reasonDigest: row.approval_reason_digest,
+      decidedAt: row.approval_decided_at,
+    })
+    : null;
+  return Object.freeze({
+    version: 1,
+    id: row.id,
+    taskId: row.task_id,
+    attempt: row.attempt,
+    configurationRevisionId: row.configuration_revision_id,
+    compositionDocumentId: row.composition_document_id as ToolRequestRecord['compositionDocumentId'],
+    compositionNodeId: row.composition_node_id,
+    toolName: row.tool_name,
+    argumentsDigest: row.arguments_digest,
+    idempotencyKey: row.idempotency_key,
+    status: row.status as ToolRequestRecord['status'],
+    createdAt: row.created_at,
+    approval,
+  });
+}
+
 export class SqliteTaskStore implements TaskStore {
   private readonly database: DatabaseSync;
   private readonly clock: () => string;
@@ -236,6 +327,23 @@ export class SqliteTaskStore implements TaskStore {
         CREATE TABLE IF NOT EXISTS configuration_state (
           singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
           revision_id TEXT NOT NULL REFERENCES configuration_revisions(id)
+        ) STRICT;
+        CREATE TABLE IF NOT EXISTS tool_requests (
+          id TEXT PRIMARY KEY,
+          task_id TEXT NOT NULL REFERENCES tasks(id),
+          attempt INTEGER NOT NULL,
+          configuration_revision_id TEXT NOT NULL,
+          composition_document_id TEXT NOT NULL,
+          composition_node_id TEXT NOT NULL,
+          tool_name TEXT NOT NULL,
+          arguments_digest TEXT NOT NULL,
+          idempotency_key TEXT NOT NULL UNIQUE,
+          status TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          approval_id TEXT,
+          approval_decision TEXT,
+          approval_reason_digest TEXT,
+          approval_decided_at TEXT
         ) STRICT;
       `);
       this.bootstrapConfiguration();
@@ -442,6 +550,98 @@ export class SqliteTaskStore implements TaskStore {
     return this.getTask(taskId)!;
   }
 
+  createToolRequest(input: ToolRequestCreateInput): ToolRequestCreateResult {
+    try {
+      this.database.exec('BEGIN IMMEDIATE');
+      const existing = this.toolRequestByIdempotencyKey(input.idempotencyKey);
+      if (existing) {
+        this.database.exec('COMMIT');
+        return Object.freeze({ record: existing, created: false });
+      }
+      this.database.prepare(`
+        INSERT INTO tool_requests (
+          id, task_id, attempt, configuration_revision_id, composition_document_id,
+          composition_node_id, tool_name, arguments_digest, idempotency_key,
+          status, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+      `).run(
+        input.id,
+        input.taskId,
+        input.attempt,
+        input.configurationRevisionId,
+        input.compositionDocumentId,
+        input.compositionNodeId,
+        input.toolName,
+        input.argumentsDigest,
+        input.idempotencyKey,
+        input.createdAt,
+      );
+      this.insertEvent(input.requestedEvent);
+      this.insertEvent(input.approvalRequiredEvent);
+      this.database.exec('COMMIT');
+    } catch (cause) {
+      this.database.exec('ROLLBACK');
+      throw cause;
+    }
+    return Object.freeze({ record: this.getToolRequest(input.id)!, created: true });
+  }
+
+  getToolRequest(requestId: string): ToolRequestRecord | null {
+    const row = this.database.prepare('SELECT * FROM tool_requests WHERE id = ?')
+      .get(requestId) as ToolRequestRow | undefined;
+    return row ? toToolRequestRecord(row) : null;
+  }
+
+  decideToolRequest(requestId: string, input: ToolRequestDecisionInput): ToolRequestDecisionResult {
+    let transactionOpen = true;
+    try {
+      this.database.exec('BEGIN IMMEDIATE');
+      const row = this.database.prepare('SELECT * FROM tool_requests WHERE id = ?')
+        .get(requestId) as ToolRequestRow | undefined;
+      if (!row) {
+        this.database.exec('COMMIT');
+        transactionOpen = false;
+        throw new ToolRequestNotFoundError();
+      }
+      if (row.status !== 'pending') {
+        if (
+          row.approval_decision === input.decision
+          && row.approval_reason_digest === input.reasonDigest
+        ) {
+          this.database.exec('COMMIT');
+          transactionOpen = false;
+          return Object.freeze({ record: toToolRequestRecord(row), changed: false });
+        }
+        const conflict: ToolRequestConflictError = new ToolRequestConflictError(
+          'Tool request already has a different decision.',
+        );
+        this.database.exec('COMMIT');
+        transactionOpen = false;
+        throw conflict;
+      }
+      this.database.prepare(`
+        UPDATE tool_requests
+        SET status = ?, approval_id = ?, approval_decision = ?,
+            approval_reason_digest = ?, approval_decided_at = ?
+        WHERE id = ?
+      `).run(
+        input.decision,
+        input.approvalId,
+        input.decision,
+        input.reasonDigest,
+        input.decidedAt,
+        requestId,
+      );
+      this.insertEvent(input.event);
+      this.database.exec('COMMIT');
+      transactionOpen = false;
+    } catch (cause) {
+      if (transactionOpen) this.database.exec('ROLLBACK');
+      throw cause;
+    }
+    return Object.freeze({ record: this.getToolRequest(requestId)!, changed: true });
+  }
+
   private insertEvent(input: TaskEventInput): void {
     const last = this.database.prepare('SELECT MAX(sequence) AS sequence FROM events')
       .get() as { sequence: number | null };
@@ -460,6 +660,12 @@ export class SqliteTaskStore implements TaskStore {
       input.attempt,
       JSON.stringify(input.data ?? {}),
     );
+  }
+
+  private toolRequestByIdempotencyKey(key: string): ToolRequestRecord | null {
+    const row = this.database.prepare('SELECT * FROM tool_requests WHERE idempotency_key = ?')
+      .get(key) as ToolRequestRow | undefined;
+    return row ? toToolRequestRecord(row) : null;
   }
 
   private bootstrapConfiguration(): void {

@@ -11,6 +11,7 @@ export interface CompositionExecutionPlan {
   readonly nodeIds: readonly string[];
   readonly nodeCount: number;
   readonly terminalNodeIds: readonly string[];
+  readonly declaredNodeIds: readonly string[];
 }
 
 export function compositionNodeOrder(composition: CompositionDocument): readonly string[] {
@@ -56,6 +57,7 @@ export function planCompositionExecution(
     nodeIds: compositionNodeOrder(composition),
     nodeCount: composition.nodes.length,
     terminalNodeIds: composition.terminalNodeIds,
+    declaredNodeIds: Object.freeze(composition.nodes.map((node) => node.id)),
   });
 }
 

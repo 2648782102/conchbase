@@ -20,6 +20,10 @@ import {
   type TaskEventInput,
   type TaskSnapshot,
   type TaskStore,
+  type ToolRequestCreateInput,
+  type ToolRequestCreateResult,
+  type ToolRequestDecisionInput,
+  type ToolRequestDecisionResult,
 } from '../src/runtime/task-store.js';
 import type { RuntimeEvent } from '../src/runtime/event-log.js';
 import type { ConfigurationRevision } from '../src/runtime/configuration-document.js';
@@ -183,6 +187,18 @@ class CancelOnFirstNodeStore implements TaskStore {
       this.onFirstNode?.();
     }
     return result;
+  }
+
+  createToolRequest(input: ToolRequestCreateInput): ToolRequestCreateResult {
+    return this.inner.createToolRequest(input);
+  }
+
+  getToolRequest(requestId: string) {
+    return this.inner.getToolRequest(requestId);
+  }
+
+  decideToolRequest(requestId: string, input: ToolRequestDecisionInput): ToolRequestDecisionResult {
+    return this.inner.decideToolRequest(requestId, input);
   }
 
   listEvents(afterEventId: string | null): readonly RuntimeEvent[] {

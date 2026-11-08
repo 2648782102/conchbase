@@ -29,6 +29,19 @@ import {
   type TaskSnapshot,
   type TaskStore,
 } from './task-store.js';
+import {
+  ToolRequestContextError,
+  ToolRequestConflictError,
+  ToolRequestNotFoundError,
+  ToolRequestValidationError,
+  parseToolRequestDecision,
+  parseToolRequestInput,
+  toolApprovalId,
+  toolRequestId,
+  toolRequestIdentity,
+  toolRequestIdempotencyKey,
+  type ToolRequestRecord,
+} from './tool-request.js';
 
 export interface TaskServiceConfig {
   readonly magpieBaseUrl: string;
@@ -49,7 +62,14 @@ export class TaskValidationError extends Error {
   }
 }
 
-export { ConfigurationValidationError, StoreRevisionNotFoundError as ConfigurationRevisionNotFoundError };
+export {
+  ConfigurationValidationError,
+  StoreRevisionNotFoundError as ConfigurationRevisionNotFoundError,
+  ToolRequestContextError,
+  ToolRequestConflictError,
+  ToolRequestNotFoundError,
+  ToolRequestValidationError,
+};
 
 function validatePrompt(prompt: unknown): string {
   if (typeof prompt !== 'string' || prompt.trim().length === 0) {
@@ -111,6 +131,119 @@ export class TaskService {
 
   validateConfiguration(input: unknown): ConfigurationDocument {
     return parseConfigurationDocument(input);
+  }
+
+  createToolRequest(input: unknown): {
+    readonly request: ToolRequestRecord;
+    readonly created: boolean;
+  } {
+    const proposal = parseToolRequestInput(input);
+    const task = this.store.getTask(proposal.taskId);
+    if (!task) throw new TaskNotFoundError();
+    if (task.attempt !== proposal.attempt) {
+      throw new ToolRequestContextError('Tool request attempt does not match the task.');
+    }
+    if (!['queued', 'running', 'waiting_approval'].includes(task.state)) {
+      throw new ToolRequestContextError('Tool request task is not eligible.');
+    }
+    const revision = this.store.getConfigurationRevision(task.configurationRevisionId);
+    if (!revision || revision.document.schemaVersion !== 2) {
+      throw new ToolRequestContextError('Tool requests require a schemaVersion 2 task.');
+    }
+    const plan = planCompositionExecution(revision.document);
+    const identity = toolRequestIdentity(
+      proposal,
+      plan,
+      revision.id,
+    );
+    const idempotencyKey = toolRequestIdempotencyKey({
+      taskId: task.id,
+      attempt: task.attempt,
+      configurationRevisionId: identity.configurationRevisionId,
+      compositionDocumentId: identity.compositionDocumentId,
+      compositionNodeId: identity.compositionNodeId,
+      toolName: identity.toolName,
+      argumentsDigest: identity.argumentsDigest,
+    });
+    const requestId = toolRequestId(idempotencyKey);
+    const createdAt = new Date().toISOString();
+    const baseData = {
+      toolRequestId: requestId,
+      configurationRevisionId: identity.configurationRevisionId,
+      attempt: task.attempt,
+      compositionDocumentId: identity.compositionDocumentId,
+      compositionNodeId: identity.compositionNodeId,
+      toolName: identity.toolName,
+      argumentsDigest: identity.argumentsDigest,
+      idempotencyKey,
+      status: 'pending',
+    };
+    const result = this.store.createToolRequest({
+      id: requestId,
+      taskId: task.id,
+      attempt: task.attempt,
+      configurationRevisionId: task.configurationRevisionId,
+      compositionDocumentId: identity.compositionDocumentId,
+      compositionNodeId: identity.compositionNodeId,
+      toolName: identity.toolName,
+      argumentsDigest: identity.argumentsDigest,
+      idempotencyKey,
+      createdAt,
+      requestedEvent: this.toolLedgerEvent(
+        task,
+        'tool.requested',
+        baseData,
+      ),
+      approvalRequiredEvent: this.toolLedgerEvent(
+        task,
+        'tool.approval_required',
+        baseData,
+      ),
+    });
+    return Object.freeze({ request: result.record, created: result.created });
+  }
+
+  getToolRequest(requestId: string): ToolRequestRecord {
+    const request = this.store.getToolRequest(requestId);
+    if (!request) throw new ToolRequestNotFoundError();
+    return request;
+  }
+
+  decideToolRequest(requestId: string, input: unknown): {
+    readonly request: ToolRequestRecord;
+    readonly changed: boolean;
+  } {
+    const decision = parseToolRequestDecision(input);
+    const existing = this.store.getToolRequest(requestId);
+    if (!existing) throw new ToolRequestNotFoundError();
+    const task = this.store.getTask(existing.taskId);
+    if (!task) throw new TaskNotFoundError();
+    const approvalId = toolApprovalId(requestId, decision.decision, decision.reasonDigest);
+    const decidedAt = new Date().toISOString();
+    const event = this.toolLedgerEvent(task, decision.decision === 'approved'
+      ? 'tool.approved'
+      : 'tool.rejected', {
+      toolRequestId: requestId,
+      configurationRevisionId: existing.configurationRevisionId,
+      attempt: existing.attempt,
+      compositionDocumentId: existing.compositionDocumentId,
+      compositionNodeId: existing.compositionNodeId,
+      toolName: existing.toolName,
+      argumentsDigest: existing.argumentsDigest,
+      idempotencyKey: existing.idempotencyKey,
+      status: decision.decision,
+      decision: decision.decision,
+      approvalId,
+      reasonDigest: decision.reasonDigest,
+    });
+    const result = this.store.decideToolRequest(requestId, {
+      approvalId,
+      decision: decision.decision,
+      reasonDigest: decision.reasonDigest,
+      decidedAt,
+      event,
+    });
+    return Object.freeze({ request: result.record, changed: result.changed });
   }
 
   applyConfiguration(input: unknown): ApplyConfigurationResult {
@@ -441,6 +574,17 @@ export class TaskService {
       state,
       configurationRevisionId: task.configurationRevisionId,
       attempt,
+    };
+  }
+
+  private toolLedgerEvent(
+    task: TaskSnapshot,
+    type: 'tool.requested' | 'tool.approval_required' | 'tool.approved' | 'tool.rejected',
+    data: Readonly<Record<string, string | number | boolean | null>>,
+  ) {
+    return {
+      ...this.eventInput(task, type, task.state, task.attempt),
+      data,
     };
   }
 

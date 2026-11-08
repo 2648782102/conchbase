@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Conchbase Runtime API
-  version: 0.5.0
-  description: Local, versioned API for Conchbase streaming model tasks, bounded composition execution, ordered progress events, Magpie model discovery, and versioned configuration revisions.
+  version: 0.6.0
+  description: Local, versioned API for Conchbase streaming model tasks, bounded composition execution, ordered progress events, Magpie model discovery, versioned configuration revisions, and tool-approval-ledger request/decision records without execution.
 servers:
   - url: http://127.0.0.1:4318
     description: Local runtime default; loopback only.
@@ -295,6 +295,121 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/tool-requests:
+    post:
+      operationId: createToolRequest
+      summary: Create a normalized tool request ledger record for a v2 task attempt. No tool is executed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateToolRequest'
+      responses:
+        '201':
+          description: Tool request created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateToolRequestResponse'
+        '200':
+          description: Identical tool request already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateToolRequestResponse'
+        '400':
+          description: Invalid tool request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '409':
+          description: Tool request task context is not eligible.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Task service is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/tool-requests/{requestId}:
+    get:
+      operationId: getToolRequest
+      summary: Read one durable tool request ledger record.
+      parameters:
+        - $ref: '#/components/parameters/ToolRequestId'
+      responses:
+        '200':
+          description: Tool request record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolRequestEnvelope'
+        '404':
+          description: Tool request not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Task service is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/tool-requests/{requestId}/approval:
+    post:
+      operationId: decideToolRequest
+      summary: Record one explicit approval or rejection. No tool is executed.
+      parameters:
+        - $ref: '#/components/parameters/ToolRequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolRequestDecisionRequest'
+      responses:
+        '201':
+          description: Decision recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolRequestDecisionResponse'
+        '200':
+          description: Identical decision already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolRequestDecisionResponse'
+        '400':
+          description: Invalid decision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '404':
+          description: Tool request not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Tool request already has a different decision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Task service is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 components:
   parameters:
     TaskId:
@@ -310,6 +425,13 @@ components:
       schema:
         type: string
         pattern: '^cfg_[0-9a-f]{24}$'
+    ToolRequestId:
+      name: requestId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^tqr_[0-9a-f]{24}$'
   schemas:
     Health:
       type: object
@@ -682,6 +804,27 @@ components:
           type: string
         type:
           type: string
+          enum:
+            - task.queued
+            - task.started
+            - task.output_delta
+            - task.approval_requested
+            - task.approved
+            - task.completed
+            - task.failed
+            - task.cancellation_requested
+            - task.cancelled
+            - task.interrupted
+            - composition.started
+            - composition.node_started
+            - composition.node_completed
+            - composition.node_cancelled
+            - composition.completed
+            - composition.cancelled
+            - tool.requested
+            - tool.approval_required
+            - tool.approved
+            - tool.rejected
         state:
           $ref: '#/components/schemas/TaskState'
         configurationRevisionId:
@@ -694,7 +837,11 @@ components:
           description: >-
             Bounded scalar event data. Composition events carry compositionDocumentId,
             compositionNodeId, nodeIndex, nodeCount, completedNodeCount, and terminalNodeIds
-            as documented by ADR 0016.
+            as documented by ADR 0016. Public tool ledger events carry toolRequestId,
+            configurationRevisionId, attempt, compositionDocumentId, compositionNodeId,
+            toolName, argumentsDigest, idempotencyKey, status, and decision-only decision,
+            approvalId, and reasonDigest fields as documented by ADR 0017. Execution,
+            replay, denial, and failure vocabulary is not part of the public event contract.
           additionalProperties:
             type: [string, number, boolean, 'null']
     EventList:
@@ -726,3 +873,134 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ModelCatalogEntry'
+    ToolCallProposal:
+      type: object
+      additionalProperties: false
+      required: [toolName, arguments]
+      properties:
+        toolName:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[a-z][a-z0-9_]{0,63}$'
+        arguments:
+          type: object
+          maxProperties: 8
+          additionalProperties:
+            type: [string, number, boolean, 'null']
+    CreateToolRequest:
+      type: object
+      additionalProperties: false
+      required: [taskId, attempt, compositionNodeId, toolCall]
+      properties:
+        taskId:
+          type: string
+          minLength: 1
+          maxLength: 200
+        attempt:
+          type: integer
+          minimum: 1
+        compositionNodeId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        toolCall:
+          $ref: '#/components/schemas/ToolCallProposal'
+    ToolRequestStatus:
+      type: string
+      enum: [pending, approved, rejected]
+    ToolRequestDecision:
+      type: string
+      enum: [approved, rejected]
+    ToolRequestApproval:
+      type: object
+      additionalProperties: false
+      required: [id, decision, reasonDigest, decidedAt]
+      properties:
+        id:
+          type: string
+          pattern: '^tap_[0-9a-f]{24}$'
+        decision:
+          $ref: '#/components/schemas/ToolRequestDecision'
+        reasonDigest:
+          type: string
+          pattern: '^rsn_[0-9a-f]{24}$'
+        decidedAt:
+          type: string
+          format: date-time
+    ToolRequest:
+      type: object
+      additionalProperties: false
+      required: [version, id, taskId, attempt, configurationRevisionId, compositionDocumentId, compositionNodeId, toolName, argumentsDigest, idempotencyKey, status, createdAt, approval]
+      properties:
+        version:
+          const: 1
+        id:
+          type: string
+          pattern: '^tqr_[0-9a-f]{24}$'
+        taskId:
+          type: string
+        attempt:
+          type: integer
+          minimum: 1
+        configurationRevisionId:
+          type: string
+          pattern: '^cfg_[0-9a-f]{24}$'
+        compositionDocumentId:
+          type: string
+          pattern: '^cmp_[0-9a-f]{24}$'
+        compositionNodeId:
+          type: string
+        toolName:
+          type: string
+        argumentsDigest:
+          type: string
+          pattern: '^arg_[0-9a-f]{24}$'
+        idempotencyKey:
+          type: string
+          pattern: '^idem_[0-9a-f]{24}$'
+        status:
+          $ref: '#/components/schemas/ToolRequestStatus'
+        createdAt:
+          type: string
+          format: date-time
+        approval:
+          oneOf:
+            - $ref: '#/components/schemas/ToolRequestApproval'
+            - type: 'null'
+    ToolRequestEnvelope:
+      type: object
+      additionalProperties: false
+      required: [request]
+      properties:
+        request:
+          $ref: '#/components/schemas/ToolRequest'
+    CreateToolRequestResponse:
+      type: object
+      additionalProperties: false
+      required: [request, created]
+      properties:
+        request:
+          $ref: '#/components/schemas/ToolRequest'
+        created:
+          type: boolean
+    ToolRequestDecisionRequest:
+      type: object
+      additionalProperties: false
+      required: [decision, reason]
+      properties:
+        decision:
+          $ref: '#/components/schemas/ToolRequestDecision'
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+    ToolRequestDecisionResponse:
+      type: object
+      additionalProperties: false
+      required: [request, changed]
+      properties:
+        request:
+          $ref: '#/components/schemas/ToolRequest'
+        changed:
+          type: boolean

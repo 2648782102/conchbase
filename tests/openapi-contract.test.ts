@@ -68,6 +68,9 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
       '/v1/configuration/revisions/{revisionId}',
       '/v1/configuration/validate',
       '/v1/configuration/apply',
+      '/v1/tool-requests',
+      '/v1/tool-requests/{requestId}',
+      '/v1/tool-requests/{requestId}/approval',
     ],
   );
   assert.match(spec, /\$ref: '#\/components\/schemas\/Health'/);
@@ -135,9 +138,43 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
   assert.match(spec, /enum: \[inline, file, registry, env\]/);
   assert.doesNotMatch(spec, /enum: \[[^\]]*\burl\b/);
   assert.match(spec, /ApplyConfigurationRequest:[\s\S]*?oneOf:/);
-  assert.match(spec, /^  version: 0\.5\.0$/m);
+  assert.match(spec, /^  version: 0\.6\.0$/m);
   assert.match(spec, /compositionDocumentId/);
   assert.match(spec, /compositionNodeId/);
+  assertSchemaFields('CreateToolRequest', [
+    'taskId',
+    'attempt',
+    'compositionNodeId',
+    'toolCall',
+  ]);
+  assertSchemaFields('ToolRequest', [
+    'version',
+    'id',
+    'taskId',
+    'attempt',
+    'configurationRevisionId',
+    'compositionDocumentId',
+    'compositionNodeId',
+    'toolName',
+    'argumentsDigest',
+    'idempotencyKey',
+    'status',
+    'createdAt',
+    'approval',
+  ]);
+  assertSchemaFields('ToolRequestDecisionRequest', ['decision', 'reason']);
+  assert.match(spec, /^  version: 0\.6\.0$/m);
+  assert.match(spec, /tool-approval-ledger/);
+  assert.match(spec, /No tool is executed/);
+  assert.match(spec, /- tool\.requested/);
+  assert.match(spec, /- tool\.approval_required/);
+  assert.match(spec, /- tool\.approved/);
+  assert.match(spec, /- tool\.rejected/);
+  assert.doesNotMatch(spec, /- tool\.executed/);
+  assert.doesNotMatch(spec, /- tool\.replayed/);
+  assert.doesNotMatch(spec, /- tool\.denied/);
+  assert.doesNotMatch(spec, /- tool\.failed/);
+  assert.match(spec, /Public tool ledger events carry toolRequestId/);
 });
 
 test('exact response fixtures match the documented read-only JSON schema shapes', () => {

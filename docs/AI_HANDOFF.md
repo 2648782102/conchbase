@@ -21,11 +21,12 @@ Users can define highly customizable agent compositions through a versioned, top
 7. [ADR 0014](decisions/0014-versioned-configuration-api.md) — accepted `0.4.0` `schemaVersion: 1` configuration document.
 8. [ADR 0015](decisions/0015-composition-identity-kernel.md) — accepted internal topology-neutral composition identity and sequencing.
 9. [ADR 0016](decisions/0016-composition-execution-and-public-schema.md) — accepted `0.5.0` v1/v2 configuration union, deterministic composition execution, node events, and cancellation.
-10. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
-11. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
-12. `docs/TECH_STACK.md` — chosen and deferred technology.
-13. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` — wider intended sequencing and still-open contracts.
-14. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
+10. [ADR 0017](decisions/0017-public-tool-request-approval-ledger.md) — accepted `0.6.0` public tool request/approval ledger; durable audit, no tool execution.
+11. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
+12. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
+13. `docs/TECH_STACK.md` — chosen and deferred technology.
+14. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` — wider intended sequencing and still-open contracts.
+15. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
 
 ## Current repository facts
 
@@ -40,17 +41,18 @@ Implemented:
 - `SqliteTaskStore` holds a SQLite exclusive lock for the database and normalizes a second owner to `DatabaseInstanceError`. This is a single-owner development boundary, not multi-process support or a production recovery matrix. `conchbase models` uses a standalone `MagpieModelCatalog` and does not open the runtime database.
 - A process restart marks nonterminal tasks as `interrupted`. It does not resume an in-flight model call. An explicit retry creates a new attempt from the original prompt, keeps the original pinned configuration revision, and preserves previous events.
 - Public configuration documents are versioned data. `schemaVersion: 1` keeps the ADR 0014 opaque-reference contract; `schemaVersion: 2` adds a required topology-neutral `composition` section. Both versions are persisted as content-addressed immutable revisions in the same private SQLite database. All document sections, including `metadata`, are required; `source: url` is not accepted. References do not install, enable, grant, resolve secrets, load code, or execute tools.
-- `/v1/configuration` reads the active revision; `/v1/configuration/revisions` lists history; `/v1/configuration/validate`, `/v1/configuration/apply`, and rollback by `rollbackTo` are implemented. The exact path set remains thirteen routes.
+- `/v1/configuration` reads the active revision; `/v1/configuration/revisions` lists history; `/v1/configuration/validate`, `/v1/configuration/apply`, and rollback by `rollbackTo` are implemented. The exact OpenAPI path set is sixteen routes, including three public tool request/approval ledger routes.
 - Every task attempt pins the active configuration revision at creation. Applying or rolling back a revision affects later tasks only; existing task rows and events retain their original pinned id. A v2 task runs from its pinned immutable revision even after later configuration changes.
 - A `schemaVersion: 2` task runs a deterministic, topology-neutral composition executor. It computes a `cmp_` identity from the pinned graph, traverses one deterministic topological order, emits composition node events, checks cancellation before and during each node, and writes a deterministic final output. It makes no model-provider call, emits no `task.output_delta`, never executes a model-requested or real host tool, and never loads a Skill/MCP/plugin. Single-node, chain, fan-out/fan-in, and multiple-entry DAGs are deterministic fixtures.
 - Composition events keep the public event envelope unchanged and carry bounded scalars in `data`: `compositionDocumentId`, `compositionNodeId`, `nodeIndex`, `nodeCount`, `completedNodeCount`, and `terminalNodeIds`. The event envelope also carries the pinned `configurationRevisionId` and `attempt`.
 - An internal `ToolCapabilityKernel` provides an immutable fixture-only registry, exact versioned approval records, per-attempt idempotency keys, bounded audit scalars, and replayable normalized executor failures. Its tool-prefixed event names are internal deterministic-test vocabulary. It is not imported by the HTTP task path, is not persisted by `SqliteTaskStore`, and does not execute real host tools.
+- A public, provider-neutral tool request/approval ledger accepts normalized tool call proposals for eligible `schemaVersion: 2` task attempts in `queued`, `running`, or `waiting_approval`. `POST /v1/tool-requests`, `GET /v1/tool-requests/{requestId}`, and `POST /v1/tool-requests/{requestId}/approval` persist one versioned request, a composition-scoped idempotency key, and one explicit approval or rejection. Requests store only an arguments digest; approvals store only a reason digest. Creation and decision events are durable through `GET /v1/events`, but no tool is executed and no task state transition occurs. The public ledger does not import `ToolCapabilityKernel`.
 - Automated tests cover provider parsing and failures, task completion, durable event replay, restart interruption, explicit retry, v1/v2 configuration validation/history/rollback/pinning, composition execution and cancellation, HTTP error behavior, loopback configuration, the internal task runner, policy gate, and deterministic repository guardrails. Tests use fake `fetch` and temporary databases; CI does not call a model provider.
 - GitHub Actions runs `npm run check`, `npm test`, and `npm run build`.
 
 Not implemented yet:
 
-- Model-driven composition nodes, role registry, multi-turn model context, model-driven tool execution, public tool/approval API, MCP client, Skills loader, install/enable/grant operations, secret resolution, portable file import/export, production approval workflow, plugin host, memory, artifacts, SSE event stream, reasoning display, event retention policy, production driver compatibility matrix, authentication/pairing, or remote binding.
+- Model-driven composition nodes, role registry, multi-turn model context, provider tool-call parsing, model-driven tool execution, public tool execution API, real executor isolation, crash-safe side effects, MCP client, Skills loader, install/enable/grant operations, secret resolution, portable file import/export, production approval workflow, plugin host, memory, artifacts, SSE event stream, reasoning display, event retention policy, production driver compatibility matrix, authentication/pairing, or remote binding.
 - A Magpie upstream Agents-page adapter. Magpie currently requires such an adapter in its own source; Conchbase phase 1 uses the local gateway directly.
 
 Do not describe planned features as implemented. Do not describe the phase-1 single-turn loop or the bounded v2 deterministic executor as a general multi-agent scheduling product.
@@ -60,8 +62,8 @@ Do not describe planned features as implemented. Do not describe the phase-1 sin
 - Conchbase is the agent execution authority. It owns task state, provider calls, composition dispatch, the narrow model adapter boundary, persisted state, and the authoritative event log.
 - Pagurus and other external clients use the public Runtime API and never read or write private runtime files or database tables. The phase-1 CLI takes short-lived private SQLite ownership for task-state and configuration reads from [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md); replacing those reads with an authoritative client API remains open.
 - Model-provider output is untrusted data. No tool executes outside the runtime policy and approval path. Skills are instruction content and do not grant capabilities.
-- Tool capability records and tool-prefixed audit events are internal deterministic fixtures until a separate ADR accepts a public tool/event contract, provider tool-call parsing, durable approval and audit storage, and real executor isolation.
-- Public tool approvals and audits must include composition node identity, the `cmp_` document identity, and the pinned configuration revision before model-driven or real host tools execute in a multi-node composition. The current internal tool approval record has only task, attempt, tool name, and argument digest scope.
+- The internal `ToolCapabilityKernel` remains fixture-only. The public ledger accepts durable requests, approvals, and audit events but never executes a tool. Provider tool-call parsing, durable execution results, crash-safe side effects, and real executor isolation require separate accepted ADRs.
+- Public tool request, approval, and audit identity includes composition node identity, the `cmp_` document identity, the pinned configuration revision, and attempt. An approval decision is ledger state, not execution permission. The current internal tool approval record has only task, attempt, tool name, and argument digest scope and remains unchanged.
 - Provider SDKs are replaceable inputs and never own security decisions or durable task state. The phase-1 provider uses direct HTTP, not a provider SDK.
 - A task binds to one configuration revision for its lifetime; future configuration changes affect later tasks.
 - `schemaVersion: 1` and `schemaVersion: 2` configuration documents are accepted. New sections require a new ADR and a new schema version, never silent reinterpretation of an existing version.
@@ -71,7 +73,7 @@ Do not describe planned features as implemented. Do not describe the phase-1 sin
 
 ## Current API contract
 
-Conchbase owns [`docs/openapi.yaml`](openapi.yaml). Current API base URL: `http://127.0.0.1:4318`. Pagurus's development server proxies `/v1` to this address. The health endpoint reports API version `1`; the OpenAPI document version is `0.5.0` for the accepted route set, streaming v1 tasks, versioned configuration revisions, and bounded v2 composition execution.
+Conchbase owns [`docs/openapi.yaml`](openapi.yaml). Current API base URL: `http://127.0.0.1:4318`. Pagurus's development server proxies `/v1` to this address. The health endpoint reports API version `1`; the OpenAPI document version is `0.6.0` for the accepted route set, streaming v1 tasks, versioned configuration revisions, bounded v2 composition execution, and the public tool request/approval ledger.
 
 Before adding an endpoint, specify request/response schemas, error behavior, authorization requirements, and versioning. Keep public schemas and implementation aligned. Do not add tool execution or remote access as undocumented shortcuts; configuration writes are limited to the accepted `validate`/`apply` contract.
 
@@ -95,7 +97,7 @@ Do not silently treat these as settled:
 
 - Model-driven composition nodes, delegation, concurrency, per-node model selection, context passing, role semantics, cyclic coordination, and a general scheduling product.
 - Portable profile/config file format, migrations, secret resolution, Skill/plugin/MCP bundle schemas, installation/enabling/granting, and approval UX.
-- Public tool/approval API, provider tool-call parsing, durable tool audit storage, crash-safe side effects, real executor isolation, per-tool grants, and MCP lifecycle.
+- Provider tool-call parsing, public tool execution API, durable tool execution results, crash-safe side effects, real executor isolation, per-tool grants, MCP lifecycle, and Pagurus approval UX.
 - Provider capability discovery, structured tool calls, multi-turn context, token limits, error classification, and direct vendor provider order.
 - Production SQLite driver choice, supported-platform CI matrix, WAL crash recovery, multi-process ownership, event retention, and SSE/Last-Event-ID semantics.
 - The authoritative client API that will eventually replace direct CLI database reads, including its authentication and parity contract.

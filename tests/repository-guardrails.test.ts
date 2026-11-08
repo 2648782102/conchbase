@@ -46,6 +46,9 @@ const acceptedPaths = [
   '/v1/configuration/revisions/{revisionId}',
   '/v1/configuration/validate',
   '/v1/configuration/apply',
+  '/v1/tool-requests',
+  '/v1/tool-requests/{requestId}',
+  '/v1/tool-requests/{requestId}/approval',
 ];
 
 function read(relativePath: string): string {
@@ -85,9 +88,14 @@ function assertAcceptedOpenApi(spec: string, label: string): void {
   assert.doesNotMatch(spec, nonLoopbackAddress, `${label} must not bind beyond loopback`);
   assert.match(spec, /requestBody:/, `${label} must document the accepted task request`);
   assert.match(spec, /interrupted/, `${label} must document interrupted tasks`);
-  assert.match(spec, /^  version: 0\.5\.0$/m, `${label} must record the composition contract version`);
+  assert.match(spec, /^  version: 0\.6\.0$/m, `${label} must record the tool ledger contract version`);
   assert.match(spec, /partialOutput/, `${label} must document partial output`);
   assert.match(spec, /ConfigurationRevision/, `${label} must document configuration revisions`);
+  assert.match(spec, /tool-approval-ledger/);
+  assert.match(spec, /No tool is executed/);
+  assert.match(spec, /- tool\.requested/);
+  assert.doesNotMatch(spec, /- tool\.executed/);
+  assert.match(spec, /Public tool ledger events carry toolRequestId/);
 }
 
 function assertLoopbackConfig(source: string, label: string): void {
@@ -165,14 +173,17 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /interrupted/);
   assert.match(handoff, /explicit retry/);
   assert.match(handoff, /The broader user-defined composition product remains open/);
+  assert.match(handoff, /exact OpenAPI path set is sixteen routes/);
+  assert.doesNotMatch(handoff, /remains thirteen routes/);
 
   const queue = read('docs/AI_TASK_QUEUE.md');
   assert.match(queue, /single-turn/);
   assert.match(queue, /topology-neutral/);
   assert.match(queue, /ADR 0015/);
   assert.match(queue, /ADR 0016/);
-  assert.match(queue, /Public tool contract slice/);
-  assert.match(queue, /first/);
+  assert.match(queue, /ADR 0017/);
+  assert.match(queue, /Provider tool-call parsing and execution boundary/);
+  assert.match(queue, /first next slice/);
   assert.match(queue, /short-lived private database ownership/);
 
   assert.match(read('README.md'), /real model/);
@@ -241,6 +252,10 @@ test('decision records separate accepted phase-1 direction from proposals', () =
     read(`${decisionsDir}/0005-user-defined-agent-topology-proposal.md`),
     /ADR 0016.*bounded public graph representation/s,
   );
+  assert.match(
+    read(`${decisionsDir}/0017-public-tool-request-approval-ledger.md`),
+    /^Status: \*\*accepted product and public API direction/m,
+  );
 });
 
 test('the public contract remains loopback-only and records accepted task routes', () => {
@@ -287,6 +302,11 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
     'the runtime status must advertise composition execution',
   );
   assert.match(
+    read('src/http/routes/v1/runtime.ts'),
+    /tool-approval-ledger/,
+    'the runtime status must advertise the tool approval ledger',
+  );
+  assert.match(
     read('src/runtime/tool-capability.ts'),
     /export class ToolCapabilityKernel/,
     'the bounded internal tool kernel must remain explicit',
@@ -306,6 +326,18 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
     /composition-execution/,
     'the runtime task service must dispatch accepted composition execution',
   );
+  assert.match(
+    read('src/runtime/task-service.ts'),
+    /tool-request/,
+    'the public ledger must use the separate tool request boundary',
+  );
+  const ledgerSource = read('src/runtime/tool-request.ts');
+  assert.doesNotMatch(ledgerSource, /ToolCapabilityKernel|tool-capability/);
+  assert.doesNotMatch(ledgerSource, /tool\.executed|tool\.replayed|tool\.denied|tool\.failed/);
+  assert.doesNotMatch(ledgerSource, /composition-document/);
+  const ledgerRoutes = read('src/http/routes/v1/tool-requests.ts');
+  assert.doesNotMatch(ledgerRoutes, /tool-capability|ToolCapabilityKernel/);
+  assert.doesNotMatch(ledgerRoutes, /execute|executor|tool\.executed/i);
   const compositionSource = read('src/runtime/composition-document.ts');
   assert.match(
     compositionSource,
