@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { createConfigurationRevisionStore } from './configuration-revision.js';
+import {
+  ConfigurationValidationError,
+  parseConfigurationDocument,
+  type ConfigurationDocument,
+  type ConfigurationRevision,
+} from './configuration-document.js';
 import {
   MagpieModelCatalog,
   type ModelCatalogClient,
@@ -8,9 +13,12 @@ import {
 import { OpenAiChatCompletionsProvider } from './magpie-provider.js';
 import { isTerminalTaskState, type TaskEventType } from './task-lifecycle.js';
 import {
+  ConfigurationRevisionNotFoundError as StoreRevisionNotFoundError,
   SqliteTaskStore,
   TaskConflictError,
   TaskNotFoundError,
+  type ApplyConfigurationResult,
+  type ConfigurationState,
   type TaskSnapshot,
   type TaskStore,
 } from './task-store.js';
@@ -34,12 +42,7 @@ export class TaskValidationError extends Error {
   }
 }
 
-const revision = createConfigurationRevisionStore({
-  profile: ['phase-1-single-turn'],
-  skills: [],
-  policies: ['no-model-tool-execution'],
-  mcpServers: [],
-}).active;
+export { ConfigurationValidationError, StoreRevisionNotFoundError as ConfigurationRevisionNotFoundError };
 
 function validatePrompt(prompt: unknown): string {
   if (typeof prompt !== 'string' || prompt.trim().length === 0) {
@@ -86,7 +89,42 @@ export class TaskService {
   }
 
   get activeConfigurationRevisionId(): string {
-    return revision.id;
+    return this.getConfigurationState().active.id;
+  }
+
+  getConfigurationState(): ConfigurationState {
+    return this.store.getConfigurationState();
+  }
+
+  getConfigurationRevision(id: string): ConfigurationRevision {
+    const revision = this.store.getConfigurationRevision(id);
+    if (!revision) throw new StoreRevisionNotFoundError();
+    return revision;
+  }
+
+  validateConfiguration(input: unknown): ConfigurationDocument {
+    return parseConfigurationDocument(input);
+  }
+
+  applyConfiguration(input: unknown): ApplyConfigurationResult {
+    if (typeof input !== 'object'
+      || input === null
+      || Array.isArray(input)
+      || Object.keys(input).length !== 1) {
+      throw new ConfigurationValidationError([
+        { path: '$', reason: 'must contain exactly one of document or rollbackTo' },
+      ]);
+    }
+    const request = input as Record<string, unknown>;
+    if ('document' in request) {
+      return this.store.applyConfiguration(parseConfigurationDocument(request.document));
+    }
+    if (typeof request.rollbackTo !== 'string') {
+      throw new ConfigurationValidationError([
+        { path: 'rollbackTo', reason: 'must be a revision id' },
+      ]);
+    }
+    return this.store.rollbackConfiguration(request.rollbackTo);
   }
 
   createTask(body: unknown): TaskSnapshot {
@@ -106,7 +144,7 @@ export class TaskService {
       id: `task_${randomUUID()}`,
       prompt,
       model,
-      configurationRevisionId: revision.id,
+      configurationRevisionId: this.getConfigurationState().active.id,
       attempt: 1,
     });
   }

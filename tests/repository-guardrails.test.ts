@@ -41,6 +41,11 @@ const acceptedPaths = [
   '/v1/tasks/{taskId}/cancel',
   '/v1/tasks/{taskId}/retry',
   '/v1/events',
+  '/v1/configuration',
+  '/v1/configuration/revisions',
+  '/v1/configuration/revisions/{revisionId}',
+  '/v1/configuration/validate',
+  '/v1/configuration/apply',
 ];
 
 function read(relativePath: string): string {
@@ -80,8 +85,9 @@ function assertAcceptedOpenApi(spec: string, label: string): void {
   assert.doesNotMatch(spec, nonLoopbackAddress, `${label} must not bind beyond loopback`);
   assert.match(spec, /requestBody:/, `${label} must document the accepted task request`);
   assert.match(spec, /interrupted/, `${label} must document interrupted tasks`);
-  assert.match(spec, /^  version: 0\.3\.0$/m, `${label} must record the streaming contract version`);
+  assert.match(spec, /^  version: 0\.4\.0$/m, `${label} must record the configuration contract version`);
   assert.match(spec, /partialOutput/, `${label} must document partial output`);
+  assert.match(spec, /ConfigurationRevision/, `${label} must document configuration revisions`);
 }
 
 function assertLoopbackConfig(source: string, label: string): void {
@@ -204,6 +210,10 @@ test('decision records separate accepted phase-1 direction from proposals', () =
   );
   assert.match(
     read(`${decisionsDir}/0012-streaming-output-progress.md`),
+    /^Status: \*\*accepted product and public API direction/m,
+  );
+  assert.match(
+    read(`${decisionsDir}/0014-versioned-configuration-api.md`),
     /^Status: \*\*accepted product and public API direction/m,
   );
   assert.match(

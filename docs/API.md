@@ -15,6 +15,11 @@ The service listens on `127.0.0.1:4318` by default. The machine-readable source 
 | `POST /v1/tasks/{taskId}/cancel` | Request cancellation of an active task; `409` when it is not active. |
 | `POST /v1/tasks/{taskId}/retry` | Start a new attempt from the original prompt for a terminal task; `409` otherwise. |
 | `GET /v1/events?after=<eventId>` | Persisted events strictly after a known global event ID, plus the resulting cursor; `400` for an unknown cursor. |
+| `GET /v1/configuration` | Active immutable configuration revision and versioned document. |
+| `GET /v1/configuration/revisions` | Revision summaries, newest first, plus the active revision id. |
+| `GET /v1/configuration/revisions/{revisionId}` | One immutable revision document; `404` when absent. |
+| `POST /v1/configuration/validate` | Validate a complete candidate document without persisting it; `400` includes bounded `details`. |
+| `POST /v1/configuration/apply` | Apply a complete document or roll back with `{ "rollbackTo": "cfg_..." }`; `404` for an unknown rollback id. |
 
 A task has a stable ID, its original prompt, selected model id, pinned configuration revision, current state, attempt number, final output, current `partialOutput`, and error. `partialOutput` is visible while `running` or `cancelling` and is null in terminal states; final `output` remains authoritative. States include `queued`, `running`, `cancelling`, `succeeded`, `failed`, `cancelled`, and `interrupted`. A restart changes persisted nonterminal states to `interrupted`; retry creates a visible new attempt.
 
@@ -22,9 +27,12 @@ Events use stable IDs and a global monotonic `sequence`. Each event records its 
 
 Errors use `{ "error": "message" }` with documented status codes. Validation errors return `400`; missing tasks return `404`; conflicting task operations return `409`; model-catalog failures return `502`; an unconfigured task service returns `503`.
 
+Configuration documents use `schemaVersion: 1` and contain only opaque, bounded references for Skills, policies, MCP servers, plugins, secret references, and metadata. All sections and `metadata` are required; use empty arrays or an empty object when a section is unused. `source: url` and absolute URL labels are not accepted in this local schema version. Documents are data, not installed capabilities or grants. A validation error returns `{ "error": "...", "details": [{ "path": "...", "reason": "..." }] }`. Applying a document creates a content-addressed immutable revision if its content is new; a no-op returns `changed: false`. Rolling back changes the active pointer without deleting history. Already-created tasks keep their pinned revision; new tasks use the active revision. See [ADR 0014](decisions/0014-versioned-configuration-api.md).
+
 ## Boundaries
 
 - The API is loopback-only. Remote binding requires a reviewed authentication and pairing design.
 - Model ids come from the user's Magpie catalog. No model credentials enter Conchbase configuration or API responses.
 - The phase-1 model task performs one streaming text completion. Reasoning text is ignored and model-requested tools are rejected, not executed.
-- No configuration write, MCP, Skill, plugin, approval, or composition management route exists yet.
+- No MCP, Skill, plugin, approval, or composition management route exists yet.
+- Configuration document routes do not install, enable, grant, resolve secrets, load code, or execute tools.

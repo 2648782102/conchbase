@@ -105,7 +105,7 @@ export class OpenAiChatCompletionsProvider implements ModelAdapter, StreamingMod
     const headers: Record<string, string> = {
       Accept: 'application/json',
       'Content-Type': 'application/json',
-      'User-Agent': 'Conchbase/0.3.0',
+      'User-Agent': 'Conchbase/0.4.0',
     };
     if (this.appKey) headers.Authorization = `Bearer ${this.appKey}`;
 
@@ -166,7 +166,7 @@ export class OpenAiChatCompletionsProvider implements ModelAdapter, StreamingMod
     const headers: Record<string, string> = {
       Accept: 'text/event-stream',
       'Content-Type': 'application/json',
-      'User-Agent': 'Conchbase/0.3.0',
+      'User-Agent': 'Conchbase/0.4.0',
     };
     if (this.appKey) headers.Authorization = `Bearer ${this.appKey}`;
 

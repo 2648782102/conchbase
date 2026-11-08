@@ -1,4 +1,4 @@
-import type { ConfigurationRevisionId } from './configuration-revision.js';
+import type { ConfigurationRevisionId } from './configuration-document.js';
 import type { TaskEventType, TaskState } from './task-lifecycle.js';
 
 export interface RuntimeEvent {

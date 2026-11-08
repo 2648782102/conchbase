@@ -12,7 +12,7 @@
 
 第一阶段的 SQLite 数据库同一时间只允许一个进程持有。第二个 CLI 或服务实例会快速失败，避免把正在运行的任务误判为中断。`conchbase models` 直接读取 Magpie，不打开数据库；当 `conchbase serve` 正在运行时，不要执行其他读写任务状态的 CLI 命令，并发查看任务应使用 Runtime API。这是开发期的单实例边界，不代表已支持生产级多进程，详见 [ADR 0011](docs/decisions/0011-phase-one-database-instance-ownership.md)。
 
-仓库内已有一个仅供测试的 fixture 工具能力内核，用于验证精确审批、按 attempt 幂等和确定性审计；它不是公开工具接口，也不能运行真实宿主工具。模型发起的工具执行、MCP、Skills、插件、生产审批、公开工具/配置写入、SSE 传输、推理内容展示、组合配置、认证和远程访问仍在规划中。第一阶段的一轮执行只是验证主链路的实现边界，不是内建 Agent 拓扑；用户自定义组合仍保持拓扑中立，详见 [ADR 0005](docs/decisions/0005-user-defined-agent-topology-proposal.md)、[ADR 0010](docs/decisions/0010-first-real-model-slice.md)、[ADR 0012](docs/decisions/0012-streaming-output-progress.md) 和 [ADR 0013](docs/decisions/0013-bounded-tool-capability-kernel.md)。
+仓库内已有一个仅供测试的 fixture 工具能力内核，用于验证精确审批、按 attempt 幂等和确定性审计；它不是公开工具接口，也不能运行真实宿主工具。Conchbase `0.4.0` 还实现了版本化配置文档 API，支持校验、不可变修订历史、应用和回滚。其中的引用只是不透明数据，不会安装 Skills/MCP/插件、解析密钥、授予工具或定义 Agent 拓扑。模型发起的工具执行、能力生命周期、可移植 profile 文件、生产审批、公开工具接口、SSE 传输、推理内容展示、组合配置、认证和远程访问仍在规划中。第一阶段的一轮执行只是验证主链路的实现边界，不是内建 Agent 拓扑；用户自定义组合仍保持拓扑中立，详见 [ADR 0005](docs/decisions/0005-user-defined-agent-topology-proposal.md)、[ADR 0010](docs/decisions/0010-first-real-model-slice.md)、[ADR 0012](docs/decisions/0012-streaming-output-progress.md)、[ADR 0013](docs/decisions/0013-bounded-tool-capability-kernel.md) 和 [ADR 0014](docs/decisions/0014-versioned-configuration-api.md)。
 
 确定性的仓库护栏测试把已接受的契约和 AI-first 边界固定为可执行检查。CI 使用假模型响应和临时数据库，不调用真实模型。
 
@@ -66,7 +66,7 @@ curl -X POST http://127.0.0.1:4318/v1/tasks \
 
 ## 面向 AI 开发
 
-本项目主要由 AI 编码 Agent 开发，代码结构、说明和验证流程优先服务于 AI 快速理解、完成边界清楚的改动并确定性验证；不把后续由人类接手作为产品要求。先读根目录 [`AGENTS.md`](AGENTS.md)，再读 [AI 交接说明](docs/AI_HANDOFF.md)、[ADR 0010](docs/decisions/0010-first-real-model-slice.md)、[ADR 0011](docs/decisions/0011-phase-one-database-instance-ownership.md)、[ADR 0012](docs/decisions/0012-streaming-output-progress.md)、[ADR 0013](docs/decisions/0013-bounded-tool-capability-kernel.md)、[开发约定](docs/AI_DEVELOPMENT.md) 和 [任务队列](docs/AI_TASK_QUEUE.md)。
+本项目主要由 AI 编码 Agent 开发，代码结构、说明和验证流程优先服务于 AI 快速理解、完成边界清楚的改动并确定性验证；不把后续由人类接手作为产品要求。先读根目录 [`AGENTS.md`](AGENTS.md)，再读 [AI 交接说明](docs/AI_HANDOFF.md)、[ADR 0010](docs/decisions/0010-first-real-model-slice.md)、[ADR 0011](docs/decisions/0011-phase-one-database-instance-ownership.md)、[ADR 0012](docs/decisions/0012-streaming-output-progress.md)、[ADR 0013](docs/decisions/0013-bounded-tool-capability-kernel.md)、[ADR 0014](docs/decisions/0014-versioned-configuration-api.md)、[开发约定](docs/AI_DEVELOPMENT.md) 和 [任务队列](docs/AI_TASK_QUEUE.md)。
 
 代码改动后运行 `npm run check`、`npm test` 和 `npm run build`。
 

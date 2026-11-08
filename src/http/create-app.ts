@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import type { TaskService } from '../runtime/task-service.js';
+import { registerConfigurationRoutes } from './routes/v1/configuration.js';
 import { registerEventRoutes } from './routes/v1/events.js';
 import { registerHealthRoute } from './routes/v1/health.js';
 import { registerModelRoutes } from './routes/v1/models.js';
@@ -14,6 +15,7 @@ export function createApp(options: {
 
   registerHealthRoute(app);
   registerRuntimeRoute(app, Boolean(options.taskService));
+  registerConfigurationRoutes(app, options.taskService);
   registerEventRoutes(app, options.taskService);
   registerModelRoutes(app, options.taskService);
   registerTaskRoutes(app, options.taskService);

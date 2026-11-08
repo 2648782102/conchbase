@@ -63,6 +63,11 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
       '/v1/tasks/{taskId}/cancel',
       '/v1/tasks/{taskId}/retry',
       '/v1/events',
+      '/v1/configuration',
+      '/v1/configuration/revisions',
+      '/v1/configuration/revisions/{revisionId}',
+      '/v1/configuration/validate',
+      '/v1/configuration/apply',
     ],
   );
   assert.match(spec, /\$ref: '#\/components\/schemas\/Health'/);
@@ -91,6 +96,26 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
     'attempt',
     'data',
   ]);
+  assertSchemaFields('ConfigurationDocument', [
+    'schemaVersion',
+    'name',
+    'skills',
+    'policies',
+    'mcpServers',
+    'plugins',
+    'secretRefs',
+    'metadata',
+  ]);
+  assertSchemaFields('ConfigurationRevision', ['id', 'document', 'appliedAt']);
+  assertSchemaFields('ApplyConfigurationResponse', [
+    'changed',
+    'activeRevisionId',
+    'revision',
+    'revisions',
+  ]);
+  assert.match(spec, /enum: \[inline, file, registry, env\]/);
+  assert.doesNotMatch(spec, /enum: \[[^\]]*\burl\b/);
+  assert.match(spec, /ApplyConfigurationRequest:[\s\S]*?oneOf:/);
 });
 
 test('exact response fixtures match the documented read-only JSON schema shapes', () => {

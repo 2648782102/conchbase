@@ -7,7 +7,7 @@ import { MagpieModelCatalog } from './runtime/model-catalog.js';
 import { createTaskService } from './runtime/task-service.js';
 
 function usage(): string {
-  return `Conchbase 0.3.0
+  return `Conchbase 0.4.0
 
 Usage:
   conchbase serve                 Start the local Runtime API
@@ -17,6 +17,8 @@ Usage:
   conchbase task <id>            Show one task
   conchbase events [cursor]      Show events after an optional event ID
   conchbase retry <id>           Retry a terminal task directly
+  conchbase config               Show the active configuration revision
+  conchbase config-revisions     List configuration revision summaries
 
 Configuration:
   CONCHBASE_MAGPIE_URL           Local Magpie gateway (default http://127.0.0.1:3425)
@@ -92,6 +94,14 @@ async function main(argv: readonly string[]): Promise<void> {
     }
     if (command === 'tasks') {
       process.stdout.write(`${JSON.stringify(service.store.listTasks(), null, 2)}\n`);
+      return;
+    }
+    if (command === 'config') {
+      process.stdout.write(`${JSON.stringify(service.getConfigurationState().active, null, 2)}\n`);
+      return;
+    }
+    if (command === 'config-revisions') {
+      process.stdout.write(`${JSON.stringify(service.getConfigurationState().history, null, 2)}\n`);
       return;
     }
     if (command === 'task') {

@@ -155,14 +155,18 @@ test('streamed progress is visible while active and cleared on cancellation', as
       controller.close();
     },
   });
-  const service = new TaskService(new SqliteTaskStore(filename), {
-    magpieBaseUrl: 'http://127.0.0.1:3425',
-    defaultModel: 'fixture/model',
-    fetch: async () => new Response(stream, {
-      status: 200,
-      headers: { 'content-type': 'text/event-stream' },
-    }),
-  }, modelCatalog);
+  const service = new TaskService(
+    new SqliteTaskStore(filename),
+    {
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/model',
+      fetch: async () => new Response(stream, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      }),
+    },
+    modelCatalog,
+  );
 
   try {
     const queued = service.createTask({ prompt: 'hello' });

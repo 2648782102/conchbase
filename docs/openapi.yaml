@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Conchbase Runtime API
-  version: 0.3.0
-  description: Local, versioned API for Conchbase streaming model tasks, ordered progress events, and Magpie model discovery.
+  version: 0.4.0
+  description: Local, versioned API for Conchbase streaming model tasks, ordered progress events, Magpie model discovery, and configuration revisions.
 servers:
   - url: http://127.0.0.1:4318
     description: Local runtime default; loopback only.
@@ -172,6 +172,129 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/configuration:
+    get:
+      operationId: getActiveConfiguration
+      summary: Read the active immutable configuration revision and document.
+      responses:
+        '200':
+          description: Active configuration revision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigurationEnvelope'
+        '503':
+          description: Task service is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/configuration/revisions:
+    get:
+      operationId: listConfigurationRevisions
+      summary: List immutable configuration revision summaries, newest first.
+      responses:
+        '200':
+          description: Configuration history and active revision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigurationRevisionList'
+        '503':
+          description: Task service is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/configuration/revisions/{revisionId}:
+    get:
+      operationId: getConfigurationRevision
+      summary: Read one immutable configuration revision document.
+      parameters:
+        - $ref: '#/components/parameters/RevisionId'
+      responses:
+        '200':
+          description: Configuration revision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigurationEnvelope'
+        '404':
+          description: Configuration revision not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Task service is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/configuration/validate:
+    post:
+      operationId: validateConfiguration
+      summary: Validate a configuration document without changing runtime state.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateConfigurationRequest'
+      responses:
+        '200':
+          description: Document is valid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateConfigurationResponse'
+        '400':
+          description: Invalid document.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '503':
+          description: Task service is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/configuration/apply:
+    post:
+      operationId: applyConfiguration
+      summary: Apply a complete document or roll back to a known revision.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplyConfigurationRequest'
+      responses:
+        '200':
+          description: Configuration state after the operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplyConfigurationResponse'
+        '400':
+          description: Invalid document or request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '404':
+          description: Rollback revision not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Task service is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 components:
   parameters:
     TaskId:
@@ -180,6 +303,13 @@ components:
       required: true
       schema:
         type: string
+    RevisionId:
+      name: revisionId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^cfg_[0-9a-f]{24}$'
   schemas:
     Health:
       type: object
@@ -214,6 +344,172 @@ components:
       properties:
         error:
           type: string
+    ValidationError:
+      type: object
+      additionalProperties: false
+      required: [error, details]
+      properties:
+        error:
+          type: string
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationIssue'
+    ValidationIssue:
+      type: object
+      additionalProperties: false
+      required: [path, reason]
+      properties:
+        path:
+          type: string
+        reason:
+          type: string
+    ConfigurationSource:
+      type: string
+      enum: [inline, file, registry, env]
+    ConfigurationReference:
+      type: object
+      additionalProperties: false
+      required: [id, label, source]
+      properties:
+        id:
+          type: string
+          maxLength: 128
+        label:
+          type: string
+          maxLength: 200
+        source:
+          $ref: '#/components/schemas/ConfigurationSource'
+    ConfigurationReferenceList:
+      type: array
+      maxItems: 32
+      items:
+        $ref: '#/components/schemas/ConfigurationReference'
+    ConfigurationDocument:
+      type: object
+      additionalProperties: false
+      required: [schemaVersion, name, skills, policies, mcpServers, plugins, secretRefs, metadata]
+      properties:
+        schemaVersion:
+          const: 1
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        skills:
+          $ref: '#/components/schemas/ConfigurationReferenceList'
+        policies:
+          $ref: '#/components/schemas/ConfigurationReferenceList'
+        mcpServers:
+          $ref: '#/components/schemas/ConfigurationReferenceList'
+        plugins:
+          $ref: '#/components/schemas/ConfigurationReferenceList'
+        secretRefs:
+          type: array
+          maxItems: 32
+          items:
+            type: string
+            maxLength: 200
+        metadata:
+          type: object
+          maxProperties: 32
+          additionalProperties:
+            type: string
+            maxLength: 500
+    ConfigurationRevision:
+      type: object
+      additionalProperties: false
+      required: [id, document, appliedAt]
+      properties:
+        id:
+          type: string
+          pattern: '^cfg_[0-9a-f]{24}$'
+        document:
+          $ref: '#/components/schemas/ConfigurationDocument'
+        appliedAt:
+          type: string
+          format: date-time
+    ConfigurationRevisionSummary:
+      type: object
+      additionalProperties: false
+      required: [id, name, appliedAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        appliedAt:
+          type: string
+          format: date-time
+    ConfigurationEnvelope:
+      type: object
+      additionalProperties: false
+      required: [revision]
+      properties:
+        revision:
+          $ref: '#/components/schemas/ConfigurationRevision'
+    ConfigurationRevisionList:
+      type: object
+      additionalProperties: false
+      required: [activeRevisionId, revisions]
+      properties:
+        activeRevisionId:
+          type: string
+        revisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConfigurationRevisionSummary'
+    ValidateConfigurationRequest:
+      type: object
+      additionalProperties: false
+      required: [document]
+      properties:
+        document:
+          $ref: '#/components/schemas/ConfigurationDocument'
+    ValidateConfigurationResponse:
+      type: object
+      additionalProperties: false
+      required: [valid, activeRevisionId, document]
+      properties:
+        valid:
+          const: true
+        activeRevisionId:
+          type: string
+        document:
+          $ref: '#/components/schemas/ConfigurationDocument'
+    ApplyConfigurationRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      maxProperties: 1
+      oneOf:
+        - required: [document]
+          not:
+            required: [rollbackTo]
+        - required: [rollbackTo]
+          not:
+            required: [document]
+      properties:
+        document:
+          $ref: '#/components/schemas/ConfigurationDocument'
+        rollbackTo:
+          type: string
+          pattern: '^cfg_[0-9a-f]{24}$'
+    ApplyConfigurationResponse:
+      type: object
+      additionalProperties: false
+      required: [changed, activeRevisionId, revision, revisions]
+      properties:
+        changed:
+          type: boolean
+        activeRevisionId:
+          type: string
+        revision:
+          $ref: '#/components/schemas/ConfigurationRevision'
+        revisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConfigurationRevisionSummary'
     TaskState:
       type: string
       enum: [queued, running, cancelling, succeeded, failed, cancelled, interrupted, waiting_approval]

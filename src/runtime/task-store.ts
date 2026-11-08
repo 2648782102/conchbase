@@ -1,5 +1,14 @@
 import { DatabaseSync } from 'node:sqlite';
-import type { ConfigurationRevisionId } from './configuration-revision.js';
+import {
+  BOOTSTRAP_CONFIGURATION_DOCUMENT,
+  configurationRevisionId,
+  parseConfigurationDocument,
+  revisionSummary,
+  type ConfigurationDocument,
+  type ConfigurationRevision,
+  type ConfigurationRevisionId,
+  type ConfigurationRevisionSummary,
+} from './configuration-document.js';
 import { EventOrderError, type RuntimeEvent } from './event-log.js';
 import type { TaskEventType, TaskState } from './task-lifecycle.js';
 
@@ -45,6 +54,10 @@ export interface TaskStore {
   resetTask(taskId: string, attempt: number, event: TaskEventInput): TaskSnapshot;
   recordOutputDelta(taskId: string, event: TaskEventInput, partialOutput: string): TaskSnapshot;
   listEvents(afterEventId: string | null): readonly RuntimeEvent[];
+  getConfigurationState(): ConfigurationState;
+  getConfigurationRevision(id: string): ConfigurationRevision | null;
+  applyConfiguration(document: ConfigurationDocument): ApplyConfigurationResult;
+  rollbackConfiguration(id: string): ApplyConfigurationResult;
   close(): void;
 }
 
@@ -90,6 +103,34 @@ export class DatabaseInstanceError extends Error {
     super('Runtime database is already owned by another Conchbase process or handle.');
     this.name = 'DatabaseInstanceError';
   }
+}
+
+export class ConfigurationRevisionNotFoundError extends Error {
+  constructor() {
+    super('Configuration revision not found.');
+    this.name = 'ConfigurationRevisionNotFoundError';
+  }
+}
+
+export interface ConfigurationState {
+  readonly active: ConfigurationRevision;
+  readonly history: readonly ConfigurationRevisionSummary[];
+}
+
+export interface ApplyConfigurationResult {
+  readonly state: ConfigurationState;
+  readonly changed: boolean;
+}
+
+interface ConfigurationRevisionRow {
+  readonly id: string;
+  readonly document: string;
+  readonly applied_at: string;
+  readonly ordinal: number;
+}
+
+interface ConfigurationActiveRow {
+  readonly revision_id: string;
 }
 
 function isDatabaseLocked(cause: unknown): boolean {
@@ -142,11 +183,21 @@ function formatEventId(sequence: number): string {
   return `evt_${String(sequence).padStart(12, '0')}`;
 }
 
+function toConfigurationRevision(row: ConfigurationRevisionRow): ConfigurationRevision {
+  return Object.freeze({
+    id: row.id as ConfigurationRevisionId,
+    document: parseConfigurationDocument(JSON.parse(row.document) as unknown),
+    appliedAt: row.applied_at,
+  });
+}
+
 export class SqliteTaskStore implements TaskStore {
   private readonly database: DatabaseSync;
+  private readonly clock: () => string;
 
-  constructor(filename: string) {
+  constructor(filename: string, options: { readonly clock?: () => string } = {}) {
     this.database = new DatabaseSync(filename);
+    this.clock = options.clock ?? (() => new Date().toISOString());
     try {
       this.database.exec('PRAGMA busy_timeout = 0;');
       this.database.exec('PRAGMA foreign_keys = ON;');
@@ -175,7 +226,18 @@ export class SqliteTaskStore implements TaskStore {
           attempt INTEGER NOT NULL,
           data TEXT NOT NULL
         ) STRICT;
+        CREATE TABLE IF NOT EXISTS configuration_revisions (
+          id TEXT PRIMARY KEY,
+          document TEXT NOT NULL,
+          applied_at TEXT NOT NULL,
+          ordinal INTEGER NOT NULL UNIQUE
+        ) STRICT;
+        CREATE TABLE IF NOT EXISTS configuration_state (
+          singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+          revision_id TEXT NOT NULL REFERENCES configuration_revisions(id)
+        ) STRICT;
       `);
+      this.bootstrapConfiguration();
     } catch (cause) {
       this.database.close();
       if (isDatabaseLocked(cause)) throw new DatabaseInstanceError();
@@ -278,6 +340,55 @@ export class SqliteTaskStore implements TaskStore {
     this.database.close();
   }
 
+  getConfigurationState(): ConfigurationState {
+    const row = this.database.prepare(
+      'SELECT revision_id FROM configuration_state WHERE singleton = 1',
+    ).get() as ConfigurationActiveRow | undefined;
+    if (!row) throw new Error('Configuration state is missing.');
+    const active = this.getConfigurationRevision(row.revision_id);
+    if (!active) throw new Error('Active configuration revision is missing.');
+    const revisions = this.database.prepare(
+      'SELECT id, document, applied_at, ordinal FROM configuration_revisions ORDER BY ordinal DESC',
+    ).all() as unknown as ConfigurationRevisionRow[];
+    return Object.freeze({
+      active,
+      history: Object.freeze(revisions.map((revision) => revisionSummary(toConfigurationRevision(revision)))),
+    });
+  }
+
+  getConfigurationRevision(id: string): ConfigurationRevision | null {
+    if (!/^cfg_[0-9a-f]{24}$/.test(id)) return null;
+    const row = this.database.prepare(
+      'SELECT id, document, applied_at, ordinal FROM configuration_revisions WHERE id = ?',
+    ).get(id) as ConfigurationRevisionRow | undefined;
+    return row ? toConfigurationRevision(row) : null;
+  }
+
+  applyConfiguration(document: ConfigurationDocument): ApplyConfigurationResult {
+    const id = configurationRevisionId(document);
+    const current = this.getConfigurationState();
+    if (current.active.id === id) return Object.freeze({ state: current, changed: false });
+    this.runConfigurationTransaction(() => {
+      this.insertConfigurationRevisionIfAbsent(document, id);
+      this.database.prepare(
+        'UPDATE configuration_state SET revision_id = ? WHERE singleton = 1',
+      ).run(id);
+    });
+    return Object.freeze({ state: this.getConfigurationState(), changed: true });
+  }
+
+  rollbackConfiguration(id: string): ApplyConfigurationResult {
+    if (!this.getConfigurationRevision(id)) throw new ConfigurationRevisionNotFoundError();
+    const current = this.getConfigurationState();
+    if (current.active.id === id) return Object.freeze({ state: current, changed: false });
+    this.runConfigurationTransaction(() => {
+      this.database.prepare(
+        'UPDATE configuration_state SET revision_id = ? WHERE singleton = 1',
+      ).run(id);
+    });
+    return Object.freeze({ state: this.getConfigurationState(), changed: true });
+  }
+
   resetTask(taskId: string, attempt: number, event: TaskEventInput): TaskSnapshot {
     try {
       this.database.exec('BEGIN IMMEDIATE');
@@ -334,5 +445,48 @@ export class SqliteTaskStore implements TaskStore {
       input.attempt,
       JSON.stringify(input.data ?? {}),
     );
+  }
+
+  private bootstrapConfiguration(): void {
+    const active = this.database.prepare(
+      'SELECT revision_id FROM configuration_state WHERE singleton = 1',
+    ).get() as ConfigurationActiveRow | undefined;
+    if (active) return;
+    const document = parseConfigurationDocument(BOOTSTRAP_CONFIGURATION_DOCUMENT);
+    const id = configurationRevisionId(document);
+    this.runConfigurationTransaction(() => {
+      this.insertConfigurationRevisionIfAbsent(document, id);
+      this.database.prepare(
+        'INSERT INTO configuration_state (singleton, revision_id) VALUES (1, ?)',
+      ).run(id);
+    });
+  }
+
+  private runConfigurationTransaction(action: () => void): void {
+    this.database.exec('BEGIN IMMEDIATE');
+    try {
+      action();
+      this.database.exec('COMMIT');
+    } catch (cause) {
+      this.database.exec('ROLLBACK');
+      throw cause;
+    }
+  }
+
+  private insertConfigurationRevisionIfAbsent(
+    document: ConfigurationDocument,
+    id: ConfigurationRevisionId,
+  ): void {
+    const existing = this.database.prepare(
+      'SELECT id FROM configuration_revisions WHERE id = ?',
+    ).get(id) as { id: string } | undefined;
+    if (existing) return;
+    const last = this.database.prepare(
+      'SELECT MAX(ordinal) AS ordinal FROM configuration_revisions',
+    ).get() as { ordinal: number | null };
+    this.database.prepare(`
+      INSERT INTO configuration_revisions (id, document, applied_at, ordinal)
+      VALUES (?, ?, ?, ?)
+    `).run(id, JSON.stringify(document), this.clock(), (last.ordinal ?? 0) + 1);
   }
 }
