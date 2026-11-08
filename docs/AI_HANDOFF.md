@@ -17,11 +17,12 @@ Users should eventually define highly customizable agent compositions. Compositi
 3. [ADR 0010](decisions/0010-first-real-model-slice.md) — accepted phase-1 direction, trade-offs, and explicit non-goals.
 4. [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md) — accepted phase-1 single-instance persistence boundary.
 5. [ADR 0012](decisions/0012-streaming-output-progress.md) — accepted streaming progress contract and non-goals.
-6. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
-7. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
-8. `docs/TECH_STACK.md` — chosen and deferred technology.
-9. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` — wider intended sequencing and still-open contracts.
-10. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
+6. [ADR 0013](decisions/0013-bounded-tool-capability-kernel.md) — accepted internal tool capability kernel; no public tool execution.
+7. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
+8. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
+9. `docs/TECH_STACK.md` — chosen and deferred technology.
+10. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` — wider intended sequencing and still-open contracts.
+11. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
 
 ## Current repository facts
 
@@ -38,11 +39,12 @@ Implemented:
 - One immutable, content-addressed configuration revision is pinned to each task attempt. There is no public configuration write API or profile file schema yet.
 - Automated tests cover provider parsing and failures, task completion, durable event replay, restart interruption, explicit retry, HTTP error behavior, loopback configuration, the internal task runner, policy gate, and deterministic repository guardrails. Tests use fake `fetch` and temporary databases; CI does not call a model provider.
 - Streaming tests cover SSE frame parsing, ignored reasoning, tool-call rejection, malformed/truncated streams, cancellation, durable progress, and Pagurus's visible progress display.
+- An internal `ToolCapabilityKernel` provides an immutable fixture-only registry, exact versioned approval records, per-attempt idempotency keys, bounded audit scalars, and replayable normalized executor failures. Its tool-prefixed event names are internal deterministic-test vocabulary. It is not imported by the HTTP task path, is not persisted by `SqliteTaskStore`, and does not execute real host tools.
 - GitHub Actions runs `npm run check`, `npm test`, and `npm run build`.
 
 Not implemented yet:
 
-- User-defined agent composition, role registry, multi-turn model context, model-driven tool execution, MCP client, Skills loader, policy/configuration write API, approval workflow, plugin host, memory, artifacts, SSE event stream, reasoning display, event retention policy, production driver compatibility matrix, authentication/pairing, or remote binding.
+- User-defined agent composition, role registry, multi-turn model context, model-driven tool execution, public tool/approval API, MCP client, Skills loader, policy/configuration write API, production approval workflow, plugin host, memory, artifacts, SSE event stream, reasoning display, event retention policy, production driver compatibility matrix, authentication/pairing, or remote binding.
 - A Magpie upstream Agents-page adapter. Magpie currently requires such an adapter in its own source; Conchbase phase 1 uses the local gateway directly.
 
 Do not describe planned features as implemented. Do not describe the phase-1 single-turn loop as an accepted composition schema.
@@ -52,6 +54,7 @@ Do not describe planned features as implemented. Do not describe the phase-1 sin
 - Conchbase is the agent execution authority. It owns task state, provider calls, the narrow model adapter boundary, persisted state, and the authoritative event log.
 - Every client uses the public Runtime API. A client never reads or writes private runtime files or database tables.
 - Model-provider output is untrusted data. No tool executes outside the runtime policy and approval path. Skills are instruction content and do not grant capabilities.
+- Tool capability records and tool-prefixed audit events are internal deterministic fixtures until a separate ADR accepts a public tool/event contract, provider tool-call parsing, durable approval and audit storage, and real executor isolation. Public routes continue to expose only the phase-1 task events described in `docs/openapi.yaml`.
 - Provider SDKs are replaceable inputs and never own security decisions or durable task state. The phase-1 provider uses direct HTTP, not a provider SDK.
 - A task binds to one configuration revision for its lifetime; future configuration changes affect later tasks.
 - The runtime must not hardcode an agent topology, layer count, role name, or coordination pattern.
@@ -86,6 +89,6 @@ Do not silently treat these as settled:
 - Provider capability discovery, structured tool calls, multi-turn context, token limits, error classification, and direct vendor provider order.
 - Production SQLite driver choice, supported-platform CI matrix, WAL crash recovery, multi-process ownership, event retention, and SSE/Last-Event-ID semantics.
 - The authoritative client API that will eventually replace direct CLI database reads, including its authentication and parity contract.
-- MCP lifecycle and sandboxing, per-tool grants, plugin isolation, memory model, remote authentication/pairing, and desktop packaging.
+- MCP lifecycle and sandboxing, per-tool grants, public tool/approval API, provider tool-call parsing, durable tool audit storage, crash-safe side effects, plugin isolation, memory model, remote authentication/pairing, and desktop packaging.
 
 When an implementation depends on one of these, record options, consequences, and an explicit recommendation in an ADR before changing the public contract. Keep each change small enough to verify with deterministic local fixtures.

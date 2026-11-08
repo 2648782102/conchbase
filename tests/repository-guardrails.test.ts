@@ -206,6 +206,10 @@ test('decision records separate accepted phase-1 direction from proposals', () =
     read(`${decisionsDir}/0012-streaming-output-progress.md`),
     /^Status: \*\*accepted product and public API direction/m,
   );
+  assert.match(
+    read(`${decisionsDir}/0013-bounded-tool-capability-kernel.md`),
+    /^Status: \*\*accepted internal architecture boundary; no public API contract changes\*\*$/m,
+  );
 });
 
 test('the public contract remains loopback-only and records accepted task routes', () => {
@@ -251,6 +255,28 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
     /streaming-output/,
     'the runtime status must advertise streaming output',
   );
+  assert.match(
+    read('src/runtime/tool-capability.ts'),
+    /export class ToolCapabilityKernel/,
+    'the bounded internal tool kernel must remain explicit',
+  );
+  assert.doesNotMatch(
+    read('src/runtime/tool-capability.ts'),
+    forbiddenRuntimeImport,
+    'the internal tool kernel must not import HTTP transport',
+  );
+  assert.doesNotMatch(
+    read('src/runtime/task-service.ts'),
+    /tool-capability/,
+    'the phase-1 HTTP task path must not execute model-requested tools',
+  );
+  for (const file of listTypeScriptFiles('src/http')) {
+    assert.doesNotMatch(
+      read(file),
+      /tool-capability/,
+      `${file} must not expose the internal tool kernel`,
+    );
+  }
 });
 
 test('dependencies do not silently accept provider or storage SDKs', () => {

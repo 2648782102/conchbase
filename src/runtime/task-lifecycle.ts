@@ -27,7 +27,15 @@ export type TaskEventType =
   | 'task.failed'
   | 'task.cancellation_requested'
   | 'task.cancelled'
-  | 'task.interrupted';
+  | 'task.interrupted'
+  | 'tool.requested'
+  | 'tool.approval_required'
+  | 'tool.approved'
+  | 'tool.rejected'
+  | 'tool.executed'
+  | 'tool.replayed'
+  | 'tool.denied'
+  | 'tool.failed';
 
 const TRANSITIONS: Readonly<Record<TaskState, readonly TaskState[]>> = Object.freeze({
   queued: Object.freeze<TaskState[]>([
@@ -94,6 +102,14 @@ export const TASK_TRANSITIONS: Readonly<Record<TaskEventType, TaskTransition>> =
   },
   'task.cancelled': { state: 'cancelled', eventType: 'task.cancelled' },
   'task.interrupted': { state: 'interrupted', eventType: 'task.interrupted' },
+  'tool.requested': { state: 'running', eventType: 'tool.requested' },
+  'tool.approval_required': { state: 'waiting_approval', eventType: 'tool.approval_required' },
+  'tool.approved': { state: 'running', eventType: 'tool.approved' },
+  'tool.rejected': { state: 'running', eventType: 'tool.rejected' },
+  'tool.executed': { state: 'running', eventType: 'tool.executed' },
+  'tool.replayed': { state: 'running', eventType: 'tool.replayed' },
+  'tool.denied': { state: 'running', eventType: 'tool.denied' },
+  'tool.failed': { state: 'running', eventType: 'tool.failed' },
 });
 
 export function canTransition(from: TaskState, to: TaskState): boolean {

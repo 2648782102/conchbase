@@ -7,6 +7,7 @@ This queue is for coding models continuing from the repository. It records bound
 - [ADR 0010](decisions/0010-first-real-model-slice.md) accepts phase-1 direction: Conchbase owns the agent loop, Magpie is the first real-model provider, and durable events plus explicit retry cover interruption. A process restart recognizes interrupted work; it does not continue an in-flight model request.
 - [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md) accepts an internal single-owner database boundary. The SQLite store rejects a second simultaneous owner; `conchbase models` is database-free. Cross-platform crash recovery, migrations, and deliberate multi-process execution remain open.
 - [ADR 0012](decisions/0012-streaming-output-progress.md) accepts durable `task.output_delta` events, `partialOutput`, and bounded Magpie streaming. SSE, `Last-Event-ID`, retention, reasoning display, and streaming tool calls remain open.
+- [ADR 0013](decisions/0013-bounded-tool-capability-kernel.md) accepts an internal, fixture-only tool registry, exact versioned approval records, per-attempt idempotency, bounded audit scalars, and replayable normalized failures. It changes no public route, tool-prefixed event names remain internal test vocabulary, and model-driven and real host tool execution remain blocked.
 - Conchbase exposes versioned task, retry, cancel, event, and Magpie model-catalog routes. The CLI and Pagurus use the same API. The OpenAPI contract is the source of truth.
 - The phase-1 model loop is single-turn. This is an implementation boundary for validating the runtime, not a default or canonical agent topology. User-defined composition remains topology-neutral product intent, not an implemented schema.
 - `node:sqlite` persists tasks and events behind `TaskStore`. Provider calls use direct HTTP through a narrow adapter. No provider SDK, storage SDK, MCP SDK, or plugin host is installed.
@@ -25,8 +26,8 @@ This queue is for coding models continuing from the repository. It records bound
 
 Each item requires an accepted ADR before its public contract changes. Do not start several at once.
 
-1. **Tool capability slice.** Define one bounded tool registry, a policy schema, approval records, idempotent side effects, and deterministic fixtures before any model-requested tool can execute. A Skill never grants tools.
-2. **Configuration API slice.** Define a portable, versioned profile schema, validation errors, revision history, rollback, and secret references. Then let Pagurus edit it through the Runtime API.
+1. **Configuration API slice.** Define a portable, versioned profile schema, validation errors, revision history, rollback, and secret references. Then let Pagurus edit it through the Runtime API.
+2. **Public tool contract slice.** Decide provider tool-call parsing, approval endpoints, durable audit storage, crash-safe side effects, and real executor isolation before wiring `ToolCapabilityKernel` to the Runtime API. A Skill never grants tools.
 3. **Composition slice.** Define topology-neutral user-authored composition with at least one single-node and two distinct multi-node fixtures. Do not hardcode layer counts, role names, or a hierarchy.
 4. **Persistence hardening.** Add supported OS/architecture/Node CI coverage, migrations, WAL crash recovery, retention, and multi-process ownership before calling the storage layer production-ready.
 5. **Magpie upstream adapter.** Once the Conchbase config format is stable, evaluate a pull request to Magpie's `internal/agent` so Conchbase appears on its Agents page. This is optional integration work, not required for the gateway.
@@ -36,6 +37,7 @@ Each item requires an accepted ADR before its public contract changes. Do not st
 ## Blocked until direction
 
 - Configuration write routes and generated client types built from an unaccepted schema.
+- Model-driven tool execution, tool/approval HTTP routes, real host tools, MCP servers, Skills granting tools, arbitrary plugin loading, and durable tool audit storage.
 - Automatic continuation of in-flight model or tool work after a crash.
 - Running task-state CLI commands concurrently with `conchbase serve`, or treating SQLite exclusive locking as multi-process support.
 - MCP process lifecycle, per-tool grants, arbitrary plugin loading, remote binding, authentication/pairing, and desktop packaging.
@@ -45,7 +47,7 @@ Do not weaken or delete the repository guardrails to bypass this queue. Update t
 
 ## Definition of done for each task
 
-- Read `AGENTS.md`, `docs/AI_HANDOFF.md`, `docs/AI_DEVELOPMENT.md`, ADRs `0010`–`0012`, and the owning architecture/API document first.
+- Read `AGENTS.md`, `docs/AI_HANDOFF.md`, `docs/AI_DEVELOPMENT.md`, ADRs `0010`–`0013`, and the owning architecture/API document first.
 - Keep implemented behavior separate from planned behavior in every doc/README update.
 - Add deterministic tests; never use real credentials, personal data, public-network dependencies, or user runtime data in fixtures.
 - Run `npm run check`, `npm test`, and `npm run build` in the affected repository.

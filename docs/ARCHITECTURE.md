@@ -30,7 +30,7 @@ External clients┘                              ├─ OpenAiChatCompletionsPro
 4. On process startup, `TaskService` converts persisted nonterminal states to `interrupted` and records one event per task. It never replays an in-flight provider call.
 5. `POST /v1/tasks/{taskId}/retry` creates a new attempt from the original prompt while preserving the task ID and all previous events.
 
-The internal `src/runtime/task-runner.ts` and `policy-gate.ts` remain deterministic acceptance primitives for a future tool-capable loop. They are not wired into the phase-1 HTTP task path and do not execute real tools.
+The internal `src/runtime/task-runner.ts` and `policy-gate.ts` remain deterministic acceptance primitives for a future tool-capable loop. `src/runtime/tool-capability.ts` adds an internal, fixture-only `ToolRegistry` and `ToolCapabilityKernel` with exact versioned approvals, per-attempt idempotency, bounded audit scalars, and replayable normalized failures. These modules are not wired into the phase-1 HTTP task path, do not emit durable SQLite events, and do not execute real host tools. Tool-prefixed event names in the internal lifecycle union are deterministic test vocabulary only; `docs/openapi.yaml` `0.3.0` remains the public event contract. See [ADR 0013](decisions/0013-bounded-tool-capability-kernel.md).
 
 ## State and configuration
 
@@ -57,8 +57,9 @@ src/
     ├── task-store.ts               # SQLite task/event persistence interface
     ├── event-log.ts                # deterministic in-memory event invariants
     ├── task-lifecycle.ts           # state machine
-    ├── task-runner.ts              # future tool-loop acceptance harness
-    ├── policy-gate.ts              # future tool authorization primitive
+    ├── task-runner.ts              # provider-independent tool-loop acceptance harness
+    ├── policy-gate.ts              # tool policy primitive
+    ├── tool-capability.ts          # internal fixture-only capability kernel
     └── configuration-revision.ts   # content-addressed revision identity
 ```
 
