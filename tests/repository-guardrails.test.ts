@@ -169,6 +169,9 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   const queue = read('docs/AI_TASK_QUEUE.md');
   assert.match(queue, /single-turn/);
   assert.match(queue, /topology-neutral/);
+  assert.match(queue, /ADR 0015/);
+  assert.match(queue, /Composition execution and public schema slice/);
+  assert.match(queue, /short-lived private database ownership/);
 
   assert.match(read('README.md'), /real model/);
   assert.match(read('README.md'), /planned work/);
@@ -219,6 +222,14 @@ test('decision records separate accepted phase-1 direction from proposals', () =
   assert.match(
     read(`${decisionsDir}/0013-bounded-tool-capability-kernel.md`),
     /^Status: \*\*accepted internal architecture boundary; no public API contract changes\*\*$/m,
+  );
+  assert.match(
+    read(`${decisionsDir}/0015-composition-identity-kernel.md`),
+    /^Status: \*\*accepted internal architecture direction; no public API contract changes\*\*$/m,
+  );
+  assert.match(
+    read(`${decisionsDir}/0005-user-defined-agent-topology-proposal.md`),
+    /ADR 0015.*internal, topology-neutral identity kernel/s,
   );
 });
 
@@ -280,11 +291,30 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
     /tool-capability/,
     'the phase-1 HTTP task path must not execute model-requested tools',
   );
+  const compositionSource = read('src/runtime/composition-document.ts');
+  assert.match(
+    compositionSource,
+    /export function parseCompositionDocument/,
+    'the internal composition identity kernel must remain explicit',
+  );
+  assert.doesNotMatch(compositionSource, forbiddenRuntimeImport);
+  assert.doesNotMatch(compositionSource, /tool-capability|ToolCapabilityKernel/);
+  assert.doesNotMatch(compositionSource, /planner|researcher|reviewer|orchestrator|three[- ]layer|layer[_-]?[123]/i);
+  assert.doesNotMatch(
+    read('src/runtime/task-service.ts'),
+    /composition-document/,
+    'the phase-1 HTTP task path must not execute composition graphs',
+  );
   for (const file of listTypeScriptFiles('src/http')) {
     assert.doesNotMatch(
       read(file),
       /tool-capability/,
       `${file} must not expose the internal tool kernel`,
+    );
+    assert.doesNotMatch(
+      read(file),
+      /composition-document/,
+      `${file} must not expose the internal composition kernel`,
     );
   }
 });

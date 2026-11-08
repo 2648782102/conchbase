@@ -2,7 +2,7 @@
 
 ## Runtime boundary
 
-Conchbase is the execution authority. It owns task state, model calls, cancellation, explicit retry, durable events, and the phase-1 configuration revision. CLI, Pagurus, and third-party clients all use the versioned Runtime API. No UI is required to start or finish a task.
+Conchbase is the execution authority. It owns task state, model calls, cancellation, explicit retry, durable events, and the phase-1 configuration revision. Pagurus and third-party clients use the versioned Runtime API. The phase-1 CLI takes short-lived private database ownership under [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md). No UI is required to start or finish a task.
 
 User-defined agent composition is intended to be topology-neutral. A layered multi-role setup is only an illustrative example and must not become a built-in structure, default template, required layer count, or role-name convention. Phase 1 implements a single-turn execution unit to validate real-model execution; this is not an accepted composition schema. See [ADR 0005](decisions/0005-user-defined-agent-topology-proposal.md) and [ADR 0010](decisions/0010-first-real-model-slice.md).
 
@@ -33,6 +33,8 @@ External clients┘                              ├─ OpenAiChatCompletionsPro
 
 The internal `src/runtime/task-runner.ts` and `policy-gate.ts` remain deterministic acceptance primitives for a future tool-capable loop. `src/runtime/tool-capability.ts` adds an internal, fixture-only `ToolRegistry` and `ToolCapabilityKernel` with exact versioned approvals, per-attempt idempotency, bounded audit scalars, and replayable normalized failures. These modules are not wired into the phase-1 HTTP task path, do not emit durable SQLite events, and do not execute real host tools. Tool-prefixed event names in the internal lifecycle union are deterministic test vocabulary only; `docs/openapi.yaml` `0.4.0` remains the public event contract. See [ADR 0013](decisions/0013-bounded-tool-capability-kernel.md).
 
+`src/runtime/composition-document.ts` is an internal identity kernel under [ADR 0015](decisions/0015-composition-identity-kernel.md). It validates arbitrary topology-neutral directed acyclic graphs, canonicalizes user-authored nodes and links, and computes a `cmp_` identity. It has no public route, configuration schema section, persistence, executor, capability grant, or scheduling semantics. Its current acyclicity and entry-set rules are deterministic fixture structure rules. A public composition contract must define execution order, concurrency, delegation, cancellation propagation, and tool audit scope separately.
+
 ## State and configuration
 
 - `SqliteTaskStore` owns normalized task, `partialOutput`, event, configuration revision, and active-pointer rows in one private SQLite database. WAL and foreign keys are enabled; an exclusive SQLite lock rejects a second simultaneous owner with a normalized `DatabaseInstanceError`. This is a single-owner development boundary from [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md), not multi-process support or a production recovery matrix. Driver types and errors do not leave the store boundary.
@@ -58,6 +60,7 @@ src/
     ├── task-service.ts             # orchestration, cancellation, retry, recovery
     ├── task-store.ts               # SQLite task/event/configuration persistence interface
     ├── configuration-document.ts   # versioned public document validation and identity
+    ├── composition-document.ts     # internal topology-neutral composition identity
     ├── event-log.ts                # deterministic in-memory event invariants
     ├── task-lifecycle.ts           # state machine
     ├── task-runner.ts              # provider-independent tool-loop acceptance harness

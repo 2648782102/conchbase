@@ -9,7 +9,8 @@ This queue is for coding models continuing from the repository. It records bound
 - [ADR 0012](decisions/0012-streaming-output-progress.md) accepts durable `task.output_delta` events, `partialOutput`, and bounded Magpie streaming. SSE, `Last-Event-ID`, retention, reasoning display, and streaming tool calls remain open.
 - [ADR 0013](decisions/0013-bounded-tool-capability-kernel.md) accepts an internal, fixture-only tool registry, exact versioned approval records, per-attempt idempotency, bounded audit scalars, and replayable normalized failures. It changes no public route, tool-prefixed event names remain internal test vocabulary, and model-driven and real host tool execution remain blocked.
 - [ADR 0014](decisions/0014-versioned-configuration-api.md) accepts the `0.4.0` configuration document contract, durable immutable revision history, validation, apply, and rollback. It changes no composition or capability lifecycle; references remain opaque data.
-- Conchbase exposes versioned task, retry, cancel, event, Magpie model-catalog, and configuration-revision routes. The CLI and Pagurus use the same API. The OpenAPI contract is the source of truth.
+- [ADR 0015](decisions/0015-composition-identity-kernel.md) accepts an internal, topology-neutral composition validator and `cmp_` identity, and records that composition execution identity precedes public tool execution. It changes no public contract.
+- Conchbase exposes versioned task, retry, cancel, event, Magpie model-catalog, and configuration-revision routes. Pagurus and other external clients use the Runtime API; phase-1 CLI task-state and configuration reads take short-lived private database ownership. The OpenAPI contract is the source of truth.
 - The phase-1 model loop is single-turn. This is an implementation boundary for validating the runtime, not a default or canonical agent topology. User-defined composition remains topology-neutral product intent, not an implemented schema.
 - `node:sqlite` persists tasks and events behind `TaskStore`. Provider calls use direct HTTP through a narrow adapter. No provider SDK, storage SDK, MCP SDK, or plugin host is installed.
 - `tests/repository-guardrails.test.ts` checks AI-first entry documents, accepted ADR status, the phase-1 OpenAPI path set, loopback-only configuration, source boundaries, and dependency boundaries. It was updated in the same slice as ADR `0010`.
@@ -27,8 +28,8 @@ This queue is for coding models continuing from the repository. It records bound
 
 Each item requires an accepted ADR before its public contract changes. Do not start several at once.
 
-1. **Public tool contract slice.** Decide provider tool-call parsing, approval endpoints, durable audit storage, crash-safe side effects, and real executor isolation before wiring `ToolCapabilityKernel` to the Runtime API. A Skill never grants tools.
-2. **Composition slice.** Define topology-neutral user-authored composition with at least one single-node and two distinct multi-node fixtures. Do not hardcode layer counts, role names, or a hierarchy.
+1. **Composition execution and public schema slice.** Accept a new configuration schema version with a topology-neutral composition section, task/event identity, cancellation propagation, and deterministic single-node plus two distinct multi-node fixtures. Run bounded composition execution first without model-driven or real tool execution. Do not hardcode layer counts, role names, or a hierarchy.
+2. **Public tool contract slice.** Decide provider tool-call parsing, approval endpoints, durable audit storage, crash-safe side effects, and real executor isolation before wiring `ToolCapabilityKernel` to the Runtime API. Approval records and audit events must include composition node identity and the pinned configuration revision. A Skill never grants tools.
 3. **Configuration lifecycle slice.** Add an accepted portable file format, import/export, migrations, secret resolution, Skill/plugin/MCP bundle schemas, and separate install/enable/grant operations. The current revision document is data only.
 4. **Persistence hardening.** Add supported OS/architecture/Node CI coverage, migrations, WAL crash recovery, retention, and multi-process ownership before calling the storage layer production-ready.
 5. **Magpie upstream adapter.** Once the Conchbase config format is stable, evaluate a pull request to Magpie's `internal/agent` so Conchbase appears on its Agents page. This is optional integration work, not required for the gateway.
@@ -42,13 +43,13 @@ Each item requires an accepted ADR before its public contract changes. Do not st
 - Automatic continuation of in-flight model or tool work after a crash.
 - Running task-state CLI commands concurrently with `conchbase serve`, or treating SQLite exclusive locking as multi-process support.
 - MCP process lifecycle, per-tool grants, arbitrary plugin loading, remote binding, authentication/pairing, and desktop packaging.
-- Pagurus configuration forms that present one topology as the only supported shape.
+- Pagurus configuration forms that present one topology as the only supported shape, or that add composition editing before Conchbase accepts the public schema.
 
 Do not weaken or delete the repository guardrails to bypass this queue. Update them only in the same slice as an accepted ADR or a documented development-boundary change.
 
 ## Definition of done for each task
 
-- Read `AGENTS.md`, `docs/AI_HANDOFF.md`, `docs/AI_DEVELOPMENT.md`, ADRs `0010`–`0014`, and the owning architecture/API document first.
+- Read `AGENTS.md`, `docs/AI_HANDOFF.md`, `docs/AI_DEVELOPMENT.md`, ADRs `0010`–`0015`, and the owning architecture/API document first.
 - Keep implemented behavior separate from planned behavior in every doc/README update.
 - Add deterministic tests; never use real credentials, personal data, public-network dependencies, or user runtime data in fixtures.
 - Run `npm run check`, `npm test`, and `npm run build` in the affected repository.

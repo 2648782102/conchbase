@@ -19,11 +19,12 @@ Users should eventually define highly customizable agent compositions. Compositi
 5. [ADR 0012](decisions/0012-streaming-output-progress.md) — accepted streaming progress contract and non-goals.
 6. [ADR 0013](decisions/0013-bounded-tool-capability-kernel.md) — accepted internal tool capability kernel; no public tool execution.
 7. [ADR 0014](decisions/0014-versioned-configuration-api.md) — accepted `0.4.0` configuration document, revision history, validation, apply, and rollback.
-8. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
-9. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
-10. `docs/TECH_STACK.md` — chosen and deferred technology.
-11. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` — wider intended sequencing and still-open contracts.
-12. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
+8. [ADR 0015](decisions/0015-composition-identity-kernel.md) — accepted internal topology-neutral composition identity and sequencing before public tool contracts.
+9. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
+10. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
+11. `docs/TECH_STACK.md` — chosen and deferred technology.
+12. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` — wider intended sequencing and still-open contracts.
+13. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
 
 ## Current repository facts
 
@@ -42,6 +43,7 @@ Implemented:
 - Automated tests cover provider parsing and failures, task completion, durable event replay, restart interruption, explicit retry, configuration validation/history/rollback/pinning, HTTP error behavior, loopback configuration, the internal task runner, policy gate, and deterministic repository guardrails. Tests use fake `fetch` and temporary databases; CI does not call a model provider.
 - Streaming tests cover SSE frame parsing, ignored reasoning, tool-call rejection, malformed/truncated streams, cancellation, durable progress, and Pagurus's visible progress display.
 - An internal `ToolCapabilityKernel` provides an immutable fixture-only registry, exact versioned approval records, per-attempt idempotency keys, bounded audit scalars, and replayable normalized executor failures. Its tool-prefixed event names are internal deterministic-test vocabulary. It is not imported by the HTTP task path, is not persisted by `SqliteTaskStore`, and does not execute real host tools.
+- An internal `src/runtime/composition-document.ts` validates topology-neutral directed acyclic graphs and computes content-addressed `cmp_` identities from canonical user-authored nodes, links, entry nodes, and metadata. It has no public route, configuration schema section, persistence, model or tool execution, capability grant, or scheduling semantics. Link labels are opaque data. See [ADR 0015](decisions/0015-composition-identity-kernel.md).
 - GitHub Actions runs `npm run check`, `npm test`, and `npm run build`.
 
 Not implemented yet:
@@ -54,13 +56,15 @@ Do not describe planned features as implemented. Do not describe the phase-1 sin
 ## Accepted architectural boundaries
 
 - Conchbase is the agent execution authority. It owns task state, provider calls, the narrow model adapter boundary, persisted state, and the authoritative event log.
-- Every client uses the public Runtime API. A client never reads or writes private runtime files or database tables.
+- Pagurus and other external clients use the public Runtime API and never read or write private runtime files or database tables. The phase-1 CLI takes short-lived private SQLite ownership for task-state and configuration reads from [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md); replacing those reads with an authoritative client API remains open.
 - Model-provider output is untrusted data. No tool executes outside the runtime policy and approval path. Skills are instruction content and do not grant capabilities.
 - Tool capability records and tool-prefixed audit events are internal deterministic fixtures until a separate ADR accepts a public tool/event contract, provider tool-call parsing, durable approval and audit storage, and real executor isolation. Public routes continue to expose only the phase-1 task events described in `docs/openapi.yaml`.
+- Public tool approvals and audits must include composition node identity and the pinned configuration revision before model-driven or real host tools execute in a multi-node composition. The current internal tool approval record has only task, attempt, tool name, and argument digest scope.
 - Provider SDKs are replaceable inputs and never own security decisions or durable task state. The phase-1 provider uses direct HTTP, not a provider SDK.
 - A task binds to one configuration revision for its lifetime; future configuration changes affect later tasks.
 - Public configuration documents are versioned data; only `schemaVersion: 1` is accepted. New sections require a new ADR and a new schema version, never silent reinterpretation.
 - The runtime must not hardcode an agent topology, layer count, role name, or coordination pattern.
+- The internal composition validator accepts arbitrary single-node and multi-node directed acyclic graphs; its current acyclicity and entry-set checks are structural fixture rules. They do not define execution order, concurrency, delegation, scheduling, or a public composition schema.
 - Bind to loopback only until a reviewed authentication and pairing design exists. The local loopback API is a development boundary, not an authenticated remote deployment design.
 - Do not load arbitrary plugins in-process before isolation and grants are designed.
 
@@ -75,7 +79,7 @@ Before adding an endpoint, specify request/response schemas, error behavior, aut
 - Node.js 24+, TypeScript, Fastify, `node:sqlite`, npm. No provider or storage npm SDK is installed.
 - Install and run: `npm ci`, then `npm run dev` (`conchbase serve`).
 - CLI: `npm run cli -- models`, `npm run cli -- run "prompt"`, `npm run cli -- tasks`, `npm run cli -- task <id>`, `npm run cli -- events [cursor]`, `npm run cli -- retry <id>`.
-- CLI configuration reads: `npm run cli -- config`, `npm run cli -- config-revisions`. Writes use the versioned Runtime API.
+- CLI configuration reads: `npm run cli -- config`, `npm run cli -- config-revisions`. These commands take short-lived private database ownership. Configuration writes use the versioned Runtime API.
 - Database commands other than `models` take short-lived ownership of the runtime database; do not run them while `conchbase serve` is active. Use the Runtime API for concurrent task inspection.
 - Validate changes: `npm run check`, `npm test`, and `npm run build`.
 - Runtime host and port: `CONCHBASE_HOST` (loopback only) and `CONCHBASE_PORT`, defaults `127.0.0.1:4318`.
@@ -88,7 +92,7 @@ Before adding an endpoint, specify request/response schemas, error behavior, aut
 
 Do not silently treat these as settled:
 
-- User-authored composition schema, identity, validation, delegation, concurrency, cancellation propagation, and topology representation.
+- User-authored public composition schema, configuration schema version, task and event identity, delegation, concurrency, cancellation propagation, and execution semantics. ADR 0015 accepts only an internal topology-neutral identity kernel.
 - Portable profile/config file format, migrations, secret resolution, Skill/plugin/MCP bundle schemas, installation/enabling/granting, and approval UX.
 - Provider capability discovery, structured tool calls, multi-turn context, token limits, error classification, and direct vendor provider order.
 - Production SQLite driver choice, supported-platform CI matrix, WAL crash recovery, multi-process ownership, event retention, and SSE/Last-Event-ID semantics.

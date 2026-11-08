@@ -4,7 +4,7 @@ Status: **proposed, not accepted as a public contract**
 
 Product direction: **accepted as intent, not implemented**. Conchbase should let a user define a highly customizable agent. A layered arrangement with several specialized roles is only an illustrative example. It is not a built-in structure, default template, preferred topology, or schema.
 
-Phase-1 boundary: [ADR 0010](0010-first-real-model-slice.md) implements a single-turn execution unit for real-model validation. This is an implementation slice, not a canonical single-agent topology and not a rejection of future user-authored compositions.
+Phase-1 boundary: [ADR 0010](0010-first-real-model-slice.md) implements a single-turn execution unit for real-model validation. This is an implementation slice, not a canonical single-agent topology and not a rejection of future user-authored compositions. [ADR 0015](0015-composition-identity-kernel.md) later accepts an internal, topology-neutral identity kernel for deterministic graph fixtures; it does not accept a public composition schema, execution semantics, or capability grants. This record remains a proposal for the broader public contract.
 
 ## Context
 
