@@ -182,14 +182,18 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(queue, /ADR 0015/);
   assert.match(queue, /ADR 0016/);
   assert.match(queue, /ADR 0017/);
-  assert.match(queue, /Provider tool-call parsing and execution boundary/);
-  assert.match(queue, /first next slice/);
+  assert.match(queue, /ADR 0018/);
+  assert.match(queue, /Provider adapter integration and execution boundary/);
+  assert.match(queue, /Done in the provider tool-call parsing boundary slice/);
+  assert.match(queue, /This is the first next slice/);
   assert.match(queue, /short-lived private database ownership/);
 
   assert.match(read('README.md'), /real model/);
   assert.match(read('README.md'), /planned work/);
+  assert.match(read('README.md'), /ADR 0018/);
   assert.match(read('README.zh-CN.md'), /真实模型/);
   assert.match(read('README.zh-CN.md'), /仍在规划中/);
+  assert.match(read('README.zh-CN.md'), /ADR 0018/);
 });
 
 test('decision records separate accepted phase-1 direction from proposals', () => {
@@ -255,6 +259,10 @@ test('decision records separate accepted phase-1 direction from proposals', () =
   assert.match(
     read(`${decisionsDir}/0017-public-tool-request-approval-ledger.md`),
     /^Status: \*\*accepted product and public API direction/m,
+  );
+  assert.match(
+    read(`${decisionsDir}/0018-provider-tool-call-parsing-boundary.md`),
+    /^Status: \*\*accepted internal architecture direction; no public API contract changes\*\*$/m,
   );
 });
 
@@ -338,6 +346,24 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
   const ledgerRoutes = read('src/http/routes/v1/tool-requests.ts');
   assert.doesNotMatch(ledgerRoutes, /tool-capability|ToolCapabilityKernel/);
   assert.doesNotMatch(ledgerRoutes, /execute|executor|tool\.executed/i);
+  const parserSource = read('src/runtime/provider-tool-call.ts');
+  assert.match(parserSource, /export function parseOpenAiChatCompletionsToolCall/);
+  assert.doesNotMatch(parserSource, /tool-capability|ToolCapabilityKernel|task-service|task-store|fastify|provider-tool-call/);
+  assert.doesNotMatch(parserSource, /tool\.executed|tool\.replayed|tool\.denied|tool\.failed|tool\.requested/);
+  assert.doesNotMatch(parserSource, /taskId|compositionNodeId|configurationRevisionId|approval|decision/);
+  for (const file of [
+    'src/runtime/magpie-provider.ts',
+    'src/runtime/task-service.ts',
+    'src/runtime/task-store.ts',
+    'src/runtime/tool-capability.ts',
+    ...listTypeScriptFiles('src/http'),
+  ]) {
+    assert.doesNotMatch(
+      read(file),
+      /provider-tool-call/,
+      `${file} must not wire the ADR 0018 parser without an accepted adapter ADR`,
+    );
+  }
   const compositionSource = read('src/runtime/composition-document.ts');
   assert.match(
     compositionSource,

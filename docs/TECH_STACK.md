@@ -13,6 +13,7 @@
 | Composition identity and execution | Public topology-neutral graph section, internal canonical DAG validation, SHA-256 `cmp_` identity, deterministic topological node order, and node events | In use for bounded deterministic execution; model-driven node work, scheduling, and tool audits deferred |
 | Tool capability kernel | Internal fixture-only registry, exact approvals, per-attempt idempotency, and deterministic audit events | In use as an internal acceptance boundary; never imported by the public ledger |
 | Public tool request/approval ledger | Versioned provider-neutral request records, composition-scoped idempotency, digest-only approvals, and durable SQLite audit events | In use as a `0.6.0` ledger; no tool execution, provider parsing, or real host tool |
+| Provider tool-call parsing | Pure OpenAI Chat Completions-compatible non-streaming function-call parser returning a transient `ToolCallProposal` and `arg_` digest | In use as an internal ADR 0018 boundary; deliberately unwired; no streaming accumulation or execution |
 | Tool protocol | MCP TypeScript SDK | Deferred until lifecycle, sandboxing, and per-tool grants are accepted |
 | Agent orchestration | Conchbase-owned task state machine with a narrow provider adapter and a deterministic composition executor | In use for one bounded text turn or bounded graph traversal; tool loops and model-driven composition pending |
 | Configuration and Skills | Content-addressed revision id, v1/v2 documents, and future portable profile files | Revision id and configuration write API in use; profile files and Skills lifecycle deferred |
@@ -25,11 +26,13 @@ The runtime is primarily I/O orchestration. Model inference belongs to a local g
 
 [ADR 0017](decisions/0017-public-tool-request-approval-ledger.md) accepts a public provider-neutral request/approval ledger, durable SQLite request and decision records, composition-scoped idempotency, and durable audit events. It does not connect `ToolCapabilityKernel` to the Runtime API, parse provider tool calls, execute tools, or store raw arguments/reasons/tool outputs.
 
+[ADR 0018](decisions/0018-provider-tool-call-parsing-boundary.md) accepts an internal pure parser for one OpenAI Chat Completions-compatible non-streaming function tool call. It does not wire the parser to the live provider or task path, accept streaming deltas, create ledger requests, persist raw arguments, or execute tools.
+
 Repository guardrails use Node's built-in test runner and local-file assertions; they are development checks, not runtime technology.
 
 ## Deferred choices
 
-- Provider capability discovery, structured tool-call parsing, multi-turn context, error classification, direct vendor adapters, public tool execution routes, durable execution results, crash-safe side effects, model-driven composition scheduling, portable configuration files, secret resolution, and install/enable/grant operations.
+- Provider capability discovery, provider adapter integration for structured tool calls, streaming tool-call accumulation, multi-turn context, error classification, direct vendor adapters, public tool execution routes, durable execution results, crash-safe side effects, model-driven composition scheduling, portable configuration files, secret resolution, and install/enable/grant operations.
 - Production SQLite driver, schema migrations, retention, SSE, and `Last-Event-ID` mapping.
 - Plugin isolation and capability grants.
 - Remote authentication, pairing, and desktop packaging.

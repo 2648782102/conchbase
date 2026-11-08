@@ -39,6 +39,7 @@ Tool request documents are provider-neutral data. A request includes `taskId`, `
 - The API is loopback-only. Remote binding requires a reviewed authentication and pairing design.
 - Model ids come from the user's Magpie catalog. No model credentials enter Conchbase configuration or API responses.
 - A `schemaVersion: 1` task performs one streaming text completion. Reasoning text is ignored and model-requested tools are rejected, not executed.
+- The internal ADR 0018 provider tool-call parser is pure and unwired. It adds no API route, provider adapter behavior, task state change, event type, or execution permission; model-requested tools remain rejected.
 - A `schemaVersion: 2` task performs bounded deterministic graph traversal. It makes no model call and executes no model-requested or real host tool.
 - No public tool execution, executable approval, MCP, Skill, plugin, model-driven composition, or dedicated composition management route exists yet. Composition is part of the versioned configuration document; the tool request/approval routes are ledger records only.
 - Configuration document routes do not install, enable, grant, resolve secrets, load code, or execute tools.

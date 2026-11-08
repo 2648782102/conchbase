@@ -22,11 +22,12 @@ Users can define highly customizable agent compositions through a versioned, top
 8. [ADR 0015](decisions/0015-composition-identity-kernel.md) — accepted internal topology-neutral composition identity and sequencing.
 9. [ADR 0016](decisions/0016-composition-execution-and-public-schema.md) — accepted `0.5.0` v1/v2 configuration union, deterministic composition execution, node events, and cancellation.
 10. [ADR 0017](decisions/0017-public-tool-request-approval-ledger.md) — accepted `0.6.0` public tool request/approval ledger; durable audit, no tool execution.
-11. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
-12. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
-13. `docs/TECH_STACK.md` — chosen and deferred technology.
-14. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` — wider intended sequencing and still-open contracts.
-15. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
+11. [ADR 0018](decisions/0018-provider-tool-call-parsing-boundary.md) — accepted internal, unwired provider tool-call parser; no execution and no public API change.
+12. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
+13. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
+14. `docs/TECH_STACK.md` — chosen and deferred technology.
+15. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` — wider intended sequencing and still-open contracts.
+16. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
 
 ## Current repository facts
 
@@ -47,12 +48,13 @@ Implemented:
 - Composition events keep the public event envelope unchanged and carry bounded scalars in `data`: `compositionDocumentId`, `compositionNodeId`, `nodeIndex`, `nodeCount`, `completedNodeCount`, and `terminalNodeIds`. The event envelope also carries the pinned `configurationRevisionId` and `attempt`.
 - An internal `ToolCapabilityKernel` provides an immutable fixture-only registry, exact versioned approval records, per-attempt idempotency keys, bounded audit scalars, and replayable normalized executor failures. Its tool-prefixed event names are internal deterministic-test vocabulary. It is not imported by the HTTP task path, is not persisted by `SqliteTaskStore`, and does not execute real host tools.
 - A public, provider-neutral tool request/approval ledger accepts normalized tool call proposals for eligible `schemaVersion: 2` task attempts in `queued`, `running`, or `waiting_approval`. `POST /v1/tool-requests`, `GET /v1/tool-requests/{requestId}`, and `POST /v1/tool-requests/{requestId}/approval` persist one versioned request, a composition-scoped idempotency key, and one explicit approval or rejection. Requests store only an arguments digest; approvals store only a reason digest. Creation and decision events are durable through `GET /v1/events`, but no tool is executed and no task state transition occurs. The public ledger does not import `ToolCapabilityKernel`.
+- `src/runtime/provider-tool-call.ts` is an internal, pure parser for one OpenAI Chat Completions-compatible non-streaming function tool call. It returns a transient `version: 1` observation with a provider tool-call id, the accepted `ToolCallProposal`, and an `arg_` arguments digest. It rejects streaming deltas, mixed answers, multiple calls, malformed or sensitive fields, and non-scalar arguments. It is not imported by `TaskService`, `OpenAiChatCompletionsProvider`, HTTP routes, `SqliteTaskStore`, or `ToolCapabilityKernel`; the live provider continues to reject tool calls. No public API, event, configuration, durable table, or execution behavior changes.
 - Automated tests cover provider parsing and failures, task completion, durable event replay, restart interruption, explicit retry, v1/v2 configuration validation/history/rollback/pinning, composition execution and cancellation, HTTP error behavior, loopback configuration, the internal task runner, policy gate, and deterministic repository guardrails. Tests use fake `fetch` and temporary databases; CI does not call a model provider.
 - GitHub Actions runs `npm run check`, `npm test`, and `npm run build`.
 
 Not implemented yet:
 
-- Model-driven composition nodes, role registry, multi-turn model context, provider tool-call parsing, model-driven tool execution, public tool execution API, real executor isolation, crash-safe side effects, MCP client, Skills loader, install/enable/grant operations, secret resolution, portable file import/export, production approval workflow, plugin host, memory, artifacts, SSE event stream, reasoning display, event retention policy, production driver compatibility matrix, authentication/pairing, or remote binding.
+- Model-driven composition nodes, role registry, multi-turn model context, provider adapter integration for parsed tool calls, streaming tool-call accumulation, model-driven tool execution, public tool execution API, real executor isolation, crash-safe side effects, MCP client, Skills loader, install/enable/grant operations, secret resolution, portable file import/export, production approval workflow, plugin host, memory, artifacts, SSE event stream, reasoning display, event retention policy, production driver compatibility matrix, authentication/pairing, or remote binding.
 - A Magpie upstream Agents-page adapter. Magpie currently requires such an adapter in its own source; Conchbase phase 1 uses the local gateway directly.
 
 Do not describe planned features as implemented. Do not describe the phase-1 single-turn loop or the bounded v2 deterministic executor as a general multi-agent scheduling product.
@@ -62,7 +64,7 @@ Do not describe planned features as implemented. Do not describe the phase-1 sin
 - Conchbase is the agent execution authority. It owns task state, provider calls, composition dispatch, the narrow model adapter boundary, persisted state, and the authoritative event log.
 - Pagurus and other external clients use the public Runtime API and never read or write private runtime files or database tables. The phase-1 CLI takes short-lived private SQLite ownership for task-state and configuration reads from [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md); replacing those reads with an authoritative client API remains open.
 - Model-provider output is untrusted data. No tool executes outside the runtime policy and approval path. Skills are instruction content and do not grant capabilities.
-- The internal `ToolCapabilityKernel` remains fixture-only. The public ledger accepts durable requests, approvals, and audit events but never executes a tool. Provider tool-call parsing, durable execution results, crash-safe side effects, and real executor isolation require separate accepted ADRs.
+- The internal `ToolCapabilityKernel` remains fixture-only. The public ledger accepts durable requests, approvals, and audit events but never executes a tool. ADR 0018's parser is a transient normalization boundary only: its observation carries no task, composition, approval, or executor identity and is not wired into the provider or task path. Provider adapter integration, durable execution results, crash-safe side effects, and real executor isolation require separate accepted ADRs.
 - Public tool request, approval, and audit identity includes composition node identity, the `cmp_` document identity, the pinned configuration revision, and attempt. An approval decision is ledger state, not execution permission. The current internal tool approval record has only task, attempt, tool name, and argument digest scope and remains unchanged.
 - Provider SDKs are replaceable inputs and never own security decisions or durable task state. The phase-1 provider uses direct HTTP, not a provider SDK.
 - A task binds to one configuration revision for its lifetime; future configuration changes affect later tasks.
@@ -97,7 +99,7 @@ Do not silently treat these as settled:
 
 - Model-driven composition nodes, delegation, concurrency, per-node model selection, context passing, role semantics, cyclic coordination, and a general scheduling product.
 - Portable profile/config file format, migrations, secret resolution, Skill/plugin/MCP bundle schemas, installation/enabling/granting, and approval UX.
-- Provider tool-call parsing, public tool execution API, durable tool execution results, crash-safe side effects, real executor isolation, per-tool grants, MCP lifecycle, and Pagurus approval UX.
+- Provider adapter integration for parsed tool calls, streaming tool-call accumulation, public tool execution API, durable tool execution results, crash-safe side effects, real executor isolation, per-tool grants, MCP lifecycle, and Pagurus approval UX.
 - Provider capability discovery, structured tool calls, multi-turn context, token limits, error classification, and direct vendor provider order.
 - Production SQLite driver choice, supported-platform CI matrix, WAL crash recovery, multi-process ownership, event retention, and SSE/Last-Event-ID semantics.
 - The authoritative client API that will eventually replace direct CLI database reads, including its authentication and parity contract.

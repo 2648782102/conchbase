@@ -12,10 +12,11 @@ This queue is for coding models continuing from the repository. It records bound
 - [ADR 0015](decisions/0015-composition-identity-kernel.md) accepts an internal, topology-neutral composition validator and `cmp_` identity, and records that composition execution identity precedes public tool execution.
 - [ADR 0016](decisions/0016-composition-execution-and-public-schema.md) accepts the `0.5.0` v1/v2 configuration union, a public topology-neutral composition section, deterministic node-order execution, composition node event identity, cancellation propagation, and single-node plus distinct multi-node fixtures. It makes no model call, executes no tool, and adds no route.
 - [ADR 0017](decisions/0017-public-tool-request-approval-ledger.md) accepts the `0.6.0` public tool request/approval ledger: three routes, durable normalized requests and approvals, composition-scoped idempotency, durable request/decision audit events, and no tool execution.
+- [ADR 0018](decisions/0018-provider-tool-call-parsing-boundary.md) accepts an internal, pure, unwired parser for one OpenAI Chat Completions-compatible non-streaming function tool call. It returns a transient normalized proposal and `arg_` digest with no public API, provider adapter, task path, event, durable table, or executor change.
 - Conchbase exposes versioned task, retry, cancel, event, Magpie model-catalog, and configuration-revision routes. Pagurus and other external clients use the Runtime API; phase-1 CLI task-state and configuration reads take short-lived private database ownership. The OpenAPI contract is the source of truth.
 - The phase-1 model loop is single-turn for `schemaVersion: 1`. The deterministic composition loop is bounded for `schemaVersion: 2`. Neither is a default or canonical agent topology. User-defined composition remains topology-neutral product intent.
 - `node:sqlite` persists tasks, events, and configuration revisions behind `TaskStore`. Provider calls use direct HTTP through a narrow adapter. No provider SDK, storage SDK, MCP SDK, or plugin host is installed.
-- `tests/repository-guardrails.test.ts` checks AI-first entry documents, accepted ADR status, the exact `0.6.0` OpenAPI path set and version, loopback-only configuration, source boundaries, dependency boundaries, and the public ledger's no-execution rules. It was updated in the same slice as ADR `0017`.
+- `tests/repository-guardrails.test.ts` checks AI-first entry documents, accepted ADR status, the exact `0.6.0` OpenAPI path set and version, loopback-only configuration, source boundaries, dependency boundaries, the public ledger's no-execution rules, and the ADR 0018 parser's no-wiring rules. It was updated in the same slice as ADR `0018`.
 - Both repositories have protected `main` rulesets against force pushes and deletion; normal pushes remain allowed.
 
 ## Done in the composition execution slice
@@ -33,11 +34,18 @@ This queue is for coding models continuing from the repository. It records bound
 3. **Durable ledger.** A private `tool_requests` table stores normalized request identity, status, approval decision, and digest-only reason. Request creation and decisions commit with their durable events in one transaction.
 4. **AI handoff.** Entry documents, README files, architecture, API, technology, roadmap, validation, and workspace notes distinguish the ledger from tool execution and from the internal fixture-only kernel.
 
+## Done in the provider tool-call parsing boundary slice
+
+1. **Accepted direction.** ADR `0018` records the accepted internal parser, one non-streaming function tool-call shape, transient normalized observation, and explicit no-wiring/no-execution boundary.
+2. **Pure parser.** `provider-tool-call.ts` validates one OpenAI Chat Completions-compatible tool call, reuses `ToolCallProposal` validation and the `arg_` digest, and returns no raw provider envelope or task/ledger identity.
+3. **Executable boundary.** Deterministic parser tests and repository guardrails cover valid normalization, representative rejected shapes, unchanged `0.6.0` sixteen-path public contract, parser import boundaries, and no-wiring assertions.
+4. **AI handoff.** Entry documents, README files, architecture, technology, roadmap, validation, and task queue distinguish the implemented parser from provider adapter integration and tool execution.
+
 ## Next bounded slices
 
 Each item requires an accepted ADR before its public contract changes. Do not start several at once.
 
-1. **Provider tool-call parsing and execution boundary.** Decide how a provider's structured tool call becomes the accepted normalized proposal, then separately decide durable execution results, crash-safe side effects, real executor isolation, per-tool grants, and whether `ToolCapabilityKernel` is replaced or migrated. A ledger approval must not be treated as execution permission. This is the first next slice.
+1. **Provider adapter integration and execution boundary.** Accept an adapter ADR that decides how `OpenAiChatCompletionsProvider` returns ADR 0018's observation to `TaskService`, how an eligible composition node is selected, whether a client explicitly creates a ledger request, and how cancellation interacts with an unexecuted proposal. Then separately decide durable execution results, crash-safe side effects, real executor isolation, per-tool grants, and whether `ToolCapabilityKernel` is replaced or migrated. A ledger approval must not be treated as execution permission. This is the first next slice.
 2. **Pagurus tool approval client.** Only after its own accepted client ADR, add explicit pending/approved/rejected states, exact requested-action display, keyboard access, and capability handling through Conchbase's published routes. Never read private runtime state.
 3. **Configuration lifecycle slice.** Add an accepted portable file format, import/export, migrations, secret resolution, Skill/plugin/MCP bundle schemas, and separate install/enable/grant operations. The current revision document is data only.
 4. **Persistence hardening.** Add supported OS/architecture/Node CI coverage, migrations, WAL crash recovery, retention, and multi-process ownership before calling the storage layer production-ready.
@@ -48,7 +56,7 @@ Each item requires an accepted ADR before its public contract changes. Do not st
 ## Blocked until direction
 
 - Generated client types built from an unaccepted schema, portable configuration files, secret resolution, Skill/plugin/MCP installers, and capability grants.
-- Model-driven tool execution, public tool execution routes, real host tools, MCP servers, Skills granting tools, arbitrary plugin loading, crash-safe side effects, real executor isolation, and provider tool-call parsing.
+- Model-driven tool execution, public tool execution routes, real host tools, MCP servers, Skills granting tools, arbitrary plugin loading, crash-safe side effects, real executor isolation, provider adapter integration for parsed tool calls, and streaming tool-call accumulation.
 - Model-driven composition nodes, delegation, concurrency, general scheduling, role registries, cyclic coordination, and automatic continuation of in-flight model or tool work after a crash.
 - Running task-state CLI commands concurrently with `conchbase serve`, or treating SQLite exclusive locking as multi-process support.
 - MCP process lifecycle, per-tool grants, arbitrary plugin loading, remote binding, authentication/pairing, and desktop packaging.
@@ -58,7 +66,7 @@ Do not weaken or delete the repository guardrails to bypass this queue. Update t
 
 ## Definition of done for each task
 
-- Read `AGENTS.md`, `docs/AI_HANDOFF.md`, `docs/AI_DEVELOPMENT.md`, ADRs `0010`–`0017`, and the owning architecture/API document first.
+- Read `AGENTS.md`, `docs/AI_HANDOFF.md`, `docs/AI_DEVELOPMENT.md`, ADRs `0010`–`0018`, and the owning architecture/API document first.
 - Keep implemented behavior separate from planned behavior in every doc/README update.
 - Add deterministic tests; never use real credentials, personal data, public-network dependencies, or user runtime data in fixtures.
 - Run `npm run check`, `npm test`, and `npm run build` in the affected repository.
