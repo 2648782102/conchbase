@@ -28,7 +28,7 @@ export class MagpieModelCatalog implements ModelCatalogClient {
     const providerFetch = fetchImpl ?? this.fetchImpl ?? globalThis.fetch;
     const headers: Record<string, string> = {
       Accept: 'application/json',
-      'User-Agent': 'Conchbase/0.6.0',
+      'User-Agent': 'Conchbase/0.7.0',
     };
     if (this.appKey) headers.Authorization = `Bearer ${this.appKey}`;
 

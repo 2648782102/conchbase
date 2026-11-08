@@ -4,15 +4,9 @@ import {
   type ToolCallProposal,
   type ToolRequestValidationIssue,
 } from './tool-request.js';
+import type { ProviderToolCallObservation } from './model-adapter.js';
 
-export interface ProviderToolCallObservation {
-  readonly version: 1;
-  readonly kind: 'tool_call';
-  readonly provider: 'openai-chat-completions';
-  readonly providerToolCallId: string;
-  readonly toolCall: ToolCallProposal;
-  readonly argumentsDigest: string;
-}
+export type { ProviderToolCallObservation } from './model-adapter.js';
 
 export class ProviderToolCallError extends Error {
   readonly details: readonly ToolRequestValidationIssue[];

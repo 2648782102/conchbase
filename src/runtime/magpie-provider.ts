@@ -1,4 +1,13 @@
-import type { ModelAdapter, ModelAdapterInput, ModelTurn } from './model-adapter.js';
+import type {
+  ModelAdapterInput,
+  ProviderModelTurn,
+  StreamingModelTurn,
+  StructuredModelAdapter,
+} from './model-adapter.js';
+import {
+  ProviderToolCallError,
+  parseOpenAiChatCompletionsToolCall,
+} from './provider-tool-call.js';
 
 export interface MagpieProviderConfig {
   readonly baseUrl: string;
@@ -33,7 +42,7 @@ export interface StreamingTurnInput extends ModelAdapterInput {
 }
 
 export interface StreamingModelAdapter {
-  streamTurn(input: StreamingTurnInput): Promise<ModelTurn>;
+  streamTurn(input: StreamingTurnInput): Promise<StreamingModelTurn>;
 }
 
 export const STREAMING_OUTPUT_LIMITS = Object.freeze({
@@ -73,7 +82,7 @@ function normalizeBaseUrl(baseUrl: string): string {
   return parsed.toString().replace(/\/$/, '');
 }
 
-export class OpenAiChatCompletionsProvider implements ModelAdapter, StreamingModelAdapter {
+export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, StreamingModelAdapter {
   private readonly endpoint: string;
   private readonly model: string;
   private readonly appKey: string | undefined;
@@ -94,7 +103,7 @@ export class OpenAiChatCompletionsProvider implements ModelAdapter, StreamingMod
     this.fetchImpl = config.fetch ?? globalThis.fetch;
   }
 
-  async nextTurn(input: ModelAdapterInput): Promise<ModelTurn> {
+  async nextTurn(input: ModelAdapterInput): Promise<ProviderModelTurn> {
     if (input.turnIndex !== 0) {
       throw new ModelProviderError('This provider supports one model turn per task attempt.');
     }
@@ -105,7 +114,7 @@ export class OpenAiChatCompletionsProvider implements ModelAdapter, StreamingMod
     const headers: Record<string, string> = {
       Accept: 'application/json',
       'Content-Type': 'application/json',
-      'User-Agent': 'Conchbase/0.6.0',
+      'User-Agent': 'Conchbase/0.7.0',
     };
     if (this.appKey) headers.Authorization = `Bearer ${this.appKey}`;
 
@@ -142,11 +151,12 @@ export class OpenAiChatCompletionsProvider implements ModelAdapter, StreamingMod
       throw new ModelProviderError('Model provider returned invalid JSON.');
     }
 
+    const observation = this.parseToolCallObservation(payload);
+    if (observation) {
+      return Object.freeze({ kind: 'tool_call_observation', observation });
+    }
     const choice = (payload as ChatCompletionResponse | null)?.choices?.[0];
     const message = choice?.message;
-    if (message?.tool_calls !== undefined) {
-      throw new ModelProviderError('Model tool calls are not supported in this runtime slice.');
-    }
     if (typeof message?.content !== 'string' || message.content.trim().length === 0) {
       throw new ModelProviderError('Model provider returned an empty completion.');
     }
@@ -154,7 +164,7 @@ export class OpenAiChatCompletionsProvider implements ModelAdapter, StreamingMod
     return Object.freeze({ kind: 'final', output: message.content });
   }
 
-  async streamTurn(input: StreamingTurnInput): Promise<ModelTurn> {
+  async streamTurn(input: StreamingTurnInput): Promise<StreamingModelTurn> {
     if (input.turnIndex !== 0) {
       throw new ModelProviderError('This provider supports one model turn per task attempt.');
     }
@@ -166,7 +176,7 @@ export class OpenAiChatCompletionsProvider implements ModelAdapter, StreamingMod
     const headers: Record<string, string> = {
       Accept: 'text/event-stream',
       'Content-Type': 'application/json',
-      'User-Agent': 'Conchbase/0.6.0',
+      'User-Agent': 'Conchbase/0.7.0',
     };
     if (this.appKey) headers.Authorization = `Bearer ${this.appKey}`;
 
@@ -203,6 +213,7 @@ export class OpenAiChatCompletionsProvider implements ModelAdapter, StreamingMod
     const decoder = new TextDecoder();
     let buffer = '';
     let output = '';
+    let observation: StreamingModelTurn | null = null;
     let deltaCount = 0;
     let sawDone = false;
 
@@ -228,7 +239,21 @@ export class OpenAiChatCompletionsProvider implements ModelAdapter, StreamingMod
       if (delta?.tool_calls !== undefined) {
         throw new ModelProviderError('Model tool calls are not supported in this runtime slice.');
       }
+      const message = (payload as ChatCompletionResponse | null)?.choices?.[0]?.message;
+      const parsedObservation = message !== undefined
+        ? this.parseToolCallObservation(payload)
+        : null;
+      if (parsedObservation) {
+        if (observation || output.length > 0 || sawDone) {
+          throw new ModelProviderError('Model provider returned a mixed tool-call response.');
+        }
+        observation = Object.freeze({ kind: 'tool_call_observation', observation: parsedObservation });
+        return;
+      }
       if (typeof delta?.content !== 'string' || delta.content.length === 0) return;
+      if (observation) {
+        throw new ModelProviderError('Model provider returned a mixed tool-call response.');
+      }
       if (delta.content.length > STREAMING_OUTPUT_LIMITS.chunkCharacters) {
         throw new ModelProviderError('Model provider returned an oversized output chunk.');
       }
@@ -273,9 +298,26 @@ export class OpenAiChatCompletionsProvider implements ModelAdapter, StreamingMod
     if (!sawDone) {
       throw new ModelProviderError('Model provider stream ended before completion.');
     }
+    if (observation) {
+      if (input.signal?.aborted) {
+        throw new ModelProviderError('Model provider stream was interrupted.');
+      }
+      return observation;
+    }
     if (output.trim().length === 0) {
       throw new ModelProviderError('Model provider returned an empty completion.');
     }
     return Object.freeze({ kind: 'final', output });
+  }
+
+  private parseToolCallObservation(payload: unknown) {
+    try {
+      return parseOpenAiChatCompletionsToolCall(payload);
+    } catch (cause) {
+      if (cause instanceof ProviderToolCallError) {
+        throw new ModelProviderError('Model provider returned an unsupported tool call.');
+      }
+      throw cause;
+    }
   }
 }

@@ -4,6 +4,7 @@ import {
   ModelProviderError,
   OpenAiChatCompletionsProvider,
 } from '../src/runtime/magpie-provider.js';
+import { toolArgumentsDigest } from '../src/runtime/tool-request.js';
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -45,11 +46,56 @@ test('the provider maps a chat completion to one final turn', async () => {
   assert.equal(body.stream, false);
 });
 
-test('the provider rejects tool calls, empty content, and HTTP errors', async () => {
+test('the provider maps one non-streaming function tool call to a transient observation', async () => {
+  const provider = new OpenAiChatCompletionsProvider({
+    ...config,
+    fetch: async () => jsonResponse({
+      choices: [{
+        message: {
+          content: null,
+          tool_calls: [{
+            id: 'call_1',
+            type: 'function',
+            function: {
+              name: 'fixture_read',
+              arguments: JSON.stringify({ value: 'bounded' }),
+            },
+          }],
+        },
+      }],
+    }),
+  });
+
+  const turn = await provider.nextTurn({
+    taskId: 'task_fixture',
+    prompt: 'hello',
+    turnIndex: 0,
+  });
+  assert.equal(turn.kind, 'tool_call_observation');
+  assert.ok(turn.kind === 'tool_call_observation');
+  assert.deepEqual(turn.observation, {
+    version: 1,
+    kind: 'tool_call',
+    provider: 'openai-chat-completions',
+    providerToolCallId: 'call_1',
+    toolCall: { toolName: 'fixture_read', arguments: { value: 'bounded' } },
+    argumentsDigest: toolArgumentsDigest({ value: 'bounded' }),
+  });
+});
+
+test('the provider rejects unsupported tool calls, empty content, and HTTP errors', async () => {
   const cases: Array<{ payload: unknown; status?: number; message: RegExp }> = [
     {
       payload: { choices: [{ message: { content: '', tool_calls: [] } }] },
-      message: /tool calls are not supported/,
+      message: /unsupported tool call/,
+    },
+    {
+      payload: { choices: [{ message: { content: 'answer', tool_calls: [{
+        id: 'call_1',
+        type: 'function',
+        function: { name: 'fixture_read', arguments: '{}' },
+      }] } }] },
+      message: /unsupported tool call/,
     },
     {
       payload: { choices: [{ message: { content: '' } }] },

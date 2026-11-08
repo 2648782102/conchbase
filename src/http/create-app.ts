@@ -4,6 +4,7 @@ import { registerConfigurationRoutes } from './routes/v1/configuration.js';
 import { registerEventRoutes } from './routes/v1/events.js';
 import { registerHealthRoute } from './routes/v1/health.js';
 import { registerModelRoutes } from './routes/v1/models.js';
+import { registerProviderObservationRoutes } from './routes/v1/provider-observations.js';
 import { registerRuntimeRoute } from './routes/v1/runtime.js';
 import { registerTaskRoutes } from './routes/v1/tasks.js';
 import { registerToolRequestRoutes } from './routes/v1/tool-requests.js';
@@ -19,6 +20,7 @@ export function createApp(options: {
   registerConfigurationRoutes(app, options.taskService);
   registerEventRoutes(app, options.taskService);
   registerModelRoutes(app, options.taskService);
+  registerProviderObservationRoutes(app);
   registerTaskRoutes(app, options.taskService);
   registerToolRequestRoutes(app, options.taskService);
 

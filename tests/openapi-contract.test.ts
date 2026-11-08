@@ -71,6 +71,7 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
       '/v1/tool-requests',
       '/v1/tool-requests/{requestId}',
       '/v1/tool-requests/{requestId}/approval',
+      '/v1/provider-observations/tool-calls',
     ],
   );
   assert.match(spec, /\$ref: '#\/components\/schemas\/Health'/);
@@ -138,9 +139,19 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
   assert.match(spec, /enum: \[inline, file, registry, env\]/);
   assert.doesNotMatch(spec, /enum: \[[^\]]*\burl\b/);
   assert.match(spec, /ApplyConfigurationRequest:[\s\S]*?oneOf:/);
-  assert.match(spec, /^  version: 0\.6\.0$/m);
+  assert.match(spec, /^  version: 0\.7\.0$/m);
   assert.match(spec, /compositionDocumentId/);
   assert.match(spec, /compositionNodeId/);
+  assertSchemaFields('CreateProviderToolCallObservation', ['version', 'provider', 'payload']);
+  assertSchemaFields('ProviderToolCallObservation', [
+    'version',
+    'kind',
+    'provider',
+    'providerToolCallId',
+    'toolCall',
+    'argumentsDigest',
+  ]);
+  assertSchemaFields('ProviderToolCallObservationResponse', ['observation']);
   assertSchemaFields('CreateToolRequest', [
     'taskId',
     'attempt',
@@ -163,8 +174,9 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
     'approval',
   ]);
   assertSchemaFields('ToolRequestDecisionRequest', ['decision', 'reason']);
-  assert.match(spec, /^  version: 0\.6\.0$/m);
+  assert.match(spec, /^  version: 0\.7\.0$/m);
   assert.match(spec, /tool-approval-ledger/);
+  assert.match(spec, /provider-tool-call-observation records/);
   assert.match(spec, /No tool is executed/);
   assert.match(spec, /- tool\.requested/);
   assert.match(spec, /- tool\.approval_required/);

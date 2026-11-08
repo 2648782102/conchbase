@@ -7,7 +7,7 @@ import { MagpieModelCatalog } from './runtime/model-catalog.js';
 import { createTaskService } from './runtime/task-service.js';
 
 function usage(): string {
-  return `Conchbase 0.6.0
+  return `Conchbase 0.7.0
 
 Usage:
   conchbase serve                 Start the local Runtime API

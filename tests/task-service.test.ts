@@ -39,6 +39,28 @@ function createService(filename: string): TaskService {
   }, modelCatalog);
 }
 
+function observationFetch(): typeof globalThis.fetch {
+  const frames = ['data: ', JSON.stringify({
+    choices: [{
+      message: {
+        content: null,
+        tool_calls: [{
+          id: 'call_1',
+          type: 'function',
+          function: {
+            name: 'fixture_read',
+            arguments: JSON.stringify({ value: 'bounded' }),
+          },
+        }],
+      },
+    }],
+  }), '\n\ndata: [DONE]\n\n'].join('');
+  return async () => new Response(frames, {
+    status: 200,
+    headers: { 'content-type': 'text/event-stream' },
+  });
+}
+
 test('a task completes with durable ordered events and pinned configuration', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-service-'));
   const filename = path.join(directory, 'runtime.sqlite');
@@ -190,6 +212,39 @@ test('streamed progress is visible while active and cleared on cancellation', as
       service.store.listEvents(null).filter((event) => event.type === 'task.output_delta').length,
       1,
     );
+  } finally {
+    service.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('a v1 streaming tool-call observation fails visibly without executing or persisting a ledger request', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-observation-task-'));
+  const filename = path.join(directory, 'runtime.sqlite');
+  const service = new TaskService(
+    new SqliteTaskStore(filename),
+    {
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/model',
+      fetch: observationFetch(),
+    },
+    modelCatalog,
+  );
+
+  try {
+    const finished = await service.createTaskAndWait({ prompt: 'hello' });
+    assert.equal(finished.state, 'failed');
+    assert.equal(finished.output, null);
+    assert.equal(finished.partialOutput, null);
+    assert.match(finished.error ?? '', /observation is not actionable/);
+    const events = service.store.listEvents(null);
+    assert.deepEqual(events.map((event) => event.type), [
+      'task.queued',
+      'task.started',
+      'task.failed',
+    ]);
+    assert.deepEqual(events.filter((event) => event.type.startsWith('tool.')), []);
+    assert.equal(events.at(-1)?.type, 'task.failed');
   } finally {
     service.close();
     rmSync(directory, { recursive: true, force: true });

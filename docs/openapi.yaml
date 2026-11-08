@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Conchbase Runtime API
-  version: 0.6.0
-  description: Local, versioned API for Conchbase streaming model tasks, bounded composition execution, ordered progress events, Magpie model discovery, versioned configuration revisions, and tool-approval-ledger request/decision records without execution.
+  version: 0.7.0
+  description: Local, versioned API for Conchbase streaming model tasks, bounded composition execution, ordered progress events, Magpie model discovery, versioned configuration revisions, durable tool-approval-ledger request/decision records, and transient provider-tool-call-observation records without execution.
 servers:
   - url: http://127.0.0.1:4318
     description: Local runtime default; loopback only.
@@ -410,6 +410,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/provider-observations/tool-calls:
+    post:
+      operationId: observeProviderToolCall
+      summary: Normalize one bounded provider tool-call payload into a transient observation.
+      description: >-
+        Parses one OpenAI Chat Completions-compatible non-streaming function tool call without
+        persisting it, creating a ledger request, selecting a composition node, or executing a tool.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProviderToolCallObservation'
+      responses:
+        '200':
+          description: Transient observation, or null when the accepted provider shape has no tool call.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderToolCallObservationResponse'
+        '400':
+          description: Invalid observation request or unsupported provider tool-call shape.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
 components:
   parameters:
     TaskId:
@@ -888,6 +914,53 @@ components:
           maxProperties: 8
           additionalProperties:
             type: [string, number, boolean, 'null']
+    ProviderToolCallObservation:
+      type: object
+      additionalProperties: false
+      required: [version, kind, provider, providerToolCallId, toolCall, argumentsDigest]
+      properties:
+        version:
+          const: 1
+        kind:
+          const: tool_call
+        provider:
+          const: openai-chat-completions
+        providerToolCallId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: '^[a-zA-Z0-9_-]+$'
+        toolCall:
+          $ref: '#/components/schemas/ToolCallProposal'
+        argumentsDigest:
+          type: string
+          pattern: '^arg_[0-9a-f]{24}$'
+    CreateProviderToolCallObservation:
+      type: object
+      additionalProperties: false
+      required: [version, provider, payload]
+      properties:
+        version:
+          const: 1
+        provider:
+          const: openai-chat-completions
+        payload:
+          type: object
+          minProperties: 1
+          maxProperties: 8
+          description: >-
+            One bounded plain-JSON provider response shape. Raw provider envelope fields,
+            secrets, absolute URLs, streaming deltas, and task/ledger identity are not accepted.
+          additionalProperties: true
+    ProviderToolCallObservationResponse:
+      type: object
+      additionalProperties: false
+      required: [observation]
+      properties:
+        observation:
+          oneOf:
+            - $ref: '#/components/schemas/ProviderToolCallObservation'
+            - type: 'null'
     CreateToolRequest:
       type: object
       additionalProperties: false

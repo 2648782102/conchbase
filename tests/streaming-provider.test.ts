@@ -5,6 +5,7 @@ import {
   OpenAiChatCompletionsProvider,
   STREAMING_OUTPUT_LIMITS,
 } from '../src/runtime/magpie-provider.js';
+import { toolArgumentsDigest } from '../src/runtime/tool-request.js';
 
 const config = {
   baseUrl: 'http://127.0.0.1:3425',
@@ -57,6 +58,44 @@ test('the streaming provider emits answer text and ignores reasoning text', asyn
   assert.equal(body.stream, true);
 });
 
+test('the streaming provider accepts one whole message-shaped tool call without emitting text', async () => {
+  const provider = new OpenAiChatCompletionsProvider({
+    ...config,
+    fetch: async () => sseResponse([JSON.stringify({
+      choices: [{
+        message: {
+          content: null,
+          tool_calls: [{
+            id: 'call_1',
+            type: 'function',
+            function: {
+              name: 'fixture_read',
+              arguments: JSON.stringify({ value: 'bounded' }),
+            },
+          }],
+        },
+      }],
+    })]),
+  });
+  const deltas: string[] = [];
+
+  const turn = await provider.streamTurn({
+    taskId: 'task_fixture',
+    prompt: 'hello',
+    turnIndex: 0,
+    onOutputDelta: (delta) => deltas.push(delta),
+  });
+
+  assert.equal(turn.kind, 'tool_call_observation');
+  assert.ok(turn.kind === 'tool_call_observation');
+  assert.deepEqual(turn.observation.toolCall, {
+    toolName: 'fixture_read',
+    arguments: { value: 'bounded' },
+  });
+  assert.equal(turn.observation.argumentsDigest, toolArgumentsDigest({ value: 'bounded' }));
+  assert.deepEqual(deltas, []);
+});
+
 test('the streaming provider rejects tool calls, malformed frames, and empty output', async () => {
   const cases: Array<{ response: () => Response; message: RegExp }> = [
     {
@@ -64,6 +103,29 @@ test('the streaming provider rejects tool calls, malformed frames, and empty out
         choices: [{ delta: { content: null, tool_calls: [] } }],
       })]),
       message: /tool calls are not supported/,
+    },
+    {
+      response: () => sseResponse([JSON.stringify({
+        choices: [{ delta: { tool_calls: [{
+          id: 'call_1',
+          type: 'function',
+          function: { name: 'fixture_read', arguments: '{}' },
+        }] } }],
+      })]),
+      message: /tool calls are not supported/,
+    },
+    {
+      response: () => sseResponse([
+        JSON.stringify({
+          choices: [{ message: { content: null, tool_calls: [{
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'fixture_read', arguments: '{}' },
+          }] } }],
+        }),
+        chunk('answer'),
+      ]),
+      message: /mixed tool-call response/,
     },
     {
       response: () => sseResponse(['{invalid']),

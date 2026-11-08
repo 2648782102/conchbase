@@ -438,6 +438,9 @@ export class TaskService {
       this.finishCancelled(task);
       return;
     }
+    if (turn.kind === 'tool_call_observation') {
+      throw new Error('Provider tool-call observation is not actionable in this runtime slice.');
+    }
     if (turn.kind !== 'final') {
       throw new Error('Unsupported model turn.');
     }

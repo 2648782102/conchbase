@@ -49,6 +49,7 @@ const acceptedPaths = [
   '/v1/tool-requests',
   '/v1/tool-requests/{requestId}',
   '/v1/tool-requests/{requestId}/approval',
+  '/v1/provider-observations/tool-calls',
 ];
 
 function read(relativePath: string): string {
@@ -88,14 +89,16 @@ function assertAcceptedOpenApi(spec: string, label: string): void {
   assert.doesNotMatch(spec, nonLoopbackAddress, `${label} must not bind beyond loopback`);
   assert.match(spec, /requestBody:/, `${label} must document the accepted task request`);
   assert.match(spec, /interrupted/, `${label} must document interrupted tasks`);
-  assert.match(spec, /^  version: 0\.6\.0$/m, `${label} must record the tool ledger contract version`);
+  assert.match(spec, /^  version: 0\.7\.0$/m, `${label} must record the provider observation contract version`);
   assert.match(spec, /partialOutput/, `${label} must document partial output`);
   assert.match(spec, /ConfigurationRevision/, `${label} must document configuration revisions`);
   assert.match(spec, /tool-approval-ledger/);
+  assert.match(spec, /provider-tool-call-observation records/);
   assert.match(spec, /No tool is executed/);
   assert.match(spec, /- tool\.requested/);
   assert.doesNotMatch(spec, /- tool\.executed/);
   assert.match(spec, /Public tool ledger events carry toolRequestId/);
+  assert.match(spec, /transient provider-tool-call-observation records without execution/);
 }
 
 function assertLoopbackConfig(source: string, label: string): void {
@@ -173,8 +176,8 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /interrupted/);
   assert.match(handoff, /explicit retry/);
   assert.match(handoff, /The broader user-defined composition product remains open/);
-  assert.match(handoff, /exact OpenAPI path set is sixteen routes/);
-  assert.doesNotMatch(handoff, /remains thirteen routes/);
+  assert.match(handoff, /exact OpenAPI path set is seventeen routes/);
+  assert.doesNotMatch(handoff, /remains sixteen routes/);
 
   const queue = read('docs/AI_TASK_QUEUE.md');
   assert.match(queue, /single-turn/);
@@ -183,17 +186,21 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(queue, /ADR 0016/);
   assert.match(queue, /ADR 0017/);
   assert.match(queue, /ADR 0018/);
-  assert.match(queue, /Provider adapter integration and execution boundary/);
+  assert.match(queue, /ADR 0019/);
+  assert.match(queue, /Streaming tool-call accumulation/);
   assert.match(queue, /Done in the provider tool-call parsing boundary slice/);
+  assert.match(queue, /Done in the explicit provider observation slice/);
   assert.match(queue, /This is the first next slice/);
   assert.match(queue, /short-lived private database ownership/);
 
   assert.match(read('README.md'), /real model/);
   assert.match(read('README.md'), /planned work/);
   assert.match(read('README.md'), /ADR 0018/);
+  assert.match(read('README.md'), /ADR 0019/);
   assert.match(read('README.zh-CN.md'), /真实模型/);
   assert.match(read('README.zh-CN.md'), /仍在规划中/);
   assert.match(read('README.zh-CN.md'), /ADR 0018/);
+  assert.match(read('README.zh-CN.md'), /ADR 0019/);
 });
 
 test('decision records separate accepted phase-1 direction from proposals', () => {
@@ -264,6 +271,10 @@ test('decision records separate accepted phase-1 direction from proposals', () =
     read(`${decisionsDir}/0018-provider-tool-call-parsing-boundary.md`),
     /^Status: \*\*accepted internal architecture direction; no public API contract changes\*\*$/m,
   );
+  assert.match(
+    read(`${decisionsDir}/0019-explicit-provider-tool-call-observation-boundary.md`),
+    /^Status: \*\*accepted product and public API direction; contracts are versioned in `docs\/openapi\.yaml`\*\*$/m,
+  );
 });
 
 test('the public contract remains loopback-only and records accepted task routes', () => {
@@ -315,6 +326,11 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
     'the runtime status must advertise the tool approval ledger',
   );
   assert.match(
+    read('src/http/routes/v1/runtime.ts'),
+    /provider-tool-call-observation/,
+    'the runtime status must advertise transient provider observations',
+  );
+  assert.match(
     read('src/runtime/tool-capability.ts'),
     /export class ToolCapabilityKernel/,
     'the bounded internal tool kernel must remain explicit',
@@ -348,22 +364,38 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
   assert.doesNotMatch(ledgerRoutes, /execute|executor|tool\.executed/i);
   const parserSource = read('src/runtime/provider-tool-call.ts');
   assert.match(parserSource, /export function parseOpenAiChatCompletionsToolCall/);
-  assert.doesNotMatch(parserSource, /tool-capability|ToolCapabilityKernel|task-service|task-store|fastify|provider-tool-call/);
+  assert.doesNotMatch(parserSource, /tool-capability|ToolCapabilityKernel|task-service|task-store|fastify/);
   assert.doesNotMatch(parserSource, /tool\.executed|tool\.replayed|tool\.denied|tool\.failed|tool\.requested/);
   assert.doesNotMatch(parserSource, /taskId|compositionNodeId|configurationRevisionId|approval|decision/);
+  const providerSource = read('src/runtime/magpie-provider.ts');
+  assert.match(providerSource, /provider-tool-call/, 'the provider must own ADR 0018 normalization');
+  assert.doesNotMatch(providerSource, /tool-capability|ToolCapabilityKernel|task-service|task-store/);
+  const observationRoute = read('src/http/routes/v1/provider-observations.ts');
+  assert.match(observationRoute, /provider-tool-call/, 'the observation route must use the pure parser');
+  assert.doesNotMatch(observationRoute, /tool-capability|ToolCapabilityKernel|task-service|task-store|createToolRequest|execute|executor|tool\.executed/i);
+  assert.match(observationRoute, /parseOpenAiChatCompletionsToolCall/);
+  assert.doesNotMatch(observationRoute, /SqliteTaskStore|readFileSync|writeFileSync/);
   for (const file of [
-    'src/runtime/magpie-provider.ts',
     'src/runtime/task-service.ts',
     'src/runtime/task-store.ts',
     'src/runtime/tool-capability.ts',
-    ...listTypeScriptFiles('src/http'),
+    'src/runtime/tool-request.ts',
+    ...listTypeScriptFiles('src/http').filter((candidate) =>
+      candidate !== 'src/http/routes/v1/provider-observations.ts'
+      && candidate !== 'src/http/routes/v1/runtime.ts',
+    ),
   ]) {
     assert.doesNotMatch(
       read(file),
-      /provider-tool-call/,
-      `${file} must not wire the ADR 0018 parser without an accepted adapter ADR`,
+      /provider-tool-call|parseOpenAiChatCompletionsToolCall/,
+      `${file} must not wire the ADR 0019 parser boundary outside the provider and observation route`,
     );
   }
+  assert.doesNotMatch(
+    read('src/runtime/task-service.ts'),
+    /tool_call_observation[\s\S]{0,400}createToolRequest|createToolRequest[\s\S]{0,400}tool_call_observation/,
+    'the live task path must not auto-create ledger requests from provider observations',
+  );
   const compositionSource = read('src/runtime/composition-document.ts');
   assert.match(
     compositionSource,
