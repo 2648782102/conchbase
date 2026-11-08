@@ -96,7 +96,7 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
     'attempt',
     'data',
   ]);
-  assertSchemaFields('ConfigurationDocument', [
+  assertSchemaFields('ConfigurationDocumentV1', [
     'schemaVersion',
     'name',
     'skills',
@@ -104,6 +104,25 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
     'mcpServers',
     'plugins',
     'secretRefs',
+    'metadata',
+  ]);
+  assertSchemaFields('ConfigurationDocumentV2', [
+    'schemaVersion',
+    'name',
+    'skills',
+    'policies',
+    'mcpServers',
+    'plugins',
+    'secretRefs',
+    'metadata',
+    'composition',
+  ]);
+  assertSchemaFields('ConfigurationComposition', [
+    'schemaVersion',
+    'name',
+    'nodes',
+    'links',
+    'entryNodeIds',
     'metadata',
   ]);
   assertSchemaFields('ConfigurationRevision', ['id', 'document', 'appliedAt']);
@@ -116,6 +135,9 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
   assert.match(spec, /enum: \[inline, file, registry, env\]/);
   assert.doesNotMatch(spec, /enum: \[[^\]]*\burl\b/);
   assert.match(spec, /ApplyConfigurationRequest:[\s\S]*?oneOf:/);
+  assert.match(spec, /^  version: 0\.5\.0$/m);
+  assert.match(spec, /compositionDocumentId/);
+  assert.match(spec, /compositionNodeId/);
 });
 
 test('exact response fixtures match the documented read-only JSON schema shapes', () => {

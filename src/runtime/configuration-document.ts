@@ -1,4 +1,10 @@
 import { createHash } from 'node:crypto';
+import {
+  CompositionValidationError,
+  parseCompositionDocument,
+  type CompositionLink,
+  type CompositionNode,
+} from './composition-document.js';
 
 export type ConfigurationRevisionId = string & { readonly __brand: 'ConfigurationRevisionId' };
 export type ConfigurationSource = 'inline' | 'file' | 'registry' | 'env';
@@ -9,8 +15,16 @@ export interface ConfigurationReference {
   readonly source: ConfigurationSource;
 }
 
-export interface ConfigurationDocument {
+export interface ConfigurationComposition {
   readonly schemaVersion: 1;
+  readonly name: string;
+  readonly nodes: readonly CompositionNode[];
+  readonly links: readonly CompositionLink[];
+  readonly entryNodeIds: readonly string[];
+  readonly metadata: Readonly<Record<string, string>>;
+}
+
+interface ConfigurationDocumentBase {
   readonly name: string;
   readonly skills: readonly ConfigurationReference[];
   readonly policies: readonly ConfigurationReference[];
@@ -19,6 +33,17 @@ export interface ConfigurationDocument {
   readonly secretRefs: readonly string[];
   readonly metadata: Readonly<Record<string, string>>;
 }
+
+export interface ConfigurationDocumentV1 extends ConfigurationDocumentBase {
+  readonly schemaVersion: 1;
+}
+
+export interface ConfigurationDocumentV2 extends ConfigurationDocumentBase {
+  readonly schemaVersion: 2;
+  readonly composition: ConfigurationComposition;
+}
+
+export type ConfigurationDocument = ConfigurationDocumentV1 | ConfigurationDocumentV2;
 
 export interface ConfigurationRevision {
   readonly id: ConfigurationRevisionId;
@@ -43,11 +68,11 @@ export class ConfigurationValidationError extends Error {
   constructor(details: readonly ValidationIssue[]) {
     super('Configuration document does not match the versioned contract.');
     this.name = 'ConfigurationValidationError';
-    this.details = details;
+    this.details = Object.freeze([...details]);
   }
 }
 
-export const BOOTSTRAP_CONFIGURATION_DOCUMENT: ConfigurationDocument = Object.freeze({
+export const BOOTSTRAP_CONFIGURATION_DOCUMENT: ConfigurationDocumentV1 = Object.freeze({
   schemaVersion: 1,
   name: 'phase-1-single-turn',
   skills: Object.freeze([]),
@@ -69,6 +94,14 @@ const SOURCES: readonly ConfigurationSource[] = [
   'env',
 ];
 const SECTIONS = ['skills', 'policies', 'mcpServers', 'plugins'] as const;
+const BASE_KEYS = [
+  'schemaVersion',
+  'name',
+  ...SECTIONS,
+  'secretRefs',
+  'metadata',
+] as const;
+const V2_KEYS = [...BASE_KEYS, 'composition'] as const;
 const ID_PATTERN = /^[a-z][a-z0-9_.-]{0,127}$/;
 const MAX_DOCUMENT_JSON_LENGTH = 20_000;
 const MAX_NAME_LENGTH = 120;
@@ -235,6 +268,72 @@ function validateMetadata(
   return Object.freeze(Object.fromEntries(Object.entries(result).sort(([left], [right]) => left.localeCompare(right))));
 }
 
+interface BaseConfiguration {
+  readonly name: string | null;
+  readonly sections: Pick<
+    ConfigurationDocumentBase,
+    'skills' | 'policies' | 'mcpServers' | 'plugins'
+  >;
+  readonly secretRefs: readonly string[];
+  readonly metadata: Readonly<Record<string, string>>;
+}
+
+function parseBaseConfiguration(
+  candidate: Record<string, unknown>,
+  issues: ValidationIssue[],
+): BaseConfiguration {
+  const name = isBoundedString(candidate.name, MAX_NAME_LENGTH)
+    ? candidate.name
+    : null;
+  if (name === null) {
+    issues.push({ path: 'name', reason: 'must be a bounded non-empty string' });
+  }
+  const sections = Object.fromEntries(SECTIONS.map((section) => [
+    section,
+    validateSection(candidate[section], section, issues),
+  ])) as unknown as BaseConfiguration['sections'];
+  return {
+    name,
+    sections,
+    secretRefs: validateSecretRefs(candidate.secretRefs, issues),
+    metadata: validateMetadata(candidate.metadata, issues),
+  };
+}
+
+function prefixCompositionIssues(error: CompositionValidationError): readonly ValidationIssue[] {
+  return error.details.map((issue) => ({
+    path: issue.path === '$' || issue.path.length === 0
+      ? 'composition'
+      : `composition.${issue.path}`,
+    reason: issue.reason,
+  }));
+}
+
+function parsePublicComposition(
+  value: unknown,
+  issues: ValidationIssue[],
+): ConfigurationComposition | null {
+  if (!isRecord(value)) {
+    issues.push({ path: 'composition', reason: 'must be an object' });
+    return null;
+  }
+  try {
+    const parsed = parseCompositionDocument(value);
+    return Object.freeze({
+      schemaVersion: 1,
+      name: parsed.name,
+      nodes: parsed.nodes,
+      links: parsed.links,
+      entryNodeIds: parsed.entryNodeIds,
+      metadata: parsed.metadata,
+    });
+  } catch (cause) {
+    if (!(cause instanceof CompositionValidationError)) throw cause;
+    issues.push(...prefixCompositionIssues(cause));
+    return null;
+  }
+}
+
 export function parseConfigurationDocument(input: unknown): ConfigurationDocument {
   let candidate = input;
   if (typeof candidate === 'string') {
@@ -252,44 +351,58 @@ export function parseConfigurationDocument(input: unknown): ConfigurationDocumen
   if (!isRecord(candidate)) {
     throw new ConfigurationValidationError([{ path: '$', reason: 'must be an object' }]);
   }
-  const acceptedKeys = ['schemaVersion', 'name', ...SECTIONS, 'secretRefs', 'metadata'];
+  if (candidate.schemaVersion !== 1 && candidate.schemaVersion !== 2) {
+    throw new ConfigurationValidationError([
+      { path: 'schemaVersion', reason: 'must be the accepted version 1 or 2' },
+    ]);
+  }
+  const acceptedKeys = candidate.schemaVersion === 2 ? V2_KEYS : BASE_KEYS;
   if (!hasOnlyKeys(candidate, acceptedKeys)) {
     throw new ConfigurationValidationError([{ path: '$', reason: 'has unknown fields' }]);
   }
-  if (candidate.schemaVersion !== 1) {
-    throw new ConfigurationValidationError([
-      { path: 'schemaVersion', reason: 'must be the accepted version 1' },
-    ]);
-  }
-  if (!isBoundedString(candidate.name, MAX_NAME_LENGTH)) {
-    throw new ConfigurationValidationError([
-      { path: 'name', reason: 'must be a bounded non-empty string' },
-    ]);
-  }
 
   const issues: ValidationIssue[] = [];
-  const sections = Object.fromEntries(SECTIONS.map((section) => [
-    section,
-    validateSection(candidate[section], section, issues),
-  ])) as unknown as Pick<
-    ConfigurationDocument,
-    'skills' | 'policies' | 'mcpServers' | 'plugins'
-  >;
-  const secretRefs = validateSecretRefs(candidate.secretRefs, issues);
-  const metadata = validateMetadata(candidate.metadata, issues);
-  if (issues.length > 0) throw new ConfigurationValidationError(Object.freeze(issues));
+  const base = parseBaseConfiguration(candidate, issues);
+  const composition = candidate.schemaVersion === 2
+    ? parsePublicComposition(candidate.composition, issues)
+    : null;
+  if (base.name === null || issues.length > 0) {
+    throw new ConfigurationValidationError(Object.freeze(issues));
+  }
+
+  if (candidate.schemaVersion === 2) {
+    if (composition === null) {
+      throw new ConfigurationValidationError([
+        { path: 'composition', reason: 'must be a valid composition section' },
+      ]);
+    }
+    return Object.freeze({
+      schemaVersion: 2,
+      name: base.name,
+      ...base.sections,
+      secretRefs: base.secretRefs,
+      metadata: base.metadata,
+      composition,
+    });
+  }
 
   return Object.freeze({
     schemaVersion: 1,
-    name: candidate.name,
-    ...sections,
-    secretRefs,
-    metadata,
+    name: base.name,
+    ...base.sections,
+    secretRefs: base.secretRefs,
+    metadata: base.metadata,
   });
 }
 
+export function isConfigurationDocumentV2(
+  document: ConfigurationDocument,
+): document is ConfigurationDocumentV2 {
+  return document.schemaVersion === 2;
+}
+
 function canonicalDocument(document: ConfigurationDocument): string {
-  return JSON.stringify({
+  const base = {
     schemaVersion: document.schemaVersion,
     name: document.name,
     skills: document.skills,
@@ -298,7 +411,10 @@ function canonicalDocument(document: ConfigurationDocument): string {
     plugins: document.plugins,
     secretRefs: document.secretRefs,
     metadata: document.metadata,
-  });
+  };
+  return JSON.stringify(isConfigurationDocumentV2(document)
+    ? { ...base, composition: document.composition }
+    : base);
 }
 
 export function configurationRevisionId(document: ConfigurationDocument): ConfigurationRevisionId {
@@ -308,8 +424,11 @@ export function configurationRevisionId(document: ConfigurationDocument): Config
       { path: '$', reason: 'canonical document exceeds the accepted bound' },
     ]);
   }
+  const versionPrefix = isConfigurationDocumentV2(document)
+    ? 'conchbase-configuration-document-v2\0'
+    : 'conchbase-configuration-document-v1\0';
   const hash = createHash('sha256')
-    .update('conchbase-configuration-document-v1\0')
+    .update(versionPrefix)
     .update(canonical)
     .digest('hex')
     .slice(0, 24);

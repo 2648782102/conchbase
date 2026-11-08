@@ -28,6 +28,12 @@ export type TaskEventType =
   | 'task.cancellation_requested'
   | 'task.cancelled'
   | 'task.interrupted'
+  | 'composition.started'
+  | 'composition.node_started'
+  | 'composition.node_completed'
+  | 'composition.node_cancelled'
+  | 'composition.completed'
+  | 'composition.cancelled'
   | 'tool.requested'
   | 'tool.approval_required'
   | 'tool.approved'
@@ -102,6 +108,15 @@ export const TASK_TRANSITIONS: Readonly<Record<TaskEventType, TaskTransition>> =
   },
   'task.cancelled': { state: 'cancelled', eventType: 'task.cancelled' },
   'task.interrupted': { state: 'interrupted', eventType: 'task.interrupted' },
+  'composition.started': { state: 'running', eventType: 'composition.started' },
+  'composition.node_started': { state: 'running', eventType: 'composition.node_started' },
+  'composition.node_completed': { state: 'running', eventType: 'composition.node_completed' },
+  'composition.node_cancelled': {
+    state: 'cancelling',
+    eventType: 'composition.node_cancelled',
+  },
+  'composition.completed': { state: 'running', eventType: 'composition.completed' },
+  'composition.cancelled': { state: 'cancelling', eventType: 'composition.cancelled' },
   'tool.requested': { state: 'running', eventType: 'tool.requested' },
   'tool.approval_required': { state: 'waiting_approval', eventType: 'tool.approval_required' },
   'tool.approved': { state: 'running', eventType: 'tool.approved' },

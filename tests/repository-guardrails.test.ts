@@ -85,7 +85,7 @@ function assertAcceptedOpenApi(spec: string, label: string): void {
   assert.doesNotMatch(spec, nonLoopbackAddress, `${label} must not bind beyond loopback`);
   assert.match(spec, /requestBody:/, `${label} must document the accepted task request`);
   assert.match(spec, /interrupted/, `${label} must document interrupted tasks`);
-  assert.match(spec, /^  version: 0\.4\.0$/m, `${label} must record the configuration contract version`);
+  assert.match(spec, /^  version: 0\.5\.0$/m, `${label} must record the composition contract version`);
   assert.match(spec, /partialOutput/, `${label} must document partial output`);
   assert.match(spec, /ConfigurationRevision/, `${label} must document configuration revisions`);
 }
@@ -164,13 +164,15 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /Phase 1 connects a real model through Magpie/);
   assert.match(handoff, /interrupted/);
   assert.match(handoff, /explicit retry/);
-  assert.match(handoff, /does not implement user-defined agent composition/);
+  assert.match(handoff, /The broader user-defined composition product remains open/);
 
   const queue = read('docs/AI_TASK_QUEUE.md');
   assert.match(queue, /single-turn/);
   assert.match(queue, /topology-neutral/);
   assert.match(queue, /ADR 0015/);
-  assert.match(queue, /Composition execution and public schema slice/);
+  assert.match(queue, /ADR 0016/);
+  assert.match(queue, /Public tool contract slice/);
+  assert.match(queue, /first/);
   assert.match(queue, /short-lived private database ownership/);
 
   assert.match(read('README.md'), /real model/);
@@ -231,6 +233,14 @@ test('decision records separate accepted phase-1 direction from proposals', () =
     read(`${decisionsDir}/0005-user-defined-agent-topology-proposal.md`),
     /ADR 0015.*internal, topology-neutral identity kernel/s,
   );
+  assert.match(
+    read(`${decisionsDir}/0016-composition-execution-and-public-schema.md`),
+    /^Status: \*\*accepted product and public API direction/m,
+  );
+  assert.match(
+    read(`${decisionsDir}/0005-user-defined-agent-topology-proposal.md`),
+    /ADR 0016.*bounded public graph representation/s,
+  );
 });
 
 test('the public contract remains loopback-only and records accepted task routes', () => {
@@ -273,8 +283,8 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
   );
   assert.match(
     read('src/http/routes/v1/runtime.ts'),
-    /streaming-output/,
-    'the runtime status must advertise streaming output',
+    /composition-execution/,
+    'the runtime status must advertise composition execution',
   );
   assert.match(
     read('src/runtime/tool-capability.ts'),
@@ -291,6 +301,11 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
     /tool-capability/,
     'the phase-1 HTTP task path must not execute model-requested tools',
   );
+  assert.match(
+    read('src/runtime/task-service.ts'),
+    /composition-execution/,
+    'the runtime task service must dispatch accepted composition execution',
+  );
   const compositionSource = read('src/runtime/composition-document.ts');
   assert.match(
     compositionSource,
@@ -303,7 +318,17 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
   assert.doesNotMatch(
     read('src/runtime/task-service.ts'),
     /composition-document/,
-    'the phase-1 HTTP task path must not execute composition graphs',
+    'the task service must use the dedicated composition execution boundary',
+  );
+  assert.match(
+    read('src/runtime/configuration-document.ts'),
+    /composition-document/,
+    'the public versioned configuration validator must own composition validation',
+  );
+  assert.match(
+    read('src/runtime/composition-execution.ts'),
+    /composition-document/,
+    'the dedicated composition executor must own graph identity',
   );
   for (const file of listTypeScriptFiles('src/http')) {
     assert.doesNotMatch(
@@ -317,6 +342,21 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
       `${file} must not expose the internal composition kernel`,
     );
   }
+  for (const file of listTypeScriptFiles('src/runtime').filter(
+    (candidate) => candidate !== 'src/runtime/configuration-document.ts'
+      && candidate !== 'src/runtime/composition-document.ts'
+      && candidate !== 'src/runtime/composition-execution.ts',
+  )) {
+    assert.doesNotMatch(
+      read(file),
+      /composition-document/,
+      `${file} must not import the internal composition identity kernel directly`,
+    );
+  }
+  const executionSource = read('src/runtime/composition-execution.ts');
+  assert.doesNotMatch(executionSource, forbiddenRuntimeImport);
+  assert.doesNotMatch(executionSource, /tool-capability|ToolCapabilityKernel/);
+  assert.doesNotMatch(executionSource, /planner|researcher|reviewer|orchestrator|three[- ]layer|layer[_-]?[123]/i);
 });
 
 test('dependencies do not silently accept provider or storage SDKs', () => {

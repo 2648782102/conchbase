@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Conchbase Runtime API
-  version: 0.4.0
-  description: Local, versioned API for Conchbase streaming model tasks, ordered progress events, Magpie model discovery, and configuration revisions.
+  version: 0.5.0
+  description: Local, versioned API for Conchbase streaming model tasks, bounded composition execution, ordered progress events, Magpie model discovery, and versioned configuration revisions.
 servers:
   - url: http://127.0.0.1:4318
     description: Local runtime default; loopback only.
@@ -386,6 +386,10 @@ components:
       items:
         $ref: '#/components/schemas/ConfigurationReference'
     ConfigurationDocument:
+      oneOf:
+        - $ref: '#/components/schemas/ConfigurationDocumentV1'
+        - $ref: '#/components/schemas/ConfigurationDocumentV2'
+    ConfigurationDocumentV1:
       type: object
       additionalProperties: false
       required: [schemaVersion, name, skills, policies, mcpServers, plugins, secretRefs, metadata]
@@ -393,9 +397,7 @@ components:
         schemaVersion:
           const: 1
         name:
-          type: string
-          minLength: 1
-          maxLength: 120
+          $ref: '#/components/schemas/BoundedConfigurationName'
         skills:
           $ref: '#/components/schemas/ConfigurationReferenceList'
         policies:
@@ -405,17 +407,106 @@ components:
         plugins:
           $ref: '#/components/schemas/ConfigurationReferenceList'
         secretRefs:
-          type: array
-          maxItems: 32
-          items:
-            type: string
-            maxLength: 200
+          $ref: '#/components/schemas/ConfigurationSecretRefs'
         metadata:
-          type: object
-          maxProperties: 32
-          additionalProperties:
-            type: string
-            maxLength: 500
+          $ref: '#/components/schemas/ConfigurationMetadata'
+    ConfigurationDocumentV2:
+      type: object
+      additionalProperties: false
+      required: [schemaVersion, name, skills, policies, mcpServers, plugins, secretRefs, metadata, composition]
+      properties:
+        schemaVersion:
+          const: 2
+        name:
+          $ref: '#/components/schemas/BoundedConfigurationName'
+        skills:
+          $ref: '#/components/schemas/ConfigurationReferenceList'
+        policies:
+          $ref: '#/components/schemas/ConfigurationReferenceList'
+        mcpServers:
+          $ref: '#/components/schemas/ConfigurationReferenceList'
+        plugins:
+          $ref: '#/components/schemas/ConfigurationReferenceList'
+        secretRefs:
+          $ref: '#/components/schemas/ConfigurationSecretRefs'
+        metadata:
+          $ref: '#/components/schemas/ConfigurationMetadata'
+        composition:
+          $ref: '#/components/schemas/ConfigurationComposition'
+    BoundedConfigurationName:
+      type: string
+      minLength: 1
+      maxLength: 120
+    ConfigurationSecretRefs:
+      type: array
+      maxItems: 32
+      items:
+        type: string
+        maxLength: 200
+    ConfigurationMetadata:
+      type: object
+      maxProperties: 32
+      additionalProperties:
+        type: string
+        maxLength: 500
+    ConfigurationComposition:
+      type: object
+      additionalProperties: false
+      required: [schemaVersion, name, nodes, links, entryNodeIds, metadata]
+      properties:
+        schemaVersion:
+          const: 1
+        name:
+          $ref: '#/components/schemas/BoundedConfigurationName'
+        nodes:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items:
+            $ref: '#/components/schemas/CompositionNode'
+        links:
+          type: array
+          maxItems: 256
+          items:
+            $ref: '#/components/schemas/CompositionLink'
+        entryNodeIds:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items:
+            $ref: '#/components/schemas/CompositionNodeId'
+        metadata:
+          $ref: '#/components/schemas/ConfigurationMetadata'
+    CompositionNode:
+      type: object
+      additionalProperties: false
+      required: [id, label]
+      properties:
+        id:
+          $ref: '#/components/schemas/CompositionNodeId'
+        label:
+          type: string
+          minLength: 1
+          maxLength: 200
+    CompositionLink:
+      type: object
+      additionalProperties: false
+      required: [id, from, to, label]
+      properties:
+        id:
+          $ref: '#/components/schemas/CompositionNodeId'
+        from:
+          $ref: '#/components/schemas/CompositionNodeId'
+        to:
+          $ref: '#/components/schemas/CompositionNodeId'
+        label:
+          type: string
+          minLength: 1
+          maxLength: 200
+    CompositionNodeId:
+      type: string
+      minLength: 1
+      maxLength: 128
     ConfigurationRevision:
       type: object
       additionalProperties: false
@@ -600,6 +691,10 @@ components:
           minimum: 1
         data:
           type: object
+          description: >-
+            Bounded scalar event data. Composition events carry compositionDocumentId,
+            compositionNodeId, nodeIndex, nodeCount, completedNodeCount, and terminalNodeIds
+            as documented by ADR 0016.
           additionalProperties:
             type: [string, number, boolean, 'null']
     EventList:

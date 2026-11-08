@@ -8,11 +8,11 @@
 
 ## 当前状态
 
-第一阶段通过本机 [Magpie](https://usemagpie.ai/docs/integrate) 网关接入真实流式模型调用。任务状态、正文增量、最终输出、错误和事件存储在本地 SQLite 中。CLI 与寄居蟹都能创建、查看、取消和重试任务。进程重启会把未完成任务标记为 `interrupted`；显式重试生成新的 attempt，并保留原事件。运行时不会静默续跑中断中的模型请求。
+`schemaVersion: 1` 任务通过本机 [Magpie](https://usemagpie.ai/docs/integrate) 网关接入一轮真实流式模型调用；`schemaVersion: 2` 任务执行有边界的确定性组合遍历，带节点事件且不调用模型或工具。任务状态、进度、最终输出、错误和事件存储在本地 SQLite 中。CLI 与寄居蟹都能创建、查看、取消和重试任务。进程重启会把未完成任务标记为 `interrupted`；显式重试生成新的 attempt，并保留原事件。运行时不会静默续跑中断中的模型请求或组合。
 
 第一阶段的 SQLite 数据库同一时间只允许一个进程持有。第二个 CLI 或服务实例会快速失败，避免把正在运行的任务误判为中断。`conchbase models` 直接读取 Magpie，不打开数据库；当 `conchbase serve` 正在运行时，不要执行其他读写任务状态的 CLI 命令，并发查看任务应使用 Runtime API。这是开发期的单实例边界，不代表已支持生产级多进程，详见 [ADR 0011](docs/decisions/0011-phase-one-database-instance-ownership.md)。
 
-仓库内已有一个仅供测试的 fixture 工具能力内核，用于验证精确审批、按 attempt 幂等和确定性审计；它不是公开工具接口，也不能运行真实宿主工具。内部组合身份内核可校验任意拓扑中立的有向无环图，并为确定性 fixture 生成 `cmp_` 身份；它没有公开接口和执行语义。Conchbase `0.4.0` 还实现了版本化配置文档 API，支持校验、不可变修订历史、应用和回滚。其中的引用只是不透明数据，不会安装 Skills/MCP/插件、解析密钥、授予工具或定义 Agent 拓扑。模型发起的工具执行、组合执行与公开 schema、能力生命周期、可移植 profile 文件、生产审批、公开工具接口、SSE 传输、推理内容展示、认证和远程访问仍在规划中。第一阶段的一轮执行只是验证主链路的实现边界，不是内建 Agent 拓扑；用户自定义组合仍保持拓扑中立，详见 [ADR 0005](docs/decisions/0005-user-defined-agent-topology-proposal.md)、[ADR 0010](docs/decisions/0010-first-real-model-slice.md)、[ADR 0012](docs/decisions/0012-streaming-output-progress.md)、[ADR 0013](docs/decisions/0013-bounded-tool-capability-kernel.md)、[ADR 0014](docs/decisions/0014-versioned-configuration-api.md) 和 [ADR 0015](docs/decisions/0015-composition-identity-kernel.md)。
+仓库内已有一个仅供测试的 fixture 工具能力内核，用于验证精确审批、按 attempt 幂等和确定性审计；它不是公开工具接口，也不能运行真实宿主工具。Conchbase `0.5.0` 实现了 `schemaVersion: 1` 与 `schemaVersion: 2` 两版配置文档。v1 任务执行一轮 Magpie 流式模型调用；v2 任务执行有边界、拓扑中立的确定性组合遍历，记录节点事件并传播取消，不调用模型也不执行工具。配置引用仍是不透明数据，不会安装 Skills/MCP/插件、解析密钥、授予工具或定义固定拓扑。模型驱动节点工作、委派、并发、模型发起的工具执行、能力生命周期、可移植 profile 文件、生产审批、公开工具接口、SSE 传输、推理内容展示、认证和远程访问仍在规划中。两种当前任务模式都不是内建 Agent 拓扑；用户自定义组合仍保持拓扑中立，详见 [ADR 0005](docs/decisions/0005-user-defined-agent-topology-proposal.md)、[ADR 0010](docs/decisions/0010-first-real-model-slice.md)、[ADR 0012](docs/decisions/0012-streaming-output-progress.md)、[ADR 0013](docs/decisions/0013-bounded-tool-capability-kernel.md)、[ADR 0014](docs/decisions/0014-versioned-configuration-api.md)、[ADR 0015](docs/decisions/0015-composition-identity-kernel.md) 和 [ADR 0016](docs/decisions/0016-composition-execution-and-public-schema.md)。
 
 确定性的仓库护栏测试把已接受的契约和 AI-first 边界固定为可执行检查。CI 使用假模型响应和临时数据库，不调用真实模型。
 
@@ -58,15 +58,17 @@ curl -X POST http://127.0.0.1:4318/v1/tasks \
 - Magpie 是适配器背后的可替换本机模型来源，其返回内容是未受信任的数据。
 - 任务与有序事件通过私有的 `TaskStore` 原子提交；界面不读取数据库。
 - 有边界的正文增量会生成持久的 `task.output_delta` 事件和 `partialOutput` 快照；最终输出仍以 `output` 为准。
+- 组合节点进度会生成持久组合事件，并携带固定的 `cmp_` 身份与配置修订。
 - 模型目录读取不依赖数据库；运行时数据库由单一进程持有。
 - 每次任务 attempt 固定一个内容寻址的配置修订。
+- v1/v2 版本化配置联合保留旧文档兼容性，同时支持拓扑中立的组合数据。
 - Skill 只提供指令，不授予工具权限；第一阶段会拒绝模型发起的工具调用。
 
 架构、技术栈、路线图和验证计划见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/TECH_STACK.md](docs/TECH_STACK.md)、[docs/ROADMAP.md](docs/ROADMAP.md) 和 [docs/VALIDATION_PLAN.md](docs/VALIDATION_PLAN.md)。配套控制台：[Pagurus 寄居蟹](https://github.com/2648782102/pagurus)。English: [README.md](README.md).
 
 ## 面向 AI 开发
 
-本项目主要由 AI 编码 Agent 开发，代码结构、说明和验证流程优先服务于 AI 快速理解、完成边界清楚的改动并确定性验证；不把后续由人类接手作为产品要求。先读根目录 [`AGENTS.md`](AGENTS.md)，再读 [AI 交接说明](docs/AI_HANDOFF.md)、[ADR 0010](docs/decisions/0010-first-real-model-slice.md)、[ADR 0011](docs/decisions/0011-phase-one-database-instance-ownership.md)、[ADR 0012](docs/decisions/0012-streaming-output-progress.md)、[ADR 0013](docs/decisions/0013-bounded-tool-capability-kernel.md)、[ADR 0014](docs/decisions/0014-versioned-configuration-api.md)、[ADR 0015](docs/decisions/0015-composition-identity-kernel.md)、[开发约定](docs/AI_DEVELOPMENT.md) 和 [任务队列](docs/AI_TASK_QUEUE.md)。
+本项目主要由 AI 编码 Agent 开发，代码结构、说明和验证流程优先服务于 AI 快速理解、完成边界清楚的改动并确定性验证；不把后续由人类接手作为产品要求。先读根目录 [`AGENTS.md`](AGENTS.md)，再读 [AI 交接说明](docs/AI_HANDOFF.md)、[ADR 0010](docs/decisions/0010-first-real-model-slice.md)、[ADR 0011](docs/decisions/0011-phase-one-database-instance-ownership.md)、[ADR 0012](docs/decisions/0012-streaming-output-progress.md)、[ADR 0013](docs/decisions/0013-bounded-tool-capability-kernel.md)、[ADR 0014](docs/decisions/0014-versioned-configuration-api.md)、[ADR 0015](docs/decisions/0015-composition-identity-kernel.md)、[ADR 0016](docs/decisions/0016-composition-execution-and-public-schema.md)、[开发约定](docs/AI_DEVELOPMENT.md) 和 [任务队列](docs/AI_TASK_QUEUE.md)。
 
 代码改动后运行 `npm run check`、`npm test` 和 `npm run build`。
 

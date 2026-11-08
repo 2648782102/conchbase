@@ -53,6 +53,7 @@ export interface TaskStore {
   ): TaskSnapshot;
   resetTask(taskId: string, attempt: number, event: TaskEventInput): TaskSnapshot;
   recordOutputDelta(taskId: string, event: TaskEventInput, partialOutput: string): TaskSnapshot;
+  recordEvent(taskId: string, event: TaskEventInput): TaskSnapshot;
   listEvents(afterEventId: string | null): readonly RuntimeEvent[];
   getConfigurationState(): ConfigurationState;
   getConfigurationRevision(id: string): ConfigurationRevision | null;
@@ -418,6 +419,20 @@ export class SqliteTaskStore implements TaskStore {
       if (!current) throw new TaskNotFoundError();
       this.database.prepare('UPDATE tasks SET partial_output = ? WHERE id = ?')
         .run(partialOutput, taskId);
+      this.insertEvent(event);
+      this.database.exec('COMMIT');
+    } catch (cause) {
+      this.database.exec('ROLLBACK');
+      throw cause;
+    }
+    return this.getTask(taskId)!;
+  }
+
+  recordEvent(taskId: string, event: TaskEventInput): TaskSnapshot {
+    try {
+      this.database.exec('BEGIN IMMEDIATE');
+      const current = this.getTask(taskId);
+      if (!current) throw new TaskNotFoundError();
       this.insertEvent(event);
       this.database.exec('COMMIT');
     } catch (cause) {

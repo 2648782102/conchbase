@@ -32,7 +32,7 @@ Status: research notes observed on 2026-11-07 (Asia/Shanghai). This is a time-bo
 - User-defined agent composition is a product direction, not a fixed hierarchy. A layered multi-role arrangement is one illustrative configuration; the runtime must not hardcode layer counts, role names, or coordination patterns. See [ADR 0005](decisions/0005-user-defined-agent-topology-proposal.md).
 - Provider adapters, Skills, plugins, MCP servers, and memory/context services are replaceable inputs. None owns durable task state, policy decisions, or the public API. See [ADR 0006](decisions/0006-provider-adapter-capability-boundary-proposal.md) and [ADR 0007](decisions/0007-skill-plugin-mcp-configuration-proposal.md).
 - Every tool call remains behind the runtime policy and approval path. A Skill does not grant tool permissions; `allowed-tools` is not authority.
-- Loopback-only binding, no authentication/pairing design, and no writable management route remain current repository facts.
+- Loopback-only binding, no authentication/pairing design, and no remote management surface remain current repository facts. The accepted local configuration write routes are documented in `docs/openapi.yaml`.
 
 ## Do not infer
 
@@ -53,3 +53,5 @@ Status: research notes observed on 2026-11-07 (Asia/Shanghai). This is a time-bo
 ## Later product direction (2026-11-07)
 
 This snapshot remains dated research. [ADR 0010](decisions/0010-first-real-model-slice.md) now records accepted phase-1 direction for a real-model task slice, durable events, explicit retry, and a narrow Magpie provider adapter. It does not retroactively accept the broader proposal contracts or add a GitHub Trending observation.
+
+[ADR 0016](decisions/0016-composition-execution-and-public-schema.md) later accepts the bounded public composition configuration section and deterministic execution contract. The reference snapshot remains product-direction evidence, not an execution or security design.

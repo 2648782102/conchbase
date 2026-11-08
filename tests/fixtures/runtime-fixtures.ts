@@ -24,7 +24,7 @@ export const HEALTH_RESPONSE_FIXTURE: HealthResponseFixture = Object.freeze({
 
 export const RUNTIME_RESPONSE_FIXTURE: RuntimeResponseFixture = Object.freeze({
   name: 'Conchbase',
-  version: '0.4.0',
+  version: '0.5.0',
   state: 'ready',
   capabilities: Object.freeze([] as string[]),
 });

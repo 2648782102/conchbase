@@ -4,7 +4,7 @@ Status: **proposed, not accepted as a public contract**
 
 Product direction: **accepted as intent, not implemented**. Conchbase should let a user define a highly customizable agent. A layered arrangement with several specialized roles is only an illustrative example. It is not a built-in structure, default template, preferred topology, or schema.
 
-Phase-1 boundary: [ADR 0010](0010-first-real-model-slice.md) implements a single-turn execution unit for real-model validation. This is an implementation slice, not a canonical single-agent topology and not a rejection of future user-authored compositions. [ADR 0015](0015-composition-identity-kernel.md) later accepts an internal, topology-neutral identity kernel for deterministic graph fixtures; it does not accept a public composition schema, execution semantics, or capability grants. This record remains a proposal for the broader public contract.
+Phase-1 boundary: [ADR 0010](0010-first-real-model-slice.md) implements a single-turn execution unit for real-model validation. This is an implementation slice, not a canonical single-agent topology and not a rejection of future user-authored compositions. [ADR 0015](0015-composition-identity-kernel.md) later accepts an internal, topology-neutral identity kernel for deterministic graph fixtures. [ADR 0016](0016-composition-execution-and-public-schema.md) accepts a bounded public graph representation, deterministic execution order, node events, and cancellation propagation; it does not accept model-driven node work, delegation, concurrency, role registries, or general coordination semantics. This record remains a proposal for the broader public contract.
 
 ## Context
 
@@ -46,7 +46,7 @@ Pagurus may eventually edit user-authored compositions through the versioned Run
 
 ## Validation
 
-No composition behavior is implemented or tested yet. Future deterministic validation must include:
+The bounded deterministic executor is implemented and tested in ADR 0016. Future general-composition validation must include:
 
 - a single-agent input and at least two distinct user-authored multi-role inputs, with no assertion that any layer count or role name is canonical;
 - a validator that rejects malformed composition input without executing a model or tool;

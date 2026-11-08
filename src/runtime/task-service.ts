@@ -1,10 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import {
   ConfigurationValidationError,
+  isConfigurationDocumentV2,
   parseConfigurationDocument,
   type ConfigurationDocument,
+  type ConfigurationDocumentV2,
   type ConfigurationRevision,
 } from './configuration-document.js';
+import {
+  compositionOutput,
+  planCompositionExecution,
+  type CompositionExecutionPlan,
+} from './composition-execution.js';
 import {
   MagpieModelCatalog,
   type ModelCatalogClient,
@@ -227,13 +234,6 @@ export class TaskService {
   }
 
   private async execute(task: TaskSnapshot, signal: AbortSignal): Promise<void> {
-    const provider = new OpenAiChatCompletionsProvider({
-      baseUrl: this.config.magpieBaseUrl,
-      model: task.model,
-      ...(this.config.magpieAppKey ? { appKey: this.config.magpieAppKey } : {}),
-      ...(this.config.fetch ? { fetch: this.config.fetch } : {}),
-    });
-
     try {
       if (signal.aborted) {
         this.finishCancelled(task);
@@ -244,49 +244,17 @@ export class TaskService {
         'running',
         this.eventInput(task, 'task.started', 'running', task.attempt),
       );
-
-      let partialOutput = '';
-      let deltaIndex = 0;
-      const turn = await provider.streamTurn({
-        taskId: task.id,
-        prompt: task.prompt,
-        turnIndex: 0,
-        signal,
-        onOutputDelta: (delta) => {
-          partialOutput += delta;
-          const event = this.eventInput(
-            task,
-            'task.output_delta',
-            'running',
-            task.attempt,
-          );
-          this.store.recordOutputDelta(task.id, {
-            ...event,
-            data: {
-              delta,
-              index: deltaIndex,
-              outputLength: partialOutput.length,
-            },
-          }, partialOutput);
-          deltaIndex += 1;
-        },
-      });
-      if (signal.aborted) {
-        this.finishCancelled(task);
-        return;
+      const revision = this.store.getConfigurationRevision(task.configurationRevisionId);
+      if (!revision) throw new Error('Pinned configuration revision is missing.');
+      if (isConfigurationDocumentV2(revision.document)) {
+        await this.executeComposition(task, revision.document, signal);
+      } else {
+        await this.executeSingleTurn(task, signal);
       }
-      if (turn.kind !== 'final') {
-        throw new Error('Unsupported model turn.');
-      }
-      this.store.transitionTask(
-        task.id,
-        'succeeded',
-        this.eventInput(task, 'task.completed', 'succeeded', task.attempt),
-        { output: turn.output },
-      );
     } catch (cause) {
       if (signal.aborted) {
-        this.finishCancelled(task);
+        const current = this.store.getTask(task.id);
+        if (current && !isTerminalTaskState(current.state)) this.finishCancelled(task);
         return;
       }
       const message = cause instanceof Error ? cause.message : 'Task failed.';
@@ -299,14 +267,166 @@ export class TaskService {
     }
   }
 
-  private finishCancelled(task: TaskSnapshot): void {
+  private async executeSingleTurn(task: TaskSnapshot, signal: AbortSignal): Promise<void> {
+    const provider = new OpenAiChatCompletionsProvider({
+      baseUrl: this.config.magpieBaseUrl,
+      model: task.model,
+      ...(this.config.magpieAppKey ? { appKey: this.config.magpieAppKey } : {}),
+      ...(this.config.fetch ? { fetch: this.config.fetch } : {}),
+    });
+
+    let partialOutput = '';
+    let deltaIndex = 0;
+    const turn = await provider.streamTurn({
+      taskId: task.id,
+      prompt: task.prompt,
+      turnIndex: 0,
+      signal,
+      onOutputDelta: (delta) => {
+        partialOutput += delta;
+        const event = this.eventInput(
+          task,
+          'task.output_delta',
+          'running',
+          task.attempt,
+        );
+        this.store.recordOutputDelta(task.id, {
+          ...event,
+          data: {
+            delta,
+            index: deltaIndex,
+            outputLength: partialOutput.length,
+          },
+        }, partialOutput);
+        deltaIndex += 1;
+      },
+    });
+    if (signal.aborted) {
+      this.finishCancelled(task);
+      return;
+    }
+    if (turn.kind !== 'final') {
+      throw new Error('Unsupported model turn.');
+    }
+    this.store.transitionTask(
+      task.id,
+      'succeeded',
+      this.eventInput(task, 'task.completed', 'succeeded', task.attempt),
+      { output: turn.output },
+    );
+  }
+
+  private async executeComposition(
+    task: TaskSnapshot,
+    document: ConfigurationDocumentV2,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const plan = planCompositionExecution(document);
+    const baseData = {
+      compositionDocumentId: plan.compositionDocumentId,
+      nodeCount: plan.nodeCount,
+    };
+    this.recordCompositionEvent(task, 'composition.started', 'running', {
+      ...baseData,
+      terminalNodeIds: plan.terminalNodeIds.join(','),
+    });
+
+    let completedNodeCount = 0;
+    for (let nodeIndex = 0; nodeIndex < plan.nodeIds.length; nodeIndex += 1) {
+      const nodeId = plan.nodeIds[nodeIndex];
+      if (nodeId === undefined) throw new Error('Composition node is missing.');
+      const nodeData = {
+        ...baseData,
+        compositionNodeId: nodeId,
+        nodeIndex,
+      };
+      if (signal.aborted) {
+        if (!this.beginCancellation(task)) return;
+        this.recordCompositionEvent(task, 'composition.node_cancelled', 'cancelling', nodeData);
+        this.finishCancelledComposition(task, plan, completedNodeCount);
+        this.finishCancelled(task);
+        return;
+      }
+      this.recordCompositionEvent(task, 'composition.node_started', 'running', nodeData);
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+      if (signal.aborted) {
+        if (!this.beginCancellation(task)) return;
+        this.recordCompositionEvent(task, 'composition.node_cancelled', 'cancelling', nodeData);
+        this.finishCancelledComposition(task, plan, completedNodeCount);
+        this.finishCancelled(task);
+        return;
+      }
+      this.recordCompositionEvent(task, 'composition.node_completed', 'running', nodeData);
+      completedNodeCount += 1;
+    }
+
+    if (signal.aborted) {
+      if (!this.beginCancellation(task)) return;
+      this.finishCancelledComposition(task, plan, completedNodeCount);
+      this.finishCancelled(task);
+      return;
+    }
+    this.recordCompositionEvent(task, 'composition.completed', 'running', {
+      ...baseData,
+      completedNodeCount,
+      terminalNodeIds: plan.terminalNodeIds.join(','),
+    });
+    this.store.transitionTask(
+      task.id,
+      'succeeded',
+      this.eventInput(task, 'task.completed', 'succeeded', task.attempt),
+      { output: compositionOutput(plan) },
+    );
+  }
+
+  private finishCancelledComposition(
+    task: TaskSnapshot,
+    plan: CompositionExecutionPlan,
+    completedNodeCount: number,
+  ): void {
     const current = this.store.getTask(task.id);
     if (!current || isTerminalTaskState(current.state)) return;
+    this.recordCompositionEvent(task, 'composition.cancelled', 'cancelling', {
+      compositionDocumentId: plan.compositionDocumentId,
+      nodeCount: plan.nodeCount,
+      completedNodeCount,
+    });
+  }
+
+  private recordCompositionEvent(
+    task: TaskSnapshot,
+    type: TaskEventType,
+    state: TaskSnapshot['state'],
+    data: Readonly<Record<string, string | number | boolean | null>>,
+  ): void {
+    this.store.recordEvent(task.id, {
+      ...this.eventInput(task, type, state, task.attempt),
+      data,
+    });
+  }
+
+  private finishCancelled(task: TaskSnapshot): void {
+    if (!this.beginCancellation(task)) return;
     this.store.transitionTask(
       task.id,
       'cancelled',
       this.eventInput(task, 'task.cancelled', 'cancelled', task.attempt),
     );
+  }
+
+  private beginCancellation(task: TaskSnapshot): boolean {
+    const current = this.store.getTask(task.id);
+    if (!current || isTerminalTaskState(current.state)) return false;
+    if (current.state !== 'cancelling') {
+      this.store.transitionTask(
+        task.id,
+        'cancelling',
+        this.eventInput(task, 'task.cancellation_requested', 'cancelling'),
+      );
+    }
+    return true;
   }
 
   private eventInput(

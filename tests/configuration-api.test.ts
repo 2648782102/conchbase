@@ -45,7 +45,7 @@ test('configuration routes validate, apply, roll back, and preserve task pinning
     const invalid = await app.inject({
       method: 'POST',
       url: '/v1/configuration/validate',
-      payload: { document: { schemaVersion: 2 } },
+      payload: { document: { schemaVersion: 4 } },
     });
     assert.equal(invalid.statusCode, 400);
     assert.ok(Array.isArray(invalid.json<{ details: unknown[] }>().details));
@@ -57,6 +57,40 @@ test('configuration routes validate, apply, roll back, and preserve task pinning
     });
     assert.equal(validated.statusCode, 200);
     assert.equal(validated.json<{ valid: boolean; document: { name: string } }>().document.name, 'candidate');
+
+    const v2Document = {
+      ...fixtureDocument('composition candidate'),
+      schemaVersion: 2,
+      composition: {
+        schemaVersion: 1,
+        name: 'fixture composition',
+        nodes: [{ id: 'node-a', label: 'First node' }],
+        links: [],
+        entryNodeIds: ['node-a'],
+        metadata: { shape: 'single' },
+      },
+    };
+    const validatedV2 = await app.inject({
+      method: 'POST',
+      url: '/v1/configuration/validate',
+      payload: { document: v2Document },
+    });
+    assert.equal(validatedV2.statusCode, 200);
+    assert.equal(
+      validatedV2.json<{ document: { composition: { name: string } } }>().document.composition.name,
+      'fixture composition',
+    );
+    const invalidV2 = await app.inject({
+      method: 'POST',
+      url: '/v1/configuration/validate',
+      payload: {
+        document: { ...v2Document, composition: { ...v2Document.composition, nodes: [] } },
+      },
+    });
+    assert.equal(invalidV2.statusCode, 400);
+    assert.ok(invalidV2.json<{ details: { path: string }[] }>().details.some(
+      (issue) => issue.path.startsWith('composition.'),
+    ));
 
     const applied = await app.inject({
       method: 'POST',
@@ -73,10 +107,23 @@ test('configuration routes validate, apply, roll back, and preserve task pinning
     assert.notEqual(appliedBody.activeRevisionId, bootstrapId);
     assert.equal(appliedBody.revisions.length, 2);
 
+    const appliedV2 = await app.inject({
+      method: 'POST',
+      url: '/v1/configuration/apply',
+      payload: { document: v2Document },
+    });
+    assert.equal(appliedV2.statusCode, 200);
+    assert.equal(
+      appliedV2.json<{ revision: { document: { schemaVersion: number } } }>().revision.document.schemaVersion,
+      2,
+    );
+    const v2RevisionId = appliedV2.json<{ activeRevisionId: string }>().activeRevisionId;
+    assert.notEqual(v2RevisionId, appliedBody.activeRevisionId);
+
     const afterApply = await app.inject({ method: 'GET', url: '/v1/tasks' });
     assert.equal(
       afterApply.json<{ activeConfigurationRevisionId: string }>().activeConfigurationRevisionId,
-      appliedBody.activeRevisionId,
+      v2RevisionId,
     );
     assert.equal(service.store.getTask(task.id)?.configurationRevisionId, bootstrapId);
 
@@ -98,7 +145,14 @@ test('configuration routes validate, apply, roll back, and preserve task pinning
       url: '/v1/configuration/apply',
       payload: { document: fixtureDocument('candidate') },
     });
-    assert.equal(noOp.json<{ changed: boolean }>().changed, false);
+    assert.equal(noOp.json<{ changed: boolean }>().changed, true);
+
+    const reappliedV2 = await app.inject({
+      method: 'POST',
+      url: '/v1/configuration/apply',
+      payload: { document: v2Document },
+    });
+    assert.equal(reappliedV2.json<{ changed: boolean }>().changed, true);
 
     const rollback = await app.inject({
       method: 'POST',
@@ -107,6 +161,21 @@ test('configuration routes validate, apply, roll back, and preserve task pinning
     });
     assert.equal(rollback.statusCode, 200);
     assert.equal(rollback.json<{ activeRevisionId: string }>().activeRevisionId, bootstrapId);
+
+    const rollbackToV2 = await app.inject({
+      method: 'POST',
+      url: '/v1/configuration/apply',
+      payload: { rollbackTo: v2RevisionId },
+    });
+    assert.equal(rollbackToV2.statusCode, 200);
+    assert.equal(rollbackToV2.json<{ activeRevisionId: string }>().activeRevisionId, v2RevisionId);
+
+    const noOpV2 = await app.inject({
+      method: 'POST',
+      url: '/v1/configuration/apply',
+      payload: { document: v2Document },
+    });
+    assert.equal(noOpV2.json<{ changed: boolean }>().changed, false);
 
     const invalidRollback = await app.inject({
       method: 'POST',
@@ -117,7 +186,7 @@ test('configuration routes validate, apply, roll back, and preserve task pinning
 
     const revisions = await app.inject({ method: 'GET', url: '/v1/configuration/revisions' });
     assert.equal(revisions.statusCode, 200);
-    assert.equal(revisions.json<{ revisions: unknown[] }>().revisions.length, 2);
+    assert.equal(revisions.json<{ revisions: unknown[] }>().revisions.length, 3);
 
     const malformed = await app.inject({
       method: 'POST',
