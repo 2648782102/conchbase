@@ -33,6 +33,16 @@ test('task, event, and model routes use one runtime service', async () => {
     });
     assert.equal(invalid.statusCode, 400);
 
+    const emptyJsonBody = await app.inject({
+      method: 'POST',
+      url: '/v1/tasks',
+      headers: { 'content-type': 'application/json' },
+    });
+    assert.equal(emptyJsonBody.statusCode, 400);
+    assert.deepEqual(emptyJsonBody.json(), {
+      error: 'Request body does not match the API contract.',
+    });
+
     const created = await app.inject({
       method: 'POST',
       url: '/v1/tasks',

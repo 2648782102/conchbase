@@ -117,6 +117,8 @@ export function createTaskService(
 export class TaskService {
   readonly store: TaskStore;
   private readonly active = new Map<string, AbortController>();
+  private readonly inFlight = new Set<Promise<void>>();
+  private stopping = false;
   private readonly config: TaskServiceConfig;
   private readonly catalog: ModelCatalogClient;
 
@@ -417,9 +419,11 @@ export class TaskService {
 
     const controller = new AbortController();
     this.active.set(taskId, controller);
-    void this.execute(task, controller.signal).finally(() => {
+    const execution = this.execute(task, controller.signal).finally(() => {
       this.active.delete(taskId);
+      this.inFlight.delete(execution);
     });
+    this.inFlight.add(execution);
   }
 
   cancelTask(taskId: string): TaskSnapshot {
@@ -513,13 +517,20 @@ export class TaskService {
   }
 
   close(): void {
-    for (const controller of this.active.values()) controller.abort();
     this.store.close();
+  }
+
+  async stop(): Promise<void> {
+    this.stopping = true;
+    for (const controller of this.active.values()) controller.abort();
+    await Promise.allSettled([...this.inFlight]);
+    this.close();
   }
 
   private async execute(task: TaskSnapshot, signal: AbortSignal): Promise<void> {
     try {
       if (signal.aborted) {
+        if (this.stopping) return;
         this.finishCancelled(task);
         return;
       }
@@ -537,6 +548,7 @@ export class TaskService {
       }
     } catch (cause) {
       if (signal.aborted) {
+        if (this.stopping) return;
         const current = this.store.getTask(task.id);
         if (current && !isTerminalTaskState(current.state)) this.finishCancelled(task);
         return;
@@ -591,6 +603,7 @@ export class TaskService {
       },
     });
     if (signal.aborted) {
+      if (this.stopping) return;
       this.finishCancelled(task);
       return;
     }
@@ -700,6 +713,7 @@ export class TaskService {
   }
 
   private finishCancelled(task: TaskSnapshot): void {
+    if (this.stopping) return;
     if (!this.beginCancellation(task)) return;
     this.store.transitionTask(
       task.id,
@@ -709,6 +723,7 @@ export class TaskService {
   }
 
   private beginCancellation(task: TaskSnapshot): boolean {
+    if (this.stopping) return false;
     const current = this.store.getTask(task.id);
     if (!current || isTerminalTaskState(current.state)) return false;
     if (current.state !== 'cancelling') {

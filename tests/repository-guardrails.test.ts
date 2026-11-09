@@ -188,6 +188,8 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /The broader user-defined composition product remains open/);
   assert.match(handoff, /exact OpenAPI path set is twenty-five routes/);
   assert.match(handoff, /ADR 0020/);
+  assert.match(handoff, /ADR 0021/);
+  assert.match(handoff, /deterministic live loopback paired-runtime acceptance/);
 
   const queue = read('docs/AI_TASK_QUEUE.md');
   assert.match(queue, /single-turn/);
@@ -210,6 +212,9 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(queue, /Streaming tool-call accumulation and execution/);
   assert.match(queue, /short-lived private database ownership/);
   assert.match(queue, /Client follow-up/);
+  assert.match(queue, /ADR 0021/);
+  assert.match(queue, /Done in the deterministic paired-runtime acceptance slice/);
+  assert.match(queue, /ADRs `0010`–`0021`/);
 
   const roadmap = read('docs/ROADMAP.md');
   assert.match(roadmap, /current adapter uses Magpie for compatibility/);
@@ -237,6 +242,34 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('README.zh-CN.md'), /仍在规划中/);
   assert.match(read('README.zh-CN.md'), /ADR 0018/);
   assert.match(read('README.zh-CN.md'), /ADR 0019/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0021\]/);
+  assert.match(read('README.md'), /ADR 0021 adds an opt-in live loopback acceptance test/);
+  assert.match(read('README.zh-CN.md'), /ADR 0021/);
+  assert.match(read('README.zh-CN.md'), /真实 loopback HTTP 验收/);
+  const validationPlan = read('docs/VALIDATION_PLAN.md');
+  assert.match(validationPlan, /ADR 0021's opt-in paired-runtime acceptance/);
+  assert.match(validationPlan, /Real-provider conformance, visual\/manual UI validation/);
+  const decision0021 = read('docs/decisions/0021-cross-repository-paired-runtime-acceptance.md');
+  assert.match(
+    decision0021,
+    /^Status: \*\*accepted development-boundary change; no public API contract changes\*\*$/m,
+  );
+  assert.match(decision0021, /`TaskService\.stop\(\)` is an asynchronous shutdown boundary/);
+  assert.match(decision0021, /no public API contract changes/);
+  assert.match(decision0021, /The exact `0\.8\.0` 25-route OpenAPI contract/);
+  const taskService = read('src/runtime/task-service.ts');
+  assert.match(taskService, /private stopping = false;/);
+  assert.match(taskService, /async stop\(\): Promise<void>/);
+  assert.match(taskService, /this\.stopping = true;/);
+  assert.match(taskService, /if \(this\.stopping\) return;/);
+  assert.match(taskService, /await Promise\.allSettled\(\[\.\.\.this\.inFlight\]\)/);
+  assert.match(read('src/http/routes/v1/tasks.ts'), /statusCode === 400/);
+  assert.match(read('tests/task-api.test.ts'), /emptyJsonBody\.statusCode, 400/);
+  assert.match(read('package.json'), /tests\/agent-paired-runtime\.test\.ts/);
+  const pairedTest = read('tests/agent-paired-runtime.test.ts');
+  assert.match(pairedTest, /nested Pagurus checkout is not present/);
+  assert.match(pairedTest, /delayedPrompts\.delete\(delayKey\)/);
+  assert.match(pairedTest, /execFileAsync/);
 });
 
 test('decision records separate accepted phase-1 direction from proposals', () => {

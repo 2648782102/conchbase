@@ -15,12 +15,14 @@ This queue is for coding models continuing from the repository. It records bound
 - [ADR 0018](decisions/0018-provider-tool-call-parsing-boundary.md) accepts an internal, pure parser for one OpenAI Chat Completions-compatible non-streaming function tool call, later wired by ADR 0019.
 - [ADR 0019](decisions/0019-explicit-provider-tool-call-observation-boundary.md) accepts the `0.7.0` explicit provider observation boundary: one transient observation route, provider normalization, visible failure in the live v1 task path, no auto-ledger, and no execution.
 - ADR 0020 and Runtime API 0.8.0 implement runtime-local Agent resources/revisions/default/archive, provider-neutral model references, Agent task binding/override, a transactional additive schema migration, and additive OpenAPI capability advertisement. The current registered adapter is Magpie compatibility only; it does not define public model identities.
+- [ADR 0021](decisions/0021-cross-repository-paired-runtime-acceptance.md) closes the deterministic paired-runtime acceptance slice. `tests/agent-paired-runtime.test.ts` uses live loopback HTTP, a fake Magpie-compatible gateway, the real Fastify Runtime, and dynamically imported Pagurus clients; it changes no public route, schema, dependency, provider adapter, or execution capability.
 - Agent tasks are one model turn bound to the selected immutable Agent revision, the active global runtime configuration revision, and the effective provider/model. Legacy tasks without `agentId` retain their prior global v1/v2 dispatch. Agent model/provider validation happens before task creation, and the selected Agent revision is rechecked inside the SQLite creation transaction.
 - The product direction is a user-managed collection of independently customizable Agents; Magpie remains one compatibility adapter, not the product's sole provider or future Agent model contract. Future Agent model references and discovery must be provider-neutral.
 - Conchbase exposes versioned task, retry, cancel, event, legacy Magpie model list, provider-neutral model-catalog, Agent collection, and configuration-revision routes. Pagurus and other external clients use the Runtime API; phase-1 CLI task-state and configuration reads take short-lived private database ownership. The OpenAPI contract is the source of truth.
 - The phase-1 model loop is single-turn for `schemaVersion: 1`. The deterministic composition loop is bounded for `schemaVersion: 2`. Neither is a default or canonical agent topology. User-defined composition remains topology-neutral product intent.
 - `node:sqlite` persists tasks, events, and configuration revisions behind `TaskStore`. Provider calls use direct HTTP through a narrow adapter. No provider SDK, storage SDK, MCP SDK, or plugin host is installed.
 - `tests/repository-guardrails.test.ts` checks AI-first entry documents, accepted ADR status, the exact 25-route `0.8.0` OpenAPI path set, loopback-only configuration, source boundaries, dependency boundaries, the public ledger's no-execution rules, and ADR 0019 parser wiring boundaries.
+- The deterministic paired-runtime acceptance test skips only when the optional nested Pagurus checkout is absent. Standalone Conchbase CI keeps every other test and remains green.
 - Both repositories have protected `main` rulesets against force pushes and deletion; normal pushes remain allowed.
 
 ## Done in the composition execution slice
@@ -54,12 +56,19 @@ This queue is for coding models continuing from the repository. It records bound
 
 ## Next bounded slices
 
-The cross-repository product priority remains the complete user-facing Agent editing and task-inspection loop. Conchbase owns the published resource and task-binding contract. Pagurus has implemented the first collection/editor and task-binding slice; deterministic coverage for at least two Agents with independent profiles and client task selection is in place. Run both repositories' full validation, then exercise the paired screens against a live Conchbase runtime before treating the slice as accepted. Do not expand into tools or model-driven composition during that acceptance work.
+The first collection/editor and task-binding slice is closed by ADR 0021. Its deterministic live loopback evidence covers at least two Agents, cancellation/interruption, explicit retry, legacy and Agent task dispatch, configuration/version pins, streaming, composition, and CLI compatibility. Visual/manual UI validation and real-provider validation remain separate future layers. Do not expand into tools or model-driven composition while starting the next slice.
 
-1. **Cross-repository acceptance (active slice).** Deterministic coverage verifies at least two independently configured Agents, task selection and revision pins, override, stale writes, archive and retry, default changes, and legacy behavior. Run full validation and live paired-runtime acceptance for cancellation/interruption, global v1/v2 configuration. Check legacy `/v1/tasks` and CLI use, Magpie compatibility, and explicit failure without provider fallback. Mark each item done only when observed in its owning repository or live-runtime evidence.
-2. **Client follow-up.** Add multi-task history, richer revision comparison, and user-configurable selection preferences only after the initial create/edit/run/inspect loop is exercised against a live paired runtime.
-3. **Additional provider adapter.** Add only after each adapter has a defined credential/settings owner, normalized error boundary, and deterministic contract fixtures. Magpie remains a compatibility path, not the product target.
-4. **Composition evolution.** Decide separately whether Agents may explicitly run a runtime-wide topology and what model-driven node context, delegation, concurrency, and permission semantics apply. Do not infer these from ADR 0016's deterministic executor.
+1. **Client follow-up.** Add multi-task history, richer revision comparison, and user-configurable selection preferences through the published Runtime API and its own accepted client ADR.
+2. **Additional provider adapter.** Add only after each adapter has a defined credential/settings owner, normalized error boundary, and deterministic contract fixtures. Magpie remains a compatibility path, not the product target.
+3. **Composition evolution.** Decide separately whether Agents may explicitly run a runtime-wide topology and what model-driven node context, delegation, concurrency, and permission semantics apply. Do not infer these from ADR 0016's deterministic executor.
+4. **Interface validation.** Exercise the complete Pagurus screen visually and manually against a real local Conchbase runtime, then add separate real-provider conformance fixtures. Keep these layers distinct from ADR 0021's deterministic HTTP acceptance.
+
+## Done in the deterministic paired-runtime acceptance slice
+
+1. **Accepted direction.** ADR `0021` records live loopback acceptance evidence with two independent Agents, Pagurus's published clients, the real Runtime, a deterministic fake gateway, and no public API change.
+2. **Executable matrix.** The paired test covers Agent/task pins, stale writes, default/archive changes, overrides, configuration apply/rollback, cancellation, restart interruption, retry, event replay, legacy `/v1/tasks`, CLI compatibility, v1/v2 dispatch, deterministic composition, streaming, invalid payloads, and unsupported-provider failure without fallback.
+3. **Standalone CI.** Check legacy `/v1/tasks` and `conchbase run` in the paired harness, and keep the test skipping only when the optional nested Pagurus checkout is absent. Both repositories' `npm run check`, `npm test`, and `npm run build` pass; `git diff --check` is clean.
+4. **AI handoff.** Handoff, task queue, roadmaps, validation plans, READMEs, workspace notes, and repository guardrails distinguish completed deterministic local HTTP acceptance from real-provider, visual/manual UI, remote, and production-storage validation.
 
 ## Deferred capability work
 
@@ -85,9 +94,9 @@ Do not weaken or delete the repository guardrails to bypass this queue. Update t
 
 ## Definition of done for each task
 
-- Read `AGENTS.md`, `docs/AI_HANDOFF.md`, `docs/AI_DEVELOPMENT.md`, ADRs `0010`–`0020`, and the owning architecture/API document first.
+- Read `AGENTS.md`, `docs/AI_HANDOFF.md`, `docs/AI_DEVELOPMENT.md`, ADRs `0010`–`0021`, and the owning architecture/API document first.
 - Keep implemented behavior separate from planned behavior in every doc/README update.
 - Add deterministic tests; never use real credentials, personal data, public-network dependencies, or user runtime data in fixtures.
 - Run `npm run check`, `npm test`, and `npm run build` in the affected repository.
 - If a public API or shared schema changes, write an ADR with options/consequences/recommendation and record direction before implementing it.
-- Report the focused slice, changed files, validation results, and update this queue. Do not commit or push unless explicitly authorized in the current conversation.
+- Report the focused slice, changed files, validation results, and update this queue. Follow the current task's explicit commit and push authorization; do not infer repository write authorization from this document.

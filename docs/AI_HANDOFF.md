@@ -27,11 +27,12 @@ Users can later define highly customizable Agent compositions through a versione
 11. [ADR 0018](decisions/0018-provider-tool-call-parsing-boundary.md) — accepted internal provider tool-call parser; no execution and no public API change.
 12. [ADR 0019](decisions/0019-explicit-provider-tool-call-observation-boundary.md) — accepted `0.7.0` explicit provider observation boundary; transient normalization, no auto-ledger, no execution.
 13. [ADR 0020](decisions/0020-multi-agent-and-provider-neutral-model-contract.md) — accepted Agent resource, provider-neutral catalog, task binding, and additive migration.
-14. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
-15. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
-16. `docs/TECH_STACK.md` — chosen and deferred technology.
-17. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` — wider intended sequencing and still-open contracts.
-18. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
+14. [ADR 0021](decisions/0021-cross-repository-paired-runtime-acceptance.md) — accepted deterministic live loopback acceptance boundary; no public API contract change.
+15. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
+16. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
+17. `docs/TECH_STACK.md` — chosen and deferred technology.
+18. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` — wider intended sequencing and still-open contracts.
+19. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
 
 ## Current repository facts
 
@@ -59,6 +60,7 @@ Implemented:
 - A public, provider-neutral tool request/approval ledger accepts normalized tool call proposals for eligible `schemaVersion: 2` task attempts in `queued`, `running`, or `waiting_approval`. `POST /v1/tool-requests`, `GET /v1/tool-requests/{requestId}`, and `POST /v1/tool-requests/{requestId}/approval` persist one versioned request, a composition-scoped idempotency key, and one explicit approval or rejection. Requests store only an arguments digest; approvals store only a reason digest. Creation and decision events are durable through `GET /v1/events`, but no tool is executed and no task state transition occurs. The public ledger does not import `ToolCapabilityKernel`.
 - `src/runtime/provider-tool-call.ts` is the internal, pure parser for one OpenAI Chat Completions-compatible non-streaming function tool call. ADR 0019 wires it into `OpenAiChatCompletionsProvider.nextTurn`, one whole message-shaped tool call in `OpenAiChatCompletionsProvider.streamTurn`, and the transient `POST /v1/provider-observations/tool-calls` route. It returns a frozen `version: 1` observation with a provider tool-call id, the accepted `ToolCallProposal`, and an `arg_` arguments digest. It rejects streaming deltas, mixed answers, multiple calls, malformed or sensitive fields, and non-scalar arguments. `TaskService` does not create a ledger request or execute a tool from an observation; a v1 streaming observation fails visibly. No durable observation table, public event, configuration schema, executor, or task transition is added.
 - Automated tests cover provider parsing and failures, transient observation routes, task completion, durable event replay, restart interruption, explicit retry, v1/v2 configuration validation/history/rollback/pinning, composition execution and cancellation, HTTP error behavior, loopback configuration, the internal task runner, policy gate, and deterministic repository guardrails. Tests use fake `fetch` and temporary databases; CI does not call a model provider.
+- ADR 0021 adds deterministic live loopback paired-runtime acceptance. `tests/agent-paired-runtime.test.ts` starts a fake Magpie-compatible gateway and the real Fastify Runtime, maps Pagurus's relative `/v1/...` client fetches over HTTP, dynamically imports the published Pagurus clients, and verifies two independent Agents, revision pins, stale writes, configuration apply/rollback, archive/default/override, cancellation, restart interruption, retry, event replay, legacy task dispatch, deterministic v2 composition, streaming, and CLI compatibility. The test skips only when the optional nested Pagurus checkout is absent. It uses no real model credential, public-network call, or private database access from Pagurus.
 - GitHub Actions runs `npm run check`, `npm test`, and `npm run build`.
 
 Not implemented yet:
@@ -125,7 +127,7 @@ When an implementation depends on one of these, record options, consequences, an
 
 ## Recommended next implementation sequence
 
-1. Finish Pagurus's accepted client ADR and full Agent collection/editor/history/task-inspection flow through the published Runtime API, including a clearly preserved legacy mode.
-2. Complete the cross-repository acceptance matrix: two Agents with distinct instructions/models; independent updates and history rollback; task creation during edit/default/config changes; cancellation/restart/retry; archive semantics; validation failure before task creation; old `/v1/tasks` and `conchbase run`; v1/v2 global configuration and deterministic composition regression.
-3. Add another provider adapter only after its credential/settings boundary and deterministic adapter fixtures are available; keep Magpie compatibility covered.
-4. Leave model-driven Agent composition, tools, Skills, MCP, and plugins for separately accepted contracts after the basic multi-Agent loop is stable.
+1. Build the next Pagurus client slice on the closed ADR 0021 acceptance baseline: multi-task history, richer revision comparison, and user-configurable selection preferences, with an explicitly preserved legacy mode.
+2. Add another provider adapter only after its credential/settings boundary and deterministic adapter fixtures are available; keep Magpie compatibility covered.
+3. Decide separately whether an Agent may explicitly select the global topology and what model-driven node context, delegation, concurrency, and permission semantics apply. Do not infer these from the deterministic executor.
+4. Leave tool execution, Skills, MCP, and plugins for separately accepted contracts. Real-provider, visual, accessibility, manual UI, and remote-runtime validation remain separate validation layers.

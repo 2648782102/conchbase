@@ -98,6 +98,11 @@ export function registerTaskRoutes(
       void reply.code(400).send({ error: 'Request body does not match the API contract.' });
       return;
     }
+    const statusCode = (cause as { statusCode?: unknown }).statusCode;
+    if (statusCode === 400) {
+      void reply.code(400).send({ error: 'Request body does not match the API contract.' });
+      return;
+    }
     void reply.code(500).send({ error: 'Internal runtime error.' });
   });
 
