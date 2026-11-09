@@ -8,6 +8,8 @@ Date: 2026-11-07 (Asia/Shanghai).
 
 Phase 1 connects Conchbase to a real model through the user's local Magpie gateway. Conchbase remains the agent execution authority. Magpie is a replaceable model provider; it does not own task state, policy, approvals, events, or tool execution. CLI, Pagurus, and third-party clients use the same versioned Runtime API.
 
+This records the first implemented compatibility path and the evidence available for that slice. It does not make Magpie the product goal, the only supported future provider, or the schema for Agent model references. Agent resources and future Runtime API model discovery must identify providers and models through an accepted provider-neutral contract; Magpie-specific catalog ids, settings, and credentials stay behind the Magpie adapter. Additional adapters should be independently testable with the same runtime semantics.
+
 The first usable slice supports a text task that runs through a single real model turn. It persists task state and ordered events, exposes a task API and CLI, and reports an interrupted task after a process restart. It does **not** implement user-defined agent compositions, model-driven tool execution, MCP servers, Skills loading, plugin hosts, approval UI, secret management, remote binding, or pairing. A single-turn execution unit is an implementation boundary, not a fixed product topology. A layered multi-role arrangement remains only one possible future user configuration; see [ADR 0005](0005-user-defined-agent-topology-proposal.md).
 
 ## Evidence and trade-offs

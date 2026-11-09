@@ -4,21 +4,23 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/2648782102/conchbase/ci.yml?branch=main&label=CI)](https://github.com/2648782102/conchbase/actions/workflows/ci.yml) [![MIT License](https://img.shields.io/github/license/2648782102/conchbase)](LICENSE) [![Node.js 24+](https://img.shields.io/badge/Node.js-24%2B-43853d)](https://nodejs.org/)
 
-海螺负责 agent 的实际运行：任务生命周期、模型调用、取消、显式重试、有序事件与持久状态。它可以脱离图形界面通过 CLI 工作；寄居蟹和第三方客户端通过同一套版本化 API 接入。
+海螺负责 Agent 实际运行：任务生命周期、模型调用、取消、显式重试、有序事件与持久状态。产品方向是未来由海螺管理 Agent 身份与版本，并通过统一的版本化 API 供寄居蟹等客户端配置多个自定义 Agent；Agent 集合仍是规划中的工作。
 
 ## 当前状态
 
-`schemaVersion: 1` 任务通过本机 [Magpie](https://usemagpie.ai/docs/integrate) 网关接入一轮真实流式模型调用；`schemaVersion: 2` 任务执行有边界的确定性组合遍历，带节点事件且不调用模型或工具。任务状态、进度、最终输出、错误和事件存储在本地 SQLite 中。CLI 与寄居蟹都能创建、查看、取消和重试任务。进程重启会把未完成任务标记为 `interrupted`；显式重试生成新的 attempt，并保留原事件。运行时不会静默续跑中断中的模型请求或组合。
+当前 `schemaVersion: 1` 任务通过海螺的 Magpie 兼容适配器与本机 [Magpie](https://usemagpie.ai/docs/integrate) 网关接入一轮真实流式模型调用。Magpie 是目前支持的兼容路径，不是产品唯一供应商，也不定义未来 Agent 的模型引用。`schemaVersion: 2` 任务执行有边界的确定性组合遍历，带节点事件且不调用模型或工具。任务状态、进度、最终输出、错误和事件存储在本地 SQLite 中。CLI 与寄居蟹都能创建、查看、取消和重试任务。进程重启会把未完成任务标记为 `interrupted`；显式重试生成新的 attempt，并保留原事件。运行时不会静默续跑中断中的模型请求或组合。
 
-第一阶段的 SQLite 数据库同一时间只允许一个进程持有。第二个 CLI 或服务实例会快速失败，避免把正在运行的任务误判为中断。`conchbase models` 直接读取 Magpie，不打开数据库；当 `conchbase serve` 正在运行时，不要执行其他读写任务状态的 CLI 命令，并发查看任务应使用 Runtime API。这是开发期的单实例边界，不代表已支持生产级多进程，详见 [ADR 0011](docs/decisions/0011-phase-one-database-instance-ownership.md)。
+当前 Runtime 尚未实现 Agent 集合：版本化配置只有一份全局策略/能力配置，任务模型也独立选择；v2 组合执行器不调用模型。下一阶段应新增稳定 Agent 身份、每个 Agent 独立版本和任务绑定，并通过可回滚迁移保持旧任务与配置行为不变。
 
-仓库内已有一个仅供测试的 fixture 工具能力内核，用于验证精确审批、按 attempt 幂等和确定性审计；它不是公开工具接口，也不能运行真实宿主工具。Conchbase `0.7.0` 保留了 `schemaVersion: 1` 与 `schemaVersion: 2` 两版配置文档，以及公开的、与供应商无关的工具请求/审批台账。v1 任务执行一轮 Magpie 流式模型调用；v2 任务执行有边界、拓扑中立的确定性组合遍历，记录节点事件并传播取消，不调用模型也不执行工具。台账接收符合条件的 v2 任务 attempt 的规范化工具调用提案，持久化组合作用域内的请求、决策和审计事件，但绝不执行工具或授予能力。ADR 0019 增加了临时的供应商工具调用观察边界：单个非流式 function tool call 可以由 provider 或 `POST /v1/provider-observations/tool-calls` 规范化；在线 v1 任务路径会显式失败，不会自动创建台账请求，也不会执行工具。客户端如需持久化记录，必须带上任务、attempt 和组合节点身份，把规范化后的 `toolCall` 显式提交到 `POST /v1/tool-requests`。配置引用仍是不透明数据，不会安装 Skills/MCP/插件、解析密钥、授予工具或定义固定拓扑。模型驱动节点工作、委派、并发、流式工具调用累积、模型发起的工具执行、公开执行接口、真实执行器隔离、崩溃安全的副作用、能力生命周期、可移植 profile 文件、生产审批、SSE 传输、推理内容展示、认证和远程访问仍在规划中。两种当前任务模式都不是内建 Agent 拓扑；用户自定义组合仍保持拓扑中立，详见 [ADR 0005](docs/decisions/0005-user-defined-agent-topology-proposal.md)、[ADR 0010](docs/decisions/0010-first-real-model-slice.md)、[ADR 0012](docs/decisions/0012-streaming-output-progress.md)、[ADR 0013](docs/decisions/0013-bounded-tool-capability-kernel.md)、[ADR 0014](docs/decisions/0014-versioned-configuration-api.md)、[ADR 0015](docs/decisions/0015-composition-identity-kernel.md)、[ADR 0016](docs/decisions/0016-composition-execution-and-public-schema.md)、[ADR 0017](docs/decisions/0017-public-tool-request-approval-ledger.md)、[ADR 0018](docs/decisions/0018-provider-tool-call-parsing-boundary.md) 和 [ADR 0019](docs/decisions/0019-explicit-provider-tool-call-observation-boundary.md)。
+第一阶段的 SQLite 数据库同一时间只允许一个进程持有。第二个 CLI 或服务实例会快速失败，避免把正在运行的任务误判为中断。`conchbase models` 目前直接读取 Magpie 兼容目录，不打开数据库；未来可由供应商中立的发现契约统一目录，而不改变 Agent 身份。海螺服务运行时，不要执行其他读写任务状态的 CLI 命令，并发查看任务应使用 Runtime API。这是开发期的单实例边界，不代表已支持生产级多进程，详见 [ADR 0011](docs/decisions/0011-phase-one-database-instance-ownership.md)。
+
+仓库内已有一个仅供测试的 fixture 工具能力内核，用于验证精确审批、按 attempt 幂等和确定性审计；它不是公开工具接口，也不能运行真实宿主工具。Conchbase `0.7.0` 保留了 `schemaVersion: 1` 与 `schemaVersion: 2` 两版配置文档，以及公开的、与供应商无关的工具请求/审批台账。当前 v1 任务通过 Magpie 兼容适配器执行一轮流式模型调用；v2 任务执行有边界、拓扑中立的确定性组合遍历，记录节点事件并传播取消，不调用模型也不执行工具。台账接收符合条件的 v2 任务 attempt 的规范化工具调用提案，持久化组合作用域内的请求、决策和审计事件，但绝不执行工具或授予能力。ADR 0019 增加了临时的供应商工具调用观察边界：单个非流式 function tool call 可以由 provider 或 `POST /v1/provider-observations/tool-calls` 规范化；在线 v1 任务路径会显式失败，不会自动创建台账请求，也不会执行工具。客户端如需持久化记录，必须带上任务、attempt 和组合节点身份，把规范化后的 `toolCall` 显式提交到 `POST /v1/tool-requests`。配置引用仍是不透明数据，不会安装 Skills/MCP/插件、解析密钥、授予工具或定义固定拓扑。模型驱动节点工作、委派、并发、流式工具调用累积、模型发起的工具执行、公开执行接口、真实执行器隔离、崩溃安全的副作用、能力生命周期、可移植 profile 文件、生产审批、SSE 传输、推理内容展示、认证和远程访问仍在规划中。两种当前任务模式都不是内建 Agent 拓扑；用户自定义组合仍保持拓扑中立，详见 [ADR 0005](docs/decisions/0005-user-defined-agent-topology-proposal.md)、[ADR 0010](docs/decisions/0010-first-real-model-slice.md)、[ADR 0012](docs/decisions/0012-streaming-output-progress.md)、[ADR 0013](docs/decisions/0013-bounded-tool-capability-kernel.md)、[ADR 0014](docs/decisions/0014-versioned-configuration-api.md)、[ADR 0015](docs/decisions/0015-composition-identity-kernel.md)、[ADR 0016](docs/decisions/0016-composition-execution-and-public-schema.md)、[ADR 0017](docs/decisions/0017-public-tool-request-approval-ledger.md)、[ADR 0018](docs/decisions/0018-provider-tool-call-parsing-boundary.md) 和 [ADR 0019](docs/decisions/0019-explicit-provider-tool-call-observation-boundary.md)。
 
 确定性的仓库护栏测试把已接受的契约和 AI-first 边界固定为可执行检查。CI 使用假模型响应和临时数据库，不调用真实模型。
 
 ## 环境要求
 
-Node.js 24+；进行真实模型调用时，本机 Magpie 网关需要处于运行状态。模型供应商与密钥由 Magpie 自己管理，海螺不保存它们。
+Node.js 24+；当前 Magpie 兼容适配器进行真实模型调用时，需要启动本机 Magpie 网关，并在 Magpie 中配置其凭证。未来适配器可通过各自的海螺管理边界持有凭证；密钥不得进入 Agent 文档或客户端响应。
 
 ```sh
 npm ci
@@ -40,7 +42,7 @@ export CONCHBASE_MODEL='provider/model-id'
 npm run cli -- run '只回复：ok'
 ```
 
-`CONCHBASE_MAGPIE_APP_KEY` 可选，只用于让 Conchbase 的请求在 Magpie 使用记录中显示自己的名字，不是供应商密钥。`CONCHBASE_MODEL` 使用用户 Magpie 模型目录中的 id。`CONCHBASE_MAGPIE_URL` 默认 `http://127.0.0.1:3425`；`CONCHBASE_DB` 默认 `.conchbase/runtime.sqlite`，已被 Git 忽略。
+这些环境变量描述当前 Magpie 兼容适配器：`CONCHBASE_MAGPIE_APP_KEY` 可选，只用于让 Conchbase 的请求在 Magpie 使用记录中显示自己的名字，不是供应商密钥；`CONCHBASE_MODEL` 当前使用用户 Magpie 模型目录中的 id；`CONCHBASE_MAGPIE_URL` 默认 `http://127.0.0.1:3425`；`CONCHBASE_DB` 默认 `.conchbase/runtime.sqlite`，已被 Git 忽略。未来供应商中立的 Agent 引用与模型发现，不应依赖这些 Magpie 专属变量名或目录 id。
 
 HTTP API 提供同样的操作：
 
@@ -55,7 +57,7 @@ curl -X POST http://127.0.0.1:4318/v1/tasks \
 ## 设计边界
 
 - 海螺拥有任务状态与权限；CLI、寄居蟹和第三方界面都是客户端。
-- Magpie 是适配器背后的可替换本机模型来源，其返回内容是未受信任的数据。
+- 当前使用 Magpie 兼容适配器并通过统一适配器边界接入；其他适配器应实现供应商中立的领域契约。任何供应商返回内容都属于未受信任数据。
 - 任务与有序事件通过私有的 `TaskStore` 原子提交；界面不读取数据库。
 - 有边界的正文增量会生成持久的 `task.output_delta` 事件和 `partialOutput` 快照；最终输出仍以 `output` 为准。
 - 组合节点进度会生成持久组合事件，并携带固定的 `cmp_` 身份与配置修订。

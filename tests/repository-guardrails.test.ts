@@ -60,7 +60,7 @@ function listTypeScriptFiles(relativeDir: string): string[] {
   const absoluteDir = path.join(repositoryRoot, relativeDir);
   return readdirSync(absoluteDir, { withFileTypes: true })
     .flatMap((entry) => {
-      const child = path.join(relativeDir, entry.name);
+      const child = path.join(relativeDir, entry.name).replaceAll(path.sep, '/');
       if (entry.isDirectory()) return listTypeScriptFiles(child);
       return entry.isFile() && child.endsWith('.ts') ? [child] : [];
     })
@@ -172,7 +172,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   }
 
   const handoff = read('docs/AI_HANDOFF.md');
-  assert.match(handoff, /Phase 1 connects a real model through Magpie/);
+  assert.match(handoff, /Phase 1 currently connects a real model through the Magpie compatibility adapter/);
   assert.match(handoff, /interrupted/);
   assert.match(handoff, /explicit retry/);
   assert.match(handoff, /The broader user-defined composition product remains open/);
@@ -190,8 +190,33 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(queue, /Streaming tool-call accumulation/);
   assert.match(queue, /Done in the provider tool-call parsing boundary slice/);
   assert.match(queue, /Done in the explicit provider observation slice/);
-  assert.match(queue, /This is the first next slice/);
+  assert.match(queue, /user-managed collection of independently customizable Agents/);
+  assert.match(queue, /Agent resource and lifecycle ADR \(next\)/);
+  assert.match(queue, /Magpie.*not the product's sole provider or future Agent model contract/);
+  assert.match(queue, /future Agent model references and discovery must be provider-neutral/);
+  assert.match(queue, /at least two Agents/);
+  assert.match(queue, /transactional\/idempotent migration/);
+  assert.match(queue, /old `\/v1\/tasks`/);
+  assert.match(queue, /Streaming tool-call accumulation and execution/);
   assert.match(queue, /short-lived private database ownership/);
+
+  const roadmap = read('docs/ROADMAP.md');
+  assert.match(roadmap, /current adapter uses Magpie for compatibility/);
+  assert.match(roadmap, /Agent definitions and Runtime API contracts must not depend on Magpie catalog ids/);
+  assert.match(roadmap, /deterministic fake adapters/);
+
+  const readme = read('README.md');
+  assert.match(readme, /Magpie is the supported compatibility path today/);
+  assert.match(readme, /not the product's only intended provider/);
+  assert.match(readme, /Future provider-neutral Agent references/);
+  assert.match(
+    read('docs/decisions/0010-first-real-model-slice.md'),
+    /does not make Magpie the product goal, the only supported future provider, or the schema for Agent model references/,
+  );
+  assert.match(
+    read('docs/decisions/0012-streaming-output-progress.md'),
+    /Magpie observations below justify the current compatibility implementation only/,
+  );
 
   assert.match(read('README.md'), /real model/);
   assert.match(read('README.md'), /planned work/);
@@ -381,8 +406,8 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
     'src/runtime/tool-capability.ts',
     'src/runtime/tool-request.ts',
     ...listTypeScriptFiles('src/http').filter((candidate) =>
-      candidate !== 'src/http/routes/v1/provider-observations.ts'
-      && candidate !== 'src/http/routes/v1/runtime.ts',
+      candidate.replaceAll('\\', '/') !== 'src/http/routes/v1/provider-observations.ts'
+      && candidate.replaceAll('\\', '/') !== 'src/http/routes/v1/runtime.ts',
     ),
   ]) {
     assert.doesNotMatch(

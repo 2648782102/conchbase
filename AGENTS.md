@@ -7,6 +7,8 @@ Read `docs/AI_HANDOFF.md` first, then `docs/AI_DEVELOPMENT.md` and the linked ar
 ## Product invariants
 
 - Conchbase is the agent execution authority. CLI, Pagurus, IDEs, and other interfaces are clients.
+- The paired product direction is user-managed, independently customizable Agents through clients such as Pagurus. Conchbase owns stable Agent identities and versioned Agent definitions; Agent revisions must remain distinct from runtime-wide policy/capability configuration unless an ADR explicitly chooses otherwise. Each Agent-backed task must pin both applicable revisions. Clients must not create competing schemas.
+- Provider integrations are replaceable adapters. Magpie is one currently supported compatibility path, not the product's required provider or an Agent configuration dependency. Keep Agent model references and Runtime API contracts provider-neutral; provider credentials and provider-specific settings stay behind their adapter boundary.
 - This project is meant to own the agent loop. It is not only a memory/context overlay for another agent.
 - Never execute a tool outside the runtime policy and approval path.
 - A Skill supplies instructions; it does not grant tool permissions.

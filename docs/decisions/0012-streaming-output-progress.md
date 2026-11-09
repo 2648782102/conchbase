@@ -12,6 +12,8 @@ Magpie's [integration documentation](https://usemagpie.ai/docs/integrate) states
 
 The task queue calls for provider streaming and visible progress. It also requires an accepted ADR before a public contract changes. SSE transport, `Last-Event-ID`, retention, and multi-writer ordering remain open.
 
+The Magpie observations below justify the current compatibility implementation only. Durable output-delta events and task progress are Conchbase contracts; they must not require Magpie-specific event fields or imply that Magpie is the only provider. A future adapter can expose equivalent bounded answer text through the provider boundary while preserving those runtime semantics.
+
 ## Options
 
 ### A. Continue polling task state only

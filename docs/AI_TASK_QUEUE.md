@@ -4,9 +4,9 @@ This queue is for coding models continuing from the repository. It records bound
 
 ## Current state
 
-- [ADR 0010](decisions/0010-first-real-model-slice.md) accepts phase-1 direction: Conchbase owns the agent loop, Magpie is the first real-model provider, and durable events plus explicit retry cover interruption. A process restart recognizes interrupted work; it does not continue an in-flight model request.
+- [ADR 0010](decisions/0010-first-real-model-slice.md) accepts phase-1 direction: Conchbase owns the agent loop and uses Magpie as the first compatibility implementation for real-model calls; this is not the product's sole provider or future Agent model contract. Durable events plus explicit retry cover interruption. A process restart recognizes interrupted work; it does not continue an in-flight model request.
 - [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md) accepts an internal single-owner database boundary. The SQLite store rejects a second simultaneous owner; `conchbase models` is database-free. Cross-platform crash recovery, migrations, and deliberate multi-process execution remain open.
-- [ADR 0012](decisions/0012-streaming-output-progress.md) accepts durable `task.output_delta` events, `partialOutput`, and bounded Magpie streaming. SSE, `Last-Event-ID`, retention, reasoning display, and streaming tool calls remain open.
+- [ADR 0012](decisions/0012-streaming-output-progress.md) accepts durable `task.output_delta` events, `partialOutput`, and bounded streaming through the current Magpie compatibility adapter. SSE, `Last-Event-ID`, retention, reasoning display, and streaming tool calls remain open.
 - [ADR 0013](decisions/0013-bounded-tool-capability-kernel.md) accepts an internal, fixture-only tool registry, exact versioned approval records, per-attempt idempotency, bounded audit scalars, and replayable normalized failures. It changes no public route, tool-prefixed event names remain internal test vocabulary, and model-driven and real host tool execution remain blocked.
 - [ADR 0014](decisions/0014-versioned-configuration-api.md) accepts the `0.4.0` `schemaVersion: 1` configuration document, durable immutable revision history, validation, apply, and rollback. References remain opaque data.
 - [ADR 0015](decisions/0015-composition-identity-kernel.md) accepts an internal, topology-neutral composition validator and `cmp_` identity, and records that composition execution identity precedes public tool execution.
@@ -14,7 +14,7 @@ This queue is for coding models continuing from the repository. It records bound
 - [ADR 0017](decisions/0017-public-tool-request-approval-ledger.md) accepts the `0.6.0` public tool request/approval ledger: three routes, durable normalized requests and approvals, composition-scoped idempotency, durable request/decision audit events, and no tool execution.
 - [ADR 0018](decisions/0018-provider-tool-call-parsing-boundary.md) accepts an internal, pure parser for one OpenAI Chat Completions-compatible non-streaming function tool call, later wired by ADR 0019.
 - [ADR 0019](decisions/0019-explicit-provider-tool-call-observation-boundary.md) accepts the `0.7.0` explicit provider observation boundary: one transient observation route, provider normalization, visible failure in the live v1 task path, no auto-ledger, and no execution.
-- Conchbase exposes versioned task, retry, cancel, event, Magpie model-catalog, and configuration-revision routes. Pagurus and other external clients use the Runtime API; phase-1 CLI task-state and configuration reads take short-lived private database ownership. The OpenAPI contract is the source of truth.
+- Conchbase exposes versioned task, retry, cancel, event, current Magpie-backed model-catalog, and configuration-revision routes. Pagurus and other external clients use the Runtime API; phase-1 CLI task-state and configuration reads take short-lived private database ownership. The OpenAPI contract is the source of truth; future Agent model references and discovery must be provider-neutral.
 - The phase-1 model loop is single-turn for `schemaVersion: 1`. The deterministic composition loop is bounded for `schemaVersion: 2`. Neither is a default or canonical agent topology. User-defined composition remains topology-neutral product intent.
 - `node:sqlite` persists tasks, events, and configuration revisions behind `TaskStore`. Provider calls use direct HTTP through a narrow adapter. No provider SDK, storage SDK, MCP SDK, or plugin host is installed.
 - `tests/repository-guardrails.test.ts` checks AI-first entry documents, accepted ADR status, the exact `0.7.0` OpenAPI path set and version, loopback-only configuration, source boundaries, dependency boundaries, the public ledger's no-execution rules, and the ADR 0019 parser wiring boundaries. It was updated in the same slice as ADR `0019`.
@@ -51,20 +51,32 @@ This queue is for coding models continuing from the repository. It records bound
 
 ## Next bounded slices
 
-Each item requires an accepted ADR before its public contract changes. Do not start several at once.
+The cross-repository product priority is a user-managed collection of independently customizable Agents through Pagurus, with Conchbase owning Agent identity, the shared schemas, execution, and task bindings. The first end-to-end acceptance slice must exercise at least two Agents. Do not start later items before the active slice is accepted and complete.
 
-1. **Streaming tool-call accumulation.** Accept a separate ADR for provider-stream delta accumulation, partial arguments, cancellation during accumulation, and error classification. ADR `0019` accepts only one whole message-shaped tool call. Then separately decide durable execution results, crash-safe side effects, real executor isolation, per-tool grants, and whether `ToolCapabilityKernel` is replaced or migrated. A ledger approval must not be treated as execution permission. This is the first next slice.
-2. **Pagurus tool approval client.** Only after its own accepted client ADR, add explicit pending/approved/rejected states, exact requested-action display, keyboard access, and capability handling through Conchbase's published routes. Never read private runtime state.
-3. **Configuration lifecycle slice.** Add an accepted portable file format, import/export, migrations, secret resolution, Skill/plugin/MCP bundle schemas, and separate install/enable/grant operations. The current revision document is data only.
-4. **Persistence hardening.** Add supported OS/architecture/Node CI coverage, migrations, WAL crash recovery, retention, and multi-process ownership before calling the storage layer production-ready.
-5. **Magpie upstream adapter.** Once the Conchbase config format is stable, evaluate a pull request to Magpie's `internal/agent` so Conchbase appears on its Agents page. This is optional integration work, not required for the gateway.
-6. **Authoritative client reads.** Replace direct CLI database reads with a documented Runtime API client path after API parity and authentication direction are accepted. Keep the single-owner lock until that contract exists.
-7. **SSE compatibility.** Only after `Last-Event-ID`, retention, and reconnect semantics are accepted, decide whether to expose the durable event log over SSE in addition to polling.
+1. **Agent resource and lifecycle ADR (next).** Define stable runtime-local identity; create/list/read/update/duplicate/archive; immutable per-Agent revision history and rollback; default/selection semantics; archive vs deletion/retention behavior; idempotency; conditional updates and concurrent-edit conflicts; and separation from global runtime-wide policy/capability configuration. Decide dedicated resource routes versus a versioned API extension.
+2. **Provider adapter contract ADR.** Define provider-neutral identifiers for providers and models, catalog/discovery contract, adapter capability reporting, provider-specific options, credential ownership, normalized errors and no implicit fallback. Keep Agent schemas and task APIs independent of provider-specific implementation details. Treat Magpie as one compatibility adapter among future providers, not as the product target.
+3. **Task binding and execution ADR.** Define bounded instructions and their placement relative to runtime-owned constraints, default provider/model selection, task override and precedence, atomic pinning of Agent id/revision plus runtime configuration revision and effective provider/model, task/event inspection, cancellation, retry, unavailable/archived Agent behavior, and legacy clients with no Agent id. Credentials and resolved secrets stay outside Agent documents; Agent configuration never grants tools.
+4. **Additive persistence/API implementation.** Define a transactional/idempotent migration before adding tables/columns; preserve every existing task, event, tool request, configuration revision, and active pointer. Extend Runtime API/OpenAPI additively and advertise Agent and provider capabilities. Keep old `/v1/tasks`, `conchbase run`, `CONCHBASE_MODEL`, v1/v2 configuration, deterministic v2 composition, cancellation, and streaming behavior unchanged for legacy clients.
+5. **Pagurus Agent collection and editor.** After Conchbase publishes the contract, Pagurus accepts its client ADR and provides create/edit/duplicate/select/archive, provider/model selection using the published contract, validation, apply, per-Agent history, compare/rollback, run, and inspect. Use only the Runtime API. Runtimes without Agent capability retain existing task and runtime-configuration workflows; clearly distinguish Agent profiles from the global runtime config.
+6. **Two-Agent end-to-end acceptance.** Configure at least two Agents with different instructions and provider/model selections; prove task selection, independent edits and history, and inspection of Agent id/revision, runtime configuration revision, and effective provider/model. Verify rollback, default change, archive, concurrent task creation, interruption, and retry cannot silently change a task's pinned execution definition. Use deterministic fake adapters and provider fixtures.
+7. **Topology-neutral composition and model-driven Agent orchestration.** Only after the Agent collection/task-binding loop works, define separate contracts for composition nodes, context passing, delegation, concurrency, and coordination. ADR 0016's deterministic executor is not evidence these behaviors already exist.
+
+## Deferred capability work
+
+- **Streaming tool-call accumulation and execution.** Later accept a separate ADR for provider-stream delta accumulation, partial arguments, cancellation, and error classification. Then separately decide durable execution results, crash-safe side effects, real executor isolation, per-tool grants, and whether `ToolCapabilityKernel` is replaced or migrated. A ledger approval is not execution permission.
+- **Pagurus tool approval client.** Only after Conchbase has a real, reviewed execution and authorization workflow and Pagurus accepts its own client ADR. Never read private runtime state.
+- **Agent-aware tool authorization.** Before any tool executes for a selected Agent, extend the request/approval/authorization/audit scope to include Agent identity and the pinned Agent revision, then verify runtime-wide policy and grants. Agent instructions or profile fields alone never grant capability.
+- **Capability lifecycle.** Portable files, Skill/plugin/MCP bundle schemas, secret resolution, installation/enabling/grants, and process lifecycle require explicit runtime contracts and security boundaries.
+- **Persistence hardening.** Add supported OS/architecture/Node CI coverage, migrations, WAL crash recovery, retention, and multi-process ownership before calling the storage layer production-ready.
+- **Magpie compatibility.** Keep the existing adapter working and covered by regression fixtures while defining the provider-neutral adapter contract. Do not make upstream Magpie Agents-page integration a prerequisite for Agent management through Conchbase.
+- **Authoritative client reads.** Replace direct CLI database reads with a documented Runtime API path after API parity and authentication direction are accepted. Keep the single-owner lock until that contract exists.
+- **SSE compatibility and remote access.** Accept cursor, retention, and reconnect semantics before SSE; design authentication and pairing before remote binding.
 
 ## Blocked until direction
 
 - Generated client types built from an unaccepted schema, portable configuration files, secret resolution, Skill/plugin/MCP installers, and capability grants.
 - Model-driven tool execution, public tool execution routes, real host tools, MCP servers, Skills granting tools, arbitrary plugin loading, crash-safe side effects, real executor isolation, and streaming tool-call accumulation.
+- Agent identity, collection, per-Agent revision history, task binding, and Agent execution semantics until the dependent Agent ADRs are accepted.
 - Model-driven composition nodes, delegation, concurrency, general scheduling, role registries, cyclic coordination, and automatic continuation of in-flight model or tool work after a crash.
 - Running task-state CLI commands concurrently with `conchbase serve`, or treating SQLite exclusive locking as multi-process support.
 - MCP process lifecycle, per-tool grants, arbitrary plugin loading, remote binding, authentication/pairing, and desktop packaging.
@@ -74,9 +86,9 @@ Do not weaken or delete the repository guardrails to bypass this queue. Update t
 
 ## Definition of done for each task
 
-- Read `AGENTS.md`, `docs/AI_HANDOFF.md`, `docs/AI_DEVELOPMENT.md`, ADRs `0010`–`0018`, and the owning architecture/API document first.
+- Read `AGENTS.md`, `docs/AI_HANDOFF.md`, `docs/AI_DEVELOPMENT.md`, ADRs `0010`–`0019`, and the owning architecture/API document first.
 - Keep implemented behavior separate from planned behavior in every doc/README update.
 - Add deterministic tests; never use real credentials, personal data, public-network dependencies, or user runtime data in fixtures.
 - Run `npm run check`, `npm test`, and `npm run build` in the affected repository.
 - If a public API or shared schema changes, write an ADR with options/consequences/recommendation and record direction before implementing it.
-- Commit the focused slice, report changed files and validation results, and update this queue.
+- Report the focused slice, changed files, validation results, and update this queue. Do not commit or push unless explicitly authorized in the current conversation.
