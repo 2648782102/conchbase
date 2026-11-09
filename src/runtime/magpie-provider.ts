@@ -114,7 +114,7 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
     const headers: Record<string, string> = {
       Accept: 'application/json',
       'Content-Type': 'application/json',
-      'User-Agent': 'Conchbase/0.7.0',
+      'User-Agent': 'Conchbase/0.8.0',
     };
     if (this.appKey) headers.Authorization = `Bearer ${this.appKey}`;
 
@@ -176,7 +176,7 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
     const headers: Record<string, string> = {
       Accept: 'text/event-stream',
       'Content-Type': 'application/json',
-      'User-Agent': 'Conchbase/0.7.0',
+      'User-Agent': 'Conchbase/0.8.0',
     };
     if (this.appKey) headers.Authorization = `Bearer ${this.appKey}`;
 

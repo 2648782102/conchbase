@@ -17,12 +17,13 @@ The product target is a collection of independently customizable Agents through 
 
 Agent definitions and Runtime API contracts must not depend on Magpie catalog ids, response fields, settings, or credentials. Define stable provider/model references and discovery, adapter capabilities, provider-specific settings ownership, normalized failures, and no implicit provider fallback through an accepted provider-neutral adapter contract. Preserve Magpie through its compatibility adapter and exercise the contract with deterministic fake adapters.
 
-1. Accept ADRs for stable runtime-local Agent identity/lifecycle, per-Agent immutable revisions, optimistic concurrency, and separation from the existing runtime-wide policy/capability configuration.
-2. Define Agent selection and defaulting, bounded instructions, provider-neutral provider/model resolution and override precedence, archive/retention, and atomic pinning of Agent id/revision plus runtime configuration revision and effective provider/model on task creation. Define retry, cancel, event/task inspection, and legacy-client behavior.
-3. Specify a transactional, idempotent SQLite migration and additive API/capability strategy. Preserve all existing tasks, events, tool requests, configuration revisions and active pointer; retain v1/v2 and deterministic composition semantics.
-4. Implement the Conchbase Runtime API, persistence, validation, migration, and execution contract. Keep current task/configuration/event routes and old client behavior operational.
-5. Coordinate a separate Pagurus client ADR and ship Agent collection management and editor: create, edit, duplicate, select, archive, validate, apply, history, compare/rollback, task launch, and inspection. Preserve the existing UI when connecting to a runtime without Agent capability.
-6. Verify at least two independent Agents end to end with deterministic fixtures before expanding into model-driven composition, tools, Skills, MCP, or plugins.
+ADR 0020 and Conchbase 0.8.0 have implemented Agent profiles and revisions, default/archive behavior, a provider-neutral model catalog contract, additive SQLite migration, optimistic concurrency, and Agent task bindings. Agent tasks pin Agent revision, runtime configuration revision, and effective provider/model and execute one model turn. Legacy tasks retain their previous global v1/v2 behavior. The active cross-repository work is the Pagurus collection/editor and the two-Agent regression matrix.
+
+1. Ship the Pagurus Agent collection/editor using the published contract: create, edit, duplicate, select/default, archive, model selection, history and rollback, task launch and inspection. Preserve task/configuration workflows when a Runtime does not advertise `agents`.
+2. Verify at least two Agents with distinct instructions and models end to end. Exercise concurrent profile changes, task pins, default/archive behavior, model override, cancellation, restart and retry, and global configuration apply/rollback.
+3. Preserve legacy `/v1/tasks`, CLI, Magpie compatibility, configuration v1/v2, deterministic v2 composition, streaming, cancellation, and task history while the client updates.
+4. Add another provider only through a separately tested adapter implementation and its credential/settings ownership contract. Keep provider-neutral Agent and catalog schemas unchanged.
+5. Decide separately whether an Agent may select the global topology and what model-driven composition semantics follow. Agent profiles do not currently invoke the v2 deterministic graph.
 
 The existing configuration document is a single runtime-wide revision with opaque capability references; it is not an Agent collection. Its v2 composition executor makes no model call. Preserve these facts and their behavior while adding Agent resources. Agent instructions must never grant tools, and future tool authorization must include the pinned Agent identity/revision.
 

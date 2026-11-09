@@ -8,6 +8,7 @@ import type {
   ModelCatalogEntry,
 } from '../src/runtime/model-catalog.js';
 import { TaskService } from '../src/runtime/task-service.js';
+import { AgentConflictError } from '../src/runtime/agent-profile.js';
 import { DatabaseInstanceError, SqliteTaskStore } from '../src/runtime/task-store.js';
 
 function fixtureFetch(): typeof globalThis.fetch {
@@ -90,6 +91,50 @@ test('a task completes with durable ordered events and pinned configuration', as
     assert.deepEqual(deltas.map((event) => event.data.outputLength), [5, 11]);
     assert.ok(deltas.every((event) => event.state === 'running'));
     assert.deepEqual(service.store.listEvents(events[0]!.id), events.slice(1));
+  } finally {
+    service.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('Agent task creation rejects an Agent revision changed during async model validation', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-agent-pin-race-'));
+  const store = new SqliteTaskStore(path.join(directory, 'runtime.sqlite'));
+  let catalogCalls = 0;
+  let agentId = '';
+  let initialRevisionId = '';
+  const service = new TaskService(store, {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/model',
+    fetch: fixtureFetch(),
+  }, {
+    async listModels() {
+      catalogCalls += 1;
+      if (catalogCalls === 2) {
+        store.updateAgent(agentId, initialRevisionId, {
+          name: 'Changed during catalog lookup',
+          instructions: 'new revision',
+          providerId: 'magpie',
+          modelId: 'fixture/model',
+        });
+      }
+      return [{ id: 'fixture/model', displayName: 'Fixture Model' }];
+    },
+  });
+
+  try {
+    const agent = await service.createAgent({
+      name: 'Original', instructions: 'old revision', providerId: 'magpie', modelId: 'fixture/model',
+    });
+    agentId = agent.id;
+    initialRevisionId = agent.currentRevisionId;
+    await assert.rejects(
+      service.createAgentTask({ prompt: 'test race', agentId }),
+      AgentConflictError,
+    );
+    assert.deepEqual(store.listTasks(), []);
+    assert.equal(store.listEvents(null).length, 0);
+    assert.notEqual(store.getAgent(agentId)?.currentRevisionId, initialRevisionId);
   } finally {
     service.close();
     rmSync(directory, { recursive: true, force: true });

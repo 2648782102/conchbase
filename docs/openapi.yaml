@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Conchbase Runtime API
-  version: 0.7.0
-  description: Local, versioned API for Conchbase streaming model tasks, bounded composition execution, ordered progress events, Magpie model discovery, versioned configuration revisions, durable tool-approval-ledger request/decision records, and transient provider-tool-call-observation records without execution.
+  version: 0.8.0
+  description: Local, versioned API for Conchbase Agent profiles and revisions, provider-neutral model references, pinned tasks, bounded composition execution, ordered progress events, versioned runtime configuration, and durable tool request/approval records without execution. Runtime capabilities include agents, provider-neutral-model-catalog, tool-approval-ledger, and provider-tool-call-observation records.
 servers:
   - url: http://127.0.0.1:4318
     description: Local runtime default; loopback only.
@@ -46,6 +46,196 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/model-catalog:
+    get:
+      operationId: listProviderModels
+      summary: List available models using provider-neutral identities.
+      responses:
+        '200':
+          description: Available provider/model references.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderModelList'
+        '502':
+          description: A provider model catalog is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/agents:
+    get:
+      operationId: listAgents
+      summary: List runtime-local Agents and their current revisions.
+      responses:
+        '200':
+          description: Agent collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentList'
+    post:
+      operationId: createAgent
+      summary: Create an Agent with its initial immutable revision.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentProfile'
+      responses:
+        '201':
+          description: Agent created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentEnvelope'
+        '400':
+          description: Invalid profile or unavailable provider/model.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/agents/{agentId}:
+    get:
+      operationId: getAgent
+      summary: Read an Agent and its immutable revisions.
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '200':
+          description: Agent detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentEnvelope'
+        '404':
+          description: Agent not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      operationId: updateAgent
+      summary: Append a new Agent revision if the expected revision is current.
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAgentRequest'
+      responses:
+        '200':
+          description: Updated Agent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentEnvelope'
+        '409':
+          description: Archived Agent or stale expected revision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/agents/{agentId}/duplicate:
+    post:
+      operationId: duplicateAgent
+      summary: Create a new Agent from the selected immutable revision.
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DuplicateAgentRequest'
+      responses:
+        '201':
+          description: Duplicated Agent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentEnvelope'
+  /v1/agents/{agentId}/archive:
+    post:
+      operationId: archiveAgent
+      summary: Soft archive an Agent and preserve its revisions and tasks.
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '200':
+          description: Archived Agent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentRecordEnvelope'
+  /v1/agents/{agentId}/revisions:
+    get:
+      operationId: listAgentRevisions
+      summary: List immutable revisions for one Agent.
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '200':
+          description: Agent revision history.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentRevisionList'
+  /v1/agents/{agentId}/revisions/apply:
+    post:
+      operationId: applyAgentRevision
+      summary: Append a new current revision using historical revision content.
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplyAgentRevisionRequest'
+      responses:
+        '200':
+          description: Agent with appended rollback revision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentEnvelope'
+        '409':
+          description: Stale expected revision or archived Agent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/agents/default:
+    get:
+      operationId: getDefaultAgent
+      summary: Read the default Agent, if configured.
+      responses:
+        '200':
+          description: Current default Agent or null.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DefaultAgentEnvelope'
+    put:
+      operationId: setDefaultAgent
+      summary: Set or clear the default Agent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetDefaultAgentRequest'
+      responses:
+        '200':
+          description: New default Agent or null.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DefaultAgentEnvelope'
   /v1/tasks:
     get:
       operationId: listTasks
@@ -444,6 +634,13 @@ components:
       required: true
       schema:
         type: string
+    AgentId:
+      name: agentId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^agt_[a-f0-9]{32}$'
     RevisionId:
       name: revisionId
       in: path
@@ -458,6 +655,215 @@ components:
       schema:
         type: string
         pattern: '^tqr_[0-9a-f]{24}$'
+    AgentReference:
+      type: object
+      additionalProperties: false
+      required: [providerId, modelId]
+      properties:
+        providerId:
+          type: string
+          pattern: '^[a-z][a-z0-9-]{0,63}$'
+        modelId:
+          type: string
+          minLength: 1
+          maxLength: 300
+    AgentProfile:
+      type: object
+      additionalProperties: false
+      required: [name, instructions, providerId, modelId]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        instructions:
+          type: string
+          maxLength: 20000
+          description: Untrusted customization context; never grants tools or permissions.
+        providerId:
+          type: string
+          pattern: '^[a-z][a-z0-9-]{0,63}$'
+        modelId:
+          type: string
+          minLength: 1
+          maxLength: 300
+    AgentRevision:
+      type: object
+      additionalProperties: false
+      required: [id, name, instructions, providerId, modelId, createdAt]
+      properties:
+        id:
+          type: string
+          pattern: '^agr_[a-f0-9]{32}$'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        instructions:
+          type: string
+          maxLength: 20000
+          description: Untrusted customization context; never grants tools or permissions.
+        providerId:
+          type: string
+          pattern: '^[a-z][a-z0-9-]{0,63}$'
+        modelId:
+          type: string
+          minLength: 1
+          maxLength: 300
+        createdAt:
+          type: string
+          format: date-time
+    AgentRecord:
+      type: object
+      additionalProperties: false
+      required: [id, currentRevisionId, archived, isDefault, current]
+      properties:
+        id:
+          type: string
+          pattern: '^agt_[a-f0-9]{32}$'
+        currentRevisionId:
+          type: string
+          pattern: '^agr_[a-f0-9]{32}$'
+        archived:
+          type: boolean
+        isDefault:
+          type: boolean
+        current:
+          $ref: '#/components/schemas/AgentRevision'
+    Agent:
+      type: object
+      additionalProperties: false
+      required: [id, currentRevisionId, archived, isDefault, current, revisions]
+      properties:
+        id:
+          type: string
+          pattern: '^agt_[a-f0-9]{32}$'
+        currentRevisionId:
+          type: string
+          pattern: '^agr_[a-f0-9]{32}$'
+        archived:
+          type: boolean
+        isDefault:
+          type: boolean
+        current:
+          $ref: '#/components/schemas/AgentRevision'
+        revisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentRevision'
+    AgentEnvelope:
+      type: object
+      additionalProperties: false
+      required: [agent]
+      properties:
+        agent:
+          $ref: '#/components/schemas/Agent'
+    AgentRecordEnvelope:
+      type: object
+      additionalProperties: false
+      required: [agent]
+      properties:
+        agent:
+          $ref: '#/components/schemas/AgentRecord'
+    AgentList:
+      type: object
+      additionalProperties: false
+      required: [agents]
+      properties:
+        agents:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentRecord'
+    AgentRevisionList:
+      type: object
+      additionalProperties: false
+      required: [agentId, revisions]
+      properties:
+        agentId:
+          type: string
+        revisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentRevision'
+    AgentProfileEnvelope:
+      type: object
+      additionalProperties: false
+      required: [profile]
+      properties:
+        profile:
+          $ref: '#/components/schemas/AgentProfile'
+    UpdateAgentRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedRevisionId, profile]
+      properties:
+        expectedRevisionId:
+          type: string
+          pattern: '^agr_[a-f0-9]{32}$'
+        profile:
+          $ref: '#/components/schemas/AgentProfile'
+    DuplicateAgentRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        revisionId:
+          type: string
+          pattern: '^agr_[a-f0-9]{32}$'
+        profile:
+          $ref: '#/components/schemas/AgentProfile'
+    ApplyAgentRevisionRequest:
+      type: object
+      additionalProperties: false
+      required: [revisionId, expectedRevisionId]
+      properties:
+        revisionId:
+          type: string
+          pattern: '^agr_[a-f0-9]{32}$'
+        expectedRevisionId:
+          type: string
+          pattern: '^agr_[a-f0-9]{32}$'
+    SetDefaultAgentRequest:
+      type: object
+      additionalProperties: false
+      required: [agentId]
+      properties:
+        agentId:
+          type: [string, 'null']
+    DefaultAgentEnvelope:
+      type: object
+      additionalProperties: false
+      required: [agent]
+      properties:
+        agent:
+          oneOf:
+            - $ref: '#/components/schemas/AgentRecord'
+            - type: 'null'
+    ProviderModel:
+      type: object
+      additionalProperties: false
+      required: [providerId, modelId, reference, displayName, capabilities]
+      properties:
+        providerId:
+          type: string
+        modelId:
+          type: string
+        reference:
+          type: string
+        displayName:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+    ProviderModelList:
+      type: object
+      additionalProperties: false
+      required: [models]
+      properties:
+        models:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderModel'
   schemas:
     Health:
       type: object
@@ -483,6 +889,7 @@ components:
           const: ready
         capabilities:
           type: array
+          description: Runtime features currently available, including agents and provider-neutral-model-catalog when task services are enabled.
           items:
             type: string
     Error:
@@ -776,6 +1183,16 @@ components:
           type: [string, 'null']
         error:
           type: [string, 'null']
+        agentId:
+          type: string
+          pattern: '^agt_[a-f0-9]{32}$'
+        agentRevisionId:
+          type: string
+          pattern: '^agr_[a-f0-9]{32}$'
+        providerId:
+          type: string
+        modelId:
+          type: string
     TaskEnvelope:
       type: object
       additionalProperties: false
@@ -816,6 +1233,20 @@ components:
           type: string
           minLength: 1
           maxLength: 300
+        agentId:
+          type: string
+          pattern: '^agt_[a-f0-9]{32}$'
+        modelOverride:
+          $ref: '#/components/schemas/AgentReference'
+      allOf:
+        - not:
+            required: [agentId, model]
+        - if:
+            required: [agentId]
+          then: {}
+          else:
+            not:
+              required: [modelOverride]
     RuntimeEvent:
       type: object
       additionalProperties: false
@@ -870,6 +1301,19 @@ components:
             replay, denial, and failure vocabulary is not part of the public event contract.
           additionalProperties:
             type: [string, number, boolean, 'null']
+        agentId:
+          type: string
+          pattern: '^agt_[a-f0-9]{32}$'
+        agentRevisionId:
+          type: string
+          pattern: '^agr_[a-f0-9]{32}$'
+        providerId:
+          type: string
+          pattern: '^[a-z][a-z0-9-]{0,63}$'
+        modelId:
+          type: string
+          minLength: 1
+          maxLength: 300
     EventList:
       type: object
       additionalProperties: false

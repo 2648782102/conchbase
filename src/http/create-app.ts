@@ -8,6 +8,7 @@ import { registerProviderObservationRoutes } from './routes/v1/provider-observat
 import { registerRuntimeRoute } from './routes/v1/runtime.js';
 import { registerTaskRoutes } from './routes/v1/tasks.js';
 import { registerToolRequestRoutes } from './routes/v1/tool-requests.js';
+import { registerAgentRoutes } from './routes/v1/agents.js';
 
 export function createApp(options: {
   logger?: boolean;
@@ -16,6 +17,7 @@ export function createApp(options: {
   const app = Fastify({ logger: options.logger ?? true });
 
   registerHealthRoute(app);
+  registerAgentRoutes(app, options.taskService);
   registerRuntimeRoute(app, Boolean(options.taskService));
   registerConfigurationRoutes(app, options.taskService);
   registerEventRoutes(app, options.taskService);

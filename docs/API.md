@@ -7,9 +7,20 @@ The service listens on `127.0.0.1:4318` by default. The machine-readable source 
 | Method and path | Behavior |
 |---|---|
 | `GET /v1/health` | Service health and API version `1`. |
-| `GET /v1/runtime` | Runtime identity, version `0.7.0`, and advertised capabilities. |
+| `GET /v1/runtime` | Runtime identity, version `0.8.0`, and advertised capabilities. |
 | `GET /v1/models` | Chat model ids from the configured local Magpie gateway; `502` when the catalog is unavailable. |
-| `POST /v1/tasks` | Validate `prompt` and optional `model`, pin the active configuration revision, then create and start one bounded task; `202`. |
+| `GET /v1/model-catalog` | Provider-neutral model references with normalized capabilities; currently the `magpie` compatibility adapter; `502` when unavailable. |
+| `GET /v1/agents` | Runtime-local Agent collection and current revisions. |
+| `POST /v1/agents` | Validate model availability and create an Agent plus initial immutable revision; `201`. |
+| `GET /v1/agents/{agentId}` | Read an Agent and all its revisions; `404` when absent. |
+| `PATCH /v1/agents/{agentId}` | Append a profile revision using `expectedRevisionId`; stale edits return `409`. |
+| `POST /v1/agents/{agentId}/duplicate` | Create a new Agent identity from a selected revision; `201`. |
+| `POST /v1/agents/{agentId}/archive` | Soft archive; preserves tasks/revisions, clears default, and blocks new tasks. |
+| `GET /v1/agents/{agentId}/revisions` | Read the immutable revision history. |
+| `POST /v1/agents/{agentId}/revisions/apply` | Roll back by appending a new revision from history with optimistic concurrency. |
+| `GET /v1/agents/default` | Read the default Agent or `null`. |
+| `PUT /v1/agents/default` | Set a non-archived default Agent or clear the default with `null`. |
+| `POST /v1/tasks` | Accept either legacy `{ prompt, model? }` or Agent `{ prompt, agentId, modelOverride? }`; pin the active configuration and (for Agent tasks) Agent revision plus effective provider/model; create and start; `202`. |
 | `GET /v1/tasks` | Persisted tasks and the active configuration revision id. |
 | `GET /v1/tasks/{taskId}` | One persisted task; `404` when absent. |
 | `POST /v1/tasks/{taskId}/cancel` | Request cancellation of an active task; `409` when it is not active. |
@@ -25,11 +36,13 @@ The service listens on `127.0.0.1:4318` by default. The machine-readable source 
 | `POST /v1/tool-requests/{requestId}/approval` | Record one explicit `approved` or `rejected` decision; `201`, or `200` for exact replay, `409` for a conflicting decision. No tool is executed. |
 | `POST /v1/provider-observations/tool-calls` | Normalize one bounded OpenAI Chat Completions-compatible non-streaming function tool call into a transient observation; `200`, including `observation: null` when no tool call is present. No state, ledger request, event, or tool execution. |
 
-A task has a stable ID, its original prompt, selected model id, pinned configuration revision, current state, attempt number, final output, current `partialOutput`, and error. `partialOutput` is visible while a v1 model task is `running` or `cancelling` and is null in terminal states; final `output` remains authoritative. States include `queued`, `running`, `cancelling`, `succeeded`, `failed`, `cancelled`, and `interrupted`. A restart changes persisted nonterminal states to `interrupted`; retry creates a visible new attempt.
+An Agent profile is a versioned resource with bounded name, instructions, and `{ providerId, modelId }` default model reference. It contains no credential, provider URL, permission, or tool grant. The first Agent becomes default; there is no implicit default selection for task creation. Profile edits and history apply use `expectedRevisionId`; rollback appends a revision. Archiving is soft and irreversible in the current API, preserves history, and prevents new tasks. Existing tasks, including retries, stay bound to their pinned revision.
+
+A task has a stable ID, its original prompt, selected model id, pinned configuration revision, current state, attempt number, final output, current `partialOutput`, and error. Agent tasks also expose `agentId`, `agentRevisionId`, `providerId`, and `modelId`; the queued event carries the same identity. `model` and `modelOverride` cannot be combined with Agent mode; `modelOverride` cannot be sent without `agentId`. Agent tasks always use one model turn through their pinned provider/model even if the active runtime configuration is v2. Legacy tasks keep their old global v1/v2 dispatch and request shape. `partialOutput` is visible while a v1 model task is `running` or `cancelling` and is null in terminal states; final `output` remains authoritative. States include `queued`, `running`, `cancelling`, `succeeded`, `failed`, `cancelled`, and `interrupted`. A restart changes persisted nonterminal states to `interrupted`; retry creates a visible new attempt.
 
 Events use stable IDs and a global monotonic `sequence`. Each event records its task, type, resulting state, pinned configuration revision, attempt, and a bounded `data` object. `task.output_delta.data` contains `delta`, zero-based per-attempt `index`, and accumulated `outputLength`. Composition events carry `compositionDocumentId`, `compositionNodeId`, `nodeIndex`, `nodeCount`, `completedNodeCount`, and `terminalNodeIds` as documented in `docs/openapi.yaml` and [ADR 0016](decisions/0016-composition-execution-and-public-schema.md). Public tool ledger events carry `toolRequestId`, `configurationRevisionId`, `attempt`, `compositionDocumentId`, `compositionNodeId`, `toolName`, `argumentsDigest`, `idempotencyKey`, `status`, and decision-only `decision`, `approvalId`, and `reasonDigest` fields. They do not transition task state and never claim execution. Polling remains the client transport; SSE, `Last-Event-ID`, retention, and multi-process ownership remain open.
 
-Errors use `{ "error": "message" }` with documented status codes. Validation errors return `400`; missing tasks return `404`; conflicting task operations return `409`; model-catalog failures return `502`; an unconfigured task service returns `503`.
+Errors use `{ "error": "message" }` with documented status codes. Validation errors return `400`; missing resources return `404`; conflicting task or Agent operations return `409`; model-catalog failures return `502`; an unconfigured task service returns `503`.
 
 Configuration documents use `schemaVersion: 1` or `schemaVersion: 2`. Both require bounded opaque references for Skills, policies, MCP servers, plugins, secret references, and metadata. `schemaVersion: 2` also requires a topology-neutral `composition` section with user-authored nodes, links, entry node ids, and metadata; terminal node ids and `cmp_` identity are derived by the runtime. All sections and `metadata` are required; use empty arrays or an empty object when a section is unused. `source: url` and absolute URL labels are not accepted. Documents are data, not installed capabilities or grants. A validation error returns `{ "error": "...", "details": [{ "path": "...", "reason": "..." }] }`. Applying a document creates a content-addressed immutable revision if its content is new; a no-op returns `changed: false`. Rolling back changes the active pointer without deleting history. Already-created tasks keep their pinned revision; new tasks use the active revision. A v1 task uses one streaming model turn; a v2 task uses the deterministic composition executor and makes no model call. See [ADR 0014](decisions/0014-versioned-configuration-api.md) and [ADR 0016](decisions/0016-composition-execution-and-public-schema.md).
 
@@ -40,10 +53,10 @@ Provider observation documents are transient, untrusted normalization inputs. A 
 ## Boundaries
 
 - The API is loopback-only. Remote binding requires a reviewed authentication and pairing design.
-- Model ids come from the user's Magpie catalog. No model credentials enter Conchbase configuration or API responses.
+- Legacy model ids come from the user's Magpie catalog. Agent profiles and the new model catalog use provider-neutral references; only the `magpie` adapter is currently registered. No model credentials enter Agent documents or API responses.
 - A `schemaVersion: 1` task performs one streaming text completion. Reasoning text is ignored and model-requested tools are rejected, not executed.
 - The ADR 0018 parser is wired into the provider and the transient observation route by ADR 0019. A whole message-shaped tool call becomes a transient observation; streaming deltas and unsupported shapes remain rejected. No observation creates a ledger request, task transition, event, or execution permission.
-- A `schemaVersion: 2` task performs bounded deterministic graph traversal. It makes no model call and executes no model-requested or real host tool.
+- A legacy `schemaVersion: 2` task performs bounded deterministic graph traversal. It makes no model call and executes no model-requested or real host tool. Agent-backed tasks use a single model turn and do not implicitly execute the global composition graph.
 - No public tool execution, executable approval, MCP, Skill, plugin, model-driven composition, or dedicated composition management route exists yet. Composition is part of the versioned configuration document; the tool request/approval routes are ledger records only.
 - Configuration document routes do not install, enable, grant, resolve secrets, load code, or execute tools.
 - Tool request and approval routes do not execute tools, transition task state, load code, resolve secrets, or grant capabilities.

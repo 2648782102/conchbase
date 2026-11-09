@@ -36,6 +36,14 @@ const acceptedPaths = [
   '/v1/health',
   '/v1/runtime',
   '/v1/models',
+  '/v1/model-catalog',
+  '/v1/agents',
+  '/v1/agents/{agentId}',
+  '/v1/agents/{agentId}/duplicate',
+  '/v1/agents/{agentId}/archive',
+  '/v1/agents/{agentId}/revisions',
+  '/v1/agents/{agentId}/revisions/apply',
+  '/v1/agents/default',
   '/v1/tasks',
   '/v1/tasks/{taskId}',
   '/v1/tasks/{taskId}/cancel',
@@ -89,7 +97,9 @@ function assertAcceptedOpenApi(spec: string, label: string): void {
   assert.doesNotMatch(spec, nonLoopbackAddress, `${label} must not bind beyond loopback`);
   assert.match(spec, /requestBody:/, `${label} must document the accepted task request`);
   assert.match(spec, /interrupted/, `${label} must document interrupted tasks`);
-  assert.match(spec, /^  version: 0\.7\.0$/m, `${label} must record the provider observation contract version`);
+  assert.match(spec, /^  version: 0\.8\.0$/m, `${label} must record the Agent contract version`);
+  assert.match(spec, /provider-neutral-model-catalog/);
+  assert.match(spec, /AgentRevision/);
   assert.match(spec, /partialOutput/, `${label} must document partial output`);
   assert.match(spec, /ConfigurationRevision/, `${label} must document configuration revisions`);
   assert.match(spec, /tool-approval-ledger/);
@@ -98,7 +108,7 @@ function assertAcceptedOpenApi(spec: string, label: string): void {
   assert.match(spec, /- tool\.requested/);
   assert.doesNotMatch(spec, /- tool\.executed/);
   assert.match(spec, /Public tool ledger events carry toolRequestId/);
-  assert.match(spec, /transient provider-tool-call-observation records without execution/);
+  assert.match(spec, /provider-tool-call-observation records/);
 }
 
 function assertLoopbackConfig(source: string, label: string): void {
@@ -176,8 +186,8 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /interrupted/);
   assert.match(handoff, /explicit retry/);
   assert.match(handoff, /The broader user-defined composition product remains open/);
-  assert.match(handoff, /exact OpenAPI path set is seventeen routes/);
-  assert.doesNotMatch(handoff, /remains sixteen routes/);
+  assert.match(handoff, /exact OpenAPI path set is twenty-five routes/);
+  assert.match(handoff, /ADR 0020/);
 
   const queue = read('docs/AI_TASK_QUEUE.md');
   assert.match(queue, /single-turn/);
@@ -190,15 +200,16 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(queue, /Streaming tool-call accumulation/);
   assert.match(queue, /Done in the provider tool-call parsing boundary slice/);
   assert.match(queue, /Done in the explicit provider observation slice/);
-  assert.match(queue, /user-managed collection of independently customizable Agents/);
-  assert.match(queue, /Agent resource and lifecycle ADR \(next\)/);
+  assert.match(queue, /product direction is a user-managed collection of independently customizable Agents/);
+  assert.match(queue, /first collection\/editor and task-binding slice/);
   assert.match(queue, /Magpie.*not the product's sole provider or future Agent model contract/);
-  assert.match(queue, /future Agent model references and discovery must be provider-neutral/);
+  assert.match(queue, /Future Agent model references and discovery must be provider-neutral/);
   assert.match(queue, /at least two Agents/);
-  assert.match(queue, /transactional\/idempotent migration/);
-  assert.match(queue, /old `\/v1\/tasks`/);
+  assert.match(queue, /transactional additive schema migration/);
+  assert.match(queue, /Check legacy `\/v1\/tasks`/);
   assert.match(queue, /Streaming tool-call accumulation and execution/);
   assert.match(queue, /short-lived private database ownership/);
+  assert.match(queue, /Client follow-up/);
 
   const roadmap = read('docs/ROADMAP.md');
   assert.match(roadmap, /current adapter uses Magpie for compatibility/);
@@ -300,6 +311,10 @@ test('decision records separate accepted phase-1 direction from proposals', () =
     read(`${decisionsDir}/0019-explicit-provider-tool-call-observation-boundary.md`),
     /^Status: \*\*accepted product and public API direction; contracts are versioned in `docs\/openapi\.yaml`\*\*$/m,
   );
+  assert.match(
+    read(`${decisionsDir}/0020-multi-agent-and-provider-neutral-model-contract.md`),
+    /^Status: \*\*accepted product and public API direction; contracts are versioned in `docs\/openapi\.yaml`\*\*$/m,
+  );
 });
 
 test('the public contract remains loopback-only and records accepted task routes', () => {
@@ -355,6 +370,10 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
     /provider-tool-call-observation/,
     'the runtime status must advertise transient provider observations',
   );
+  assert.match(read('src/http/routes/v1/runtime.ts'), /provider-neutral-model-catalog/);
+  assert.match(read('src/http/routes/v1/runtime.ts'), /agents/);
+  assert.match(read('src/runtime/task-store.ts'), /BEGIN EXCLUSIVE/);
+  assert.match(read('src/runtime/task-store.ts'), /migrateAgentSchema/);
   assert.match(
     read('src/runtime/tool-capability.ts'),
     /export class ToolCapabilityKernel/,

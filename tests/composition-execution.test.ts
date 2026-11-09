@@ -13,6 +13,8 @@ import {
   planCompositionExecution,
 } from '../src/runtime/composition-execution.js';
 import { TaskService } from '../src/runtime/task-service.js';
+import type { AgentDetail, AgentProfileInput, AgentRecord, AgentRevision } from '../src/runtime/agent-profile.js';
+import type { AgentTaskCreateInput } from '../src/runtime/task-store.js';
 import {
   SqliteTaskStore,
   type ApplyConfigurationResult,
@@ -153,6 +155,25 @@ class CancelOnFirstNodeStore implements TaskStore {
 
   createTask(input: TaskCreateInput): TaskSnapshot {
     return this.inner.createTask(input);
+  }
+
+  createAgentTask(input: AgentTaskCreateInput): TaskSnapshot { return this.inner.createAgentTask(input); }
+  createAgent(profile: AgentProfileInput): AgentDetail { return this.inner.createAgent(profile); }
+  updateAgent(id: string, expected: string, profile: AgentProfileInput): AgentDetail {
+    return this.inner.updateAgent(id, expected, profile);
+  }
+  duplicateAgent(id: string, revision?: string, profile?: AgentProfileInput): AgentDetail {
+    return this.inner.duplicateAgent(id, revision, profile);
+  }
+  archiveAgent(id: string): AgentRecord { return this.inner.archiveAgent(id); }
+  applyAgentRevision(id: string, revision: string, expected: string): AgentDetail {
+    return this.inner.applyAgentRevision(id, revision, expected);
+  }
+  setDefaultAgent(id: string | null): string | null { return this.inner.setDefaultAgent(id); }
+  listAgents(): readonly AgentRecord[] { return this.inner.listAgents(); }
+  getAgent(id: string): AgentDetail | null { return this.inner.getAgent(id); }
+  getAgentRevision(id: string, revision: string): AgentRevision | null {
+    return this.inner.getAgentRevision(id, revision);
   }
 
   getTask(taskId: string): TaskSnapshot | null {

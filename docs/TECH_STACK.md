@@ -4,10 +4,10 @@
 |---|---|---|
 | Runtime and CLI | TypeScript on Node.js 24+ | In use |
 | HTTP server | Fastify | In use |
-| API contract | Versioned HTTP/JSON, JSON Schema, OpenAPI | In use for status, task, event, model, configuration, composition, and tool ledger routes |
+| API contract | Versioned HTTP/JSON, JSON Schema, OpenAPI | In use for status, Agent, provider-neutral catalog, task, event, configuration, composition, and tool ledger routes |
 | Model provider | Direct OpenAI Chat Completions-compatible streaming HTTP to local Magpie | In use for phase 1; no provider SDK |
-| Task and event state | `node:sqlite` `DatabaseSync` behind `TaskStore`, with one exclusive owner per database | In use for local phase 1; production platform matrix and migrations pending |
-| Model discovery | Direct HTTP to Magpie's `/v1/models` behind `MagpieModelCatalog` | In use; database-free and independent of `TaskService` |
+| Task, Agent, and event state | `node:sqlite` `DatabaseSync` behind `TaskStore`, with one exclusive owner and transactional additive schema migration | In use for local runtime; production platform matrix, WAL crash recovery, and multi-process protocol pending |
+| Model discovery | Provider-neutral `{ providerId, modelId }` catalog surface, currently translated by `MagpieModelCatalog` | In use; database-free; Magpie remains one compatibility adapter |
 | Runtime events | Global monotonic event IDs, durable `task.output_delta` progress, and polling cursor | In use; SSE and retention pending |
 | Configuration revisions | Versioned `schemaVersion: 1` and `schemaVersion: 2` documents, SHA-256 identity, SQLite history, active pointer, validation, apply, and rollback | In use as data only; portable files, secret resolution, installers, and grants deferred |
 | Composition identity and execution | Public topology-neutral graph section, internal canonical DAG validation, SHA-256 `cmp_` identity, deterministic topological node order, and node events | In use for bounded deterministic execution; model-driven node work, scheduling, and tool audits deferred |
@@ -17,6 +17,7 @@
 | Tool protocol | MCP TypeScript SDK | Deferred until lifecycle, sandboxing, and per-tool grants are accepted |
 | Agent orchestration | Conchbase-owned task state machine with a narrow provider adapter and a deterministic composition executor | In use for one bounded text turn or bounded graph traversal; tool loops and model-driven composition pending |
 | Configuration and Skills | Content-addressed revision id, v1/v2 documents, and future portable profile files | Revision id and configuration write API in use; profile files and Skills lifecycle deferred |
+| Agent profiles | Runtime-local identities, immutable opaque revisions, optimistic updates, default/archive, and task pinning | In use under ADR 0020; portable profile files and more provider adapters deferred |
 
 The runtime is primarily I/O orchestration. Model inference belongs to a local gateway or external provider, so a separate inference language is not part of the baseline. The public API stays language-neutral for non-TypeScript clients.
 

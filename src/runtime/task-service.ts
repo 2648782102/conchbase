@@ -18,6 +18,17 @@ import {
   type ModelCatalogEntry,
 } from './model-catalog.js';
 import { OpenAiChatCompletionsProvider } from './magpie-provider.js';
+import {
+  AgentConflictError,
+  AgentNotFoundError,
+  AgentValidationError,
+  parseAgentProfile,
+  type AgentDetail,
+  type AgentProfileInput,
+  type AgentRecord,
+  type AgentRevision,
+  type ModelReference,
+} from './agent-profile.js';
 import { isTerminalTaskState, type TaskEventType } from './task-lifecycle.js';
 import {
   ConfigurationRevisionNotFoundError as StoreRevisionNotFoundError,
@@ -55,6 +66,12 @@ export interface CreateTaskInput {
   readonly model?: string;
 }
 
+export interface ProviderModelCatalogEntry extends ModelReference {
+  readonly reference: string;
+  readonly displayName: string;
+  readonly capabilities: readonly string[];
+}
+
 export class TaskValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -63,6 +80,9 @@ export class TaskValidationError extends Error {
 }
 
 export {
+  AgentConflictError,
+  AgentNotFoundError,
+  AgentValidationError,
   ConfigurationValidationError,
   StoreRevisionNotFoundError as ConfigurationRevisionNotFoundError,
   ToolRequestContextError,
@@ -289,6 +309,77 @@ export class TaskService {
     });
   }
 
+  async createAgent(input: unknown): Promise<AgentDetail> {
+    const profile = await this.validateAgentProfile(input);
+    return this.store.createAgent(profile);
+  }
+
+  async updateAgent(agentId: string, input: unknown): Promise<AgentDetail> {
+    if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+      throw new AgentValidationError('Request body must be an object.');
+    }
+    const value = input as Record<string, unknown>;
+    if (typeof value.expectedRevisionId !== 'string') {
+      throw new AgentValidationError('expectedRevisionId is required.');
+    }
+    const profile = await this.validateAgentProfile(value.profile);
+    return this.store.updateAgent(agentId, value.expectedRevisionId, profile);
+  }
+
+  async duplicateAgent(agentId: string, input: unknown): Promise<AgentDetail> {
+    const request = typeof input === 'object' && input !== null && !Array.isArray(input)
+      ? input as Record<string, unknown>
+      : {};
+    const source = this.store.getAgent(agentId);
+    if (!source) throw new AgentNotFoundError();
+    const revisionId = request.revisionId === undefined ? source.currentRevisionId : request.revisionId;
+    if (typeof revisionId !== 'string') throw new AgentValidationError('revisionId must be a string.');
+    const profile = request.profile === undefined
+      ? undefined
+      : await this.validateAgentProfile(request.profile);
+    return this.store.duplicateAgent(agentId, revisionId, profile);
+  }
+
+  async createAgentTask(input: unknown): Promise<TaskSnapshot> {
+    if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+      throw new TaskValidationError('Request body must be an object.');
+    }
+    const request = input as Record<string, unknown>;
+    if ('model' in request) {
+      throw new TaskValidationError('Agent-backed tasks use modelOverride instead of model.');
+    }
+    const prompt = validatePrompt(request.prompt);
+    if (typeof request.agentId !== 'string' || request.agentId.length === 0) {
+      throw new TaskValidationError('agentId is required.');
+    }
+    let modelOverride: ModelReference | undefined;
+    if (request.modelOverride !== undefined) {
+      const value = request.modelOverride;
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        throw new TaskValidationError('modelOverride must contain providerId and modelId.');
+      }
+      const parsed = value as Record<string, unknown>;
+      if (typeof parsed.providerId !== 'string' || typeof parsed.modelId !== 'string') {
+        throw new TaskValidationError('modelOverride must contain providerId and modelId.');
+      }
+      modelOverride = { providerId: parsed.providerId, modelId: parsed.modelId };
+    }
+    const agent = this.store.getAgent(request.agentId);
+    if (!agent) throw new AgentNotFoundError();
+    if (agent.archived) throw new AgentConflictError('Archived Agents cannot start new tasks.');
+    await this.validateModelReference(modelOverride ?? {
+      providerId: agent.current.providerId,
+      modelId: agent.current.modelId,
+    });
+    return this.store.createAgentTask({
+      id: `task_${randomUUID()}`,
+      prompt,
+      agentId: request.agentId,
+      expectedAgentRevisionId: agent.currentRevisionId,
+      ...(modelOverride ? { modelOverride } : {}),
+    });
+  }
+
   async createTaskAndWait(body: unknown, signal?: AbortSignal): Promise<TaskSnapshot> {
     const task = this.createTask(body);
     this.startTask(task.id);
@@ -361,6 +452,66 @@ export class TaskService {
     return this.catalog.listModels(fetchImpl);
   }
 
+  async listProviderModels(fetchImpl?: typeof globalThis.fetch): Promise<readonly ProviderModelCatalogEntry[]> {
+    const models = await this.catalog.listModels(fetchImpl);
+    return Object.freeze(models.map((model) => Object.freeze({
+      providerId: 'magpie',
+      modelId: model.id,
+      reference: `magpie:${model.id}`,
+      displayName: model.displayName,
+      capabilities: Object.freeze(['chat', 'streaming-output']),
+    })));
+  }
+
+  async validateAgentProfile(input: unknown): Promise<AgentProfileInput> {
+    const profile = parseAgentProfile(input);
+    await this.validateModelReference({ providerId: profile.providerId, modelId: profile.modelId });
+    return profile;
+  }
+
+  private async validateModelReference(reference: ModelReference): Promise<void> {
+    if (reference.providerId !== 'magpie') {
+      throw new AgentValidationError(`Provider '${reference.providerId}' is not available in this runtime.`);
+    }
+    let models: readonly ModelCatalogEntry[];
+    try {
+      models = await this.listModels();
+    } catch {
+      throw new AgentValidationError('Model catalog is unavailable.');
+    }
+    if (!models.some((model) => model.id === reference.modelId)) {
+      throw new AgentValidationError(`Model '${reference.modelId}' is not available from provider '${reference.providerId}'.`);
+    }
+  }
+
+  getAgent(agentId: string): AgentDetail {
+    const agent = this.store.getAgent(agentId);
+    if (!agent) throw new AgentNotFoundError();
+    return agent;
+  }
+
+  listAgents(): readonly AgentRecord[] {
+    return this.store.listAgents();
+  }
+
+  getAgentRevision(agentId: string, revisionId: string): AgentRevision {
+    const revision = this.store.getAgentRevision(agentId, revisionId);
+    if (!revision) throw new AgentNotFoundError();
+    return revision;
+  }
+
+  archiveAgent(agentId: string): AgentRecord {
+    return this.store.archiveAgent(agentId);
+  }
+
+  applyAgentRevision(agentId: string, revisionId: string, expectedRevisionId: string): AgentDetail {
+    return this.store.applyAgentRevision(agentId, revisionId, expectedRevisionId);
+  }
+
+  setDefaultAgent(agentId: string | null): string | null {
+    return this.store.setDefaultAgent(agentId);
+  }
+
   close(): void {
     for (const controller of this.active.values()) controller.abort();
     this.store.close();
@@ -379,7 +530,7 @@ export class TaskService {
       );
       const revision = this.store.getConfigurationRevision(task.configurationRevisionId);
       if (!revision) throw new Error('Pinned configuration revision is missing.');
-      if (isConfigurationDocumentV2(revision.document)) {
+      if (!task.agentId && isConfigurationDocumentV2(revision.document)) {
         await this.executeComposition(task, revision.document, signal);
       } else {
         await this.executeSingleTurn(task, signal);
@@ -401,9 +552,12 @@ export class TaskService {
   }
 
   private async executeSingleTurn(task: TaskSnapshot, signal: AbortSignal): Promise<void> {
+    if (task.providerId !== undefined && task.providerId !== 'magpie') {
+      throw new Error(`Model provider '${task.providerId}' is not available in this runtime.`);
+    }
     const provider = new OpenAiChatCompletionsProvider({
       baseUrl: this.config.magpieBaseUrl,
-      model: task.model,
+      model: task.modelId ?? task.model,
       ...(this.config.magpieAppKey ? { appKey: this.config.magpieAppKey } : {}),
       ...(this.config.fetch ? { fetch: this.config.fetch } : {}),
     });
@@ -412,7 +566,9 @@ export class TaskService {
     let deltaIndex = 0;
     const turn = await provider.streamTurn({
       taskId: task.id,
-      prompt: task.prompt,
+      prompt: task.agentId
+        ? `${this.store.getAgentRevision(task.agentId, task.agentRevisionId!)?.instructions ?? ''}\n\n${task.prompt}`
+        : task.prompt,
       turnIndex: 0,
       signal,
       onOutputDelta: (delta) => {
@@ -577,6 +733,10 @@ export class TaskService {
       state,
       configurationRevisionId: task.configurationRevisionId,
       attempt,
+      ...(task.agentId ? { agentId: task.agentId } : {}),
+      ...(task.agentRevisionId ? { agentRevisionId: task.agentRevisionId } : {}),
+      ...(task.providerId ? { providerId: task.providerId } : {}),
+      ...(task.modelId ? { modelId: task.modelId } : {}),
     };
   }
 

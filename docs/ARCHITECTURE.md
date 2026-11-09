@@ -2,7 +2,7 @@
 
 ## Runtime boundary
 
-Conchbase is the execution authority. It owns task state, model calls, composition dispatch, cancellation, explicit retry, durable events, and versioned configuration revisions. Pagurus and third-party clients use the versioned Runtime API. The phase-1 CLI takes short-lived private database ownership under [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md). No UI is required to start or finish a task.
+Conchbase is the execution authority. It owns Agent identity and revisions, task state/bindings, model calls, composition dispatch for legacy tasks, cancellation, explicit retry, durable events, and versioned runtime configuration revisions. Pagurus and third-party clients use the versioned Runtime API. The phase-1 CLI takes short-lived private database ownership under [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md). No UI is required to start or finish a task.
 
 User-defined agent composition is topology-neutral. A layered multi-role setup is only an illustrative example and must not become a built-in structure, default template, required layer count, or role-name convention. A `schemaVersion: 1` task uses one streaming model turn; a `schemaVersion: 2` task uses a bounded deterministic composition executor. Neither is a general multi-agent scheduling product. See [ADR 0005](decisions/0005-user-defined-agent-topology-proposal.md), [ADR 0010](decisions/0010-first-real-model-slice.md), and [ADR 0016](decisions/0016-composition-execution-and-public-schema.md).
 
@@ -12,7 +12,9 @@ Pagurus ────────┼── versioned Runtime API ── Conchbase
 External clients┘                              ├─ OpenAiChatCompletionsProvider (v1 streaming)
                                                │    └── local Magpie gateway
                                                │    └── transient whole-message tool-call observation
-                                               ├─ CompositionExecution (v2 deterministic)
+                                               ├─ Agent profiles/revisions + provider-neutral catalog
+                                               ├─ Agent task binding (one turn, immutable pin)
+                                               ├─ CompositionExecution (legacy v2 deterministic)
                                                ├─ ToolRequestLedger (public records, no executor)
                                                ├─ ProviderObservationRoute (transient normalization)
                                                └─ TaskStore
@@ -41,9 +43,14 @@ The internal `src/runtime/task-runner.ts` and `policy-gate.ts` remain determinis
 
 `src/runtime/composition-document.ts` is the internal identity kernel under [ADR 0015](decisions/0015-composition-identity-kernel.md). `src/runtime/configuration-document.ts` exposes its user-authored fields as the public `schemaVersion: 2` composition section. `src/runtime/composition-execution.ts` derives deterministic node order, terminal ids, `cmp_` identity, and bounded output. [ADR 0016](decisions/0016-composition-execution-and-public-schema.md) defines the accepted public graph representation, node events, and cancellation propagation; general concurrency, delegation, model-driven node work, and tool audit scope remain open.
 
+## Agent resource and task binding
+
+ADR 0020 publishes runtime-local Agent resources with immutable opaque revision IDs, bounded instructions, and provider-neutral model references. Agent profile history is independent from the one global runtime-wide policy/capability configuration revision. Agent-backed tasks atomically pin Agent ID/revision, runtime configuration revision, and effective provider/model with the queued event. A task rechecks the revision it validated against during provider catalog lookup to avoid binding an unvalidated concurrent edit. Retries use the same pin even when the Agent is archived. Legacy tasks keep their previous request contract and global v1/v2 dispatch; Agent tasks make one model turn and do not implicitly run the global deterministic composition. Instructions are untrusted customization context and do not grant tools.
+
 ## State and configuration
 
 - `SqliteTaskStore` owns normalized task, `partialOutput`, event, configuration revision, tool request, and active-pointer rows in one private SQLite database. WAL and foreign keys are enabled; an exclusive SQLite lock rejects a second simultaneous owner with a normalized `DatabaseInstanceError`. This is a single-owner development boundary from [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md), not multi-process support or a production recovery matrix. Driver types and errors do not leave the store boundary.
+- Startup runs the additive Agent migration under one exclusive transaction and marks it with `PRAGMA user_version = 1`. The migration adds nullable task/event Agent identity columns and new Agent tables while preserving existing rows and active configuration state.
 - `MagpieModelCatalog` reads the local model list without opening the runtime database, so `conchbase models` can run while the HTTP service owns tasks. Other task-state CLI commands take short-lived database ownership and must not overlap `conchbase serve`.
 - A content-addressed, immutable revision identifies the active configuration. Each task attempt pins its revision id. Portable profile files, secret resolution, and capability lifecycle schemas are not implemented.
 - The active configuration revision comes from durable `configuration_state`. Applying a document appends an immutable content-addressed revision if new; rollback changes only the pointer. Existing tasks keep their pinned id. v1 documents carry bounded opaque references; v2 documents also carry user-authored topology-neutral composition data. Neither version stores installation state, grants, or secret values.
@@ -63,8 +70,9 @@ src/
 └── runtime/
     ├── magpie-provider.ts          # real local streaming/non-streaming adapter
     ├── model-catalog.ts            # database-free local model discovery
-    ├── task-service.ts             # orchestration, cancellation, retry, recovery, v1/v2 dispatch
-    ├── task-store.ts               # SQLite task/event/configuration persistence interface
+    ├── agent-profile.ts            # provider-neutral Agent profile and identity types
+    ├── task-service.ts             # Agent orchestration, cancellation, retry, recovery, v1/v2 dispatch
+    ├── task-store.ts               # SQLite task/event/Agent/configuration persistence and migration
     ├── configuration-document.ts   # public v1/v2 document validation and identity
     ├── composition-document.ts     # internal topology-neutral composition identity
     ├── composition-execution.ts    # deterministic topology-neutral composition plan

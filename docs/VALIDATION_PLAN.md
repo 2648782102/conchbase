@@ -8,6 +8,8 @@ This document records current automated coverage and the next validation layers 
 - Provider tests use a fake `fetch` to check the Chat Completions request shape, a final answer, one transient tool-call observation, unsupported tool-call rejection, empty content, HTTP errors, non-loopback URLs, and later-turn rejection.
 - Streaming provider tests use fake SSE responses to check answer-text deltas, ignored reasoning text, one whole message-shaped tool-call observation, streaming tool-call delta rejection, mixed-response rejection, malformed/truncated frames, chunk/output limits, HTTP errors, and cancellation.
 - Task-service tests use temporary SQLite databases and fake `fetch` to cover durable v1 completion, pinned configuration revision, event IDs/cursors, restart interruption, and explicit retry with a new attempt.
+- Agent task/API tests cover two independent profiles, provider-neutral model-catalog identities, model override, task and queued-event pinning, asynchronous catalog/edit races, stale writes, archive/default behavior, retry after profile edits, and rejection of mixed legacy/Agent request shapes.
+- Migration tests start from the pre-Agent SQLite schema and assert that task/event/tool-request/configuration rows and the active pointer survive the transactional nullable-column/table addition; re-opening verifies migration idempotence.
 - Streaming task-service tests cover `partialOutput` while active, ordered `task.output_delta` events, cleared partial output on terminal states and retry, and cancellation history.
 - Model-catalog tests use fake `fetch` to check request shape, valid entries, malformed payloads, and upstream errors without opening a database. Task-store tests assert that a second simultaneous owner fails with `DatabaseInstanceError` and that the database reopens after the first owner closes.
 - Fastify injection tests cover read-only status responses, task creation validation, task reads, event replay and unknown cursors, retry, and model-catalog error mapping.
@@ -19,8 +21,8 @@ This document records current automated coverage and the next validation layers 
 - Public tool ledger tests cover normalized tool-call validation, digest stability, v2-only task context, exact eligible task states, declared composition nodes, durable request and decision events, exact idempotent replay without extra events, conflicting decisions, digest-only reasons, and no execution events or provider calls. HTTP tests cover the three `0.6.0` ledger routes, status codes, validation errors, and unavailable-service behavior.
 - Pure provider tool-call parser tests cover one valid non-streaming function call, stable `arg_` identity, final-answer non-observation, multiple choices, mixed answer text, multiple or unsupported calls, malformed/oversized/secret-like/nested arguments, unknown fields, invalid tool names, and streaming delta shapes. They assert that the observation has no provider envelope, task/ledger identity, or execution vocabulary.
 - Provider observation route tests cover a valid transient response, no-observation response, bounded validation errors, no durable event, no tool request row, no task-state change, and no execution vocabulary. Task-service tests cover a v1 observation becoming `failed` without ledger creation or execution.
-- Dependency-free repository guardrails check AI-first entry documents, accepted ADR statuses, the exact `0.7.0` OpenAPI path set and version, loopback-only configuration, source boundaries, and dependency boundaries. Synthetic violation fixtures prove the checks reject representative boundary breaks.
-- Repository guardrails also check the `0.7.0` seventeen-route contract, the public event type enum, ADR 0017–0019 statuses, parser wiring boundaries, no auto-ledger assertions, and that the public ledger never imports the internal kernel or exposes execution vocabulary.
+- Dependency-free repository guardrails check AI-first entry documents, accepted ADR statuses, the exact `0.8.0` 25-route OpenAPI path set, loopback-only configuration, source boundaries, and dependency boundaries. Synthetic violation fixtures prove the checks reject representative boundary breaks.
+- Repository guardrails also check the public event type enum, ADR 0017–0020 statuses, transactional migration wiring, parser wiring boundaries, no auto-ledger assertions, and that the public ledger never imports the internal kernel or exposes execution vocabulary.
 - GitHub Actions runs `npm run check`, `npm test`, and `npm run build`.
 
 CI makes no public-network call and uses no real credential or user data. Manual live validation uses the user's already configured Magpie gateway and a selected model id; deterministic composition tests use no provider.
@@ -42,6 +44,8 @@ CI makes no public-network call and uses no real credential or user data. Manual
 - A restart leaves no task stuck in `running`; events remain replayable.
 - Retry starts a new attempt and never silently repeats a lost provider call.
 - A task keeps its pinned configuration revision across attempts.
+- Two Agents with different profile revisions and model references produce tasks whose Agent id/revision, runtime configuration revision, and effective model remain stable through later edits, archive, and retry.
+- Legacy tasks retain the old `/v1/tasks` model request and global v1/v2 dispatch while Agent tasks follow their pinned provider/model regardless of global v2 configuration.
 - Applying or rolling back a revision, including a v1/v2 change, changes only subsequently created tasks and preserves immutable history.
 - Event replay does not duplicate or silently skip events.
 - Cancellation stops later composition nodes and records explicit node/composition cancellation.

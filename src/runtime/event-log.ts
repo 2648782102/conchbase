@@ -1,5 +1,6 @@
 import type { ConfigurationRevisionId } from './configuration-document.js';
 import type { TaskEventType, TaskState } from './task-lifecycle.js';
+import type { AgentId, AgentRevisionId } from './agent-profile.js';
 
 export interface RuntimeEvent {
   readonly sequence: number;
@@ -10,6 +11,10 @@ export interface RuntimeEvent {
   readonly configurationRevisionId: ConfigurationRevisionId;
   readonly attempt: number;
   readonly data: Readonly<Record<string, string | number | boolean | null>>;
+  readonly agentId?: AgentId;
+  readonly agentRevisionId?: AgentRevisionId;
+  readonly providerId?: string;
+  readonly modelId?: string;
 }
 
 export interface EventAppendInput {
@@ -19,6 +24,10 @@ export interface EventAppendInput {
   readonly configurationRevisionId: ConfigurationRevisionId;
   readonly attempt: number;
   readonly data?: Readonly<Record<string, string | number | boolean | null>>;
+  readonly agentId?: AgentId;
+  readonly agentRevisionId?: AgentRevisionId;
+  readonly providerId?: string;
+  readonly modelId?: string;
 }
 
 function formatEventId(sequence: number): string {
@@ -55,6 +64,10 @@ export function appendEvent(
     configurationRevisionId: input.configurationRevisionId,
     attempt: input.attempt,
     data: Object.freeze({ ...(input.data ?? {}) }),
+    ...(input.agentId ? { agentId: input.agentId } : {}),
+    ...(input.agentRevisionId ? { agentRevisionId: input.agentRevisionId } : {}),
+    ...(input.providerId ? { providerId: input.providerId } : {}),
+    ...(input.modelId ? { modelId: input.modelId } : {}),
   });
 
   return { events: Object.freeze([...log.events, event]) };

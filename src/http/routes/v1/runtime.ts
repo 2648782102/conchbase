@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 export function registerRuntimeRoute(app: FastifyInstance, tasksEnabled = false): void {
   app.get('/v1/runtime', async () => ({
     name: 'Conchbase',
-    version: '0.7.0',
+    version: '0.8.0',
     state: 'ready',
     capabilities: tasksEnabled
       ? [
@@ -15,6 +15,8 @@ export function registerRuntimeRoute(app: FastifyInstance, tasksEnabled = false)
         'composition-execution',
         'tool-approval-ledger',
         'provider-tool-call-observation',
+        'agents',
+        'provider-neutral-model-catalog',
       ]
       : [],
   }));

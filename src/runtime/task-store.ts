@@ -17,6 +17,20 @@ import {
   type ToolRequestDecision,
   type ToolRequestRecord,
 } from './tool-request.js';
+import {
+  AgentConflictError,
+  AgentNotFoundError,
+  newAgentId,
+  newAgentRevision,
+  parseAgentProfile,
+  type AgentDetail,
+  type AgentId,
+  type AgentProfileInput,
+  type AgentRecord,
+  type AgentRevision,
+  type AgentRevisionId,
+  type ModelReference,
+} from './agent-profile.js';
 
 export interface TaskSnapshot {
   readonly id: string;
@@ -28,6 +42,10 @@ export interface TaskSnapshot {
   readonly output: string | null;
   readonly partialOutput: string | null;
   readonly error: string | null;
+  readonly agentId?: AgentId;
+  readonly agentRevisionId?: AgentRevisionId;
+  readonly providerId?: string;
+  readonly modelId?: string;
 }
 
 export interface TaskCreateInput {
@@ -36,6 +54,18 @@ export interface TaskCreateInput {
   readonly model: string;
   readonly configurationRevisionId: ConfigurationRevisionId;
   readonly attempt: number;
+  readonly agentId?: AgentId;
+  readonly agentRevisionId?: AgentRevisionId;
+  readonly providerId?: string;
+  readonly modelId?: string;
+}
+
+export interface AgentTaskCreateInput {
+  readonly id: string;
+  readonly prompt: string;
+  readonly agentId: string;
+  readonly expectedAgentRevisionId: string;
+  readonly modelOverride?: ModelReference;
 }
 
 export interface TaskEventInput {
@@ -45,6 +75,10 @@ export interface TaskEventInput {
   readonly configurationRevisionId: ConfigurationRevisionId;
   readonly attempt: number;
   readonly data?: Readonly<Record<string, string | number | boolean | null>>;
+  readonly agentId?: AgentId;
+  readonly agentRevisionId?: AgentRevisionId;
+  readonly providerId?: string;
+  readonly modelId?: string;
 }
 
 export interface ToolRequestCreateInput {
@@ -82,6 +116,16 @@ export interface ToolRequestDecisionResult {
 
 export interface TaskStore {
   createTask(input: TaskCreateInput): TaskSnapshot;
+  createAgentTask(input: AgentTaskCreateInput): TaskSnapshot;
+  createAgent(profile: AgentProfileInput): AgentDetail;
+  updateAgent(agentId: string, expectedRevisionId: string, profile: AgentProfileInput): AgentDetail;
+  duplicateAgent(agentId: string, revisionId?: string, profile?: AgentProfileInput): AgentDetail;
+  archiveAgent(agentId: string): AgentRecord;
+  applyAgentRevision(agentId: string, revisionId: string, expectedRevisionId: string): AgentDetail;
+  setDefaultAgent(agentId: string | null): string | null;
+  listAgents(): readonly AgentRecord[];
+  getAgent(agentId: string): AgentDetail | null;
+  getAgentRevision(agentId: string, revisionId: string): AgentRevision | null;
   getTask(taskId: string): TaskSnapshot | null;
   listTasks(): readonly TaskSnapshot[];
   transitionTask(
@@ -114,6 +158,10 @@ interface TaskRow {
   readonly output: string | null;
   readonly partial_output: string | null;
   readonly error: string | null;
+  readonly agent_id: string | null;
+  readonly agent_revision_id: string | null;
+  readonly provider_id: string | null;
+  readonly model_id: string | null;
 }
 
 interface EventRow {
@@ -125,6 +173,26 @@ interface EventRow {
   readonly configuration_revision_id: string;
   readonly attempt: number;
   readonly data: string;
+  readonly agent_id: string | null;
+  readonly agent_revision_id: string | null;
+  readonly provider_id: string | null;
+  readonly model_id: string | null;
+}
+
+interface AgentRow {
+  readonly id: string;
+  readonly current_revision_id: string;
+  readonly archived: number;
+}
+
+interface AgentRevisionRow {
+  readonly id: string;
+  readonly agent_id: string;
+  readonly name: string;
+  readonly instructions: string;
+  readonly provider_id: string;
+  readonly model_id: string;
+  readonly created_at: string;
 }
 
 interface ToolRequestRow {
@@ -206,7 +274,7 @@ function isDatabaseLocked(cause: unknown): boolean {
 }
 
 function toSnapshot(row: TaskRow): TaskSnapshot {
-  return {
+  return Object.freeze({
     id: row.id,
     prompt: row.prompt,
     model: row.model,
@@ -216,7 +284,11 @@ function toSnapshot(row: TaskRow): TaskSnapshot {
     output: row.output,
     partialOutput: row.partial_output,
     error: row.error,
-  };
+    ...(row.agent_id === null ? {} : { agentId: row.agent_id as AgentId }),
+    ...(row.agent_revision_id === null ? {} : { agentRevisionId: row.agent_revision_id as AgentRevisionId }),
+    ...(row.provider_id === null ? {} : { providerId: row.provider_id }),
+    ...(row.model_id === null ? {} : { modelId: row.model_id }),
+  });
 }
 
 function toEvent(row: EventRow): RuntimeEvent {
@@ -239,6 +311,10 @@ function toEvent(row: EventRow): RuntimeEvent {
     configurationRevisionId: row.configuration_revision_id as ConfigurationRevisionId,
     attempt: row.attempt,
     data: Object.freeze(data),
+    ...(row.agent_id === null ? {} : { agentId: row.agent_id as AgentId }),
+    ...(row.agent_revision_id === null ? {} : { agentRevisionId: row.agent_revision_id as AgentRevisionId }),
+    ...(row.provider_id === null ? {} : { providerId: row.provider_id }),
+    ...(row.model_id === null ? {} : { modelId: row.model_id }),
   });
 }
 
@@ -283,6 +359,17 @@ function toToolRequestRecord(row: ToolRequestRow): ToolRequestRecord {
   });
 }
 
+function toAgentRevision(row: AgentRevisionRow): AgentRevision {
+  return Object.freeze({
+    id: row.id as AgentRevisionId,
+    name: row.name,
+    instructions: row.instructions,
+    providerId: row.provider_id,
+    modelId: row.model_id,
+    createdAt: row.created_at,
+  });
+}
+
 export class SqliteTaskStore implements TaskStore {
   private readonly database: DatabaseSync;
   private readonly clock: () => string;
@@ -295,7 +382,7 @@ export class SqliteTaskStore implements TaskStore {
       this.database.exec('PRAGMA foreign_keys = ON;');
       this.database.exec('PRAGMA locking_mode = EXCLUSIVE;');
       this.database.exec('PRAGMA journal_mode = WAL;');
-      this.database.exec('BEGIN EXCLUSIVE; COMMIT;');
+      this.database.exec('BEGIN EXCLUSIVE;');
       this.database.exec(`
         CREATE TABLE IF NOT EXISTS tasks (
           id TEXT PRIMARY KEY,
@@ -306,7 +393,11 @@ export class SqliteTaskStore implements TaskStore {
           attempt INTEGER NOT NULL,
           output TEXT,
           partial_output TEXT,
-          error TEXT
+          error TEXT,
+          agent_id TEXT,
+          agent_revision_id TEXT,
+          provider_id TEXT,
+          model_id TEXT
         ) STRICT;
         CREATE TABLE IF NOT EXISTS events (
           sequence INTEGER PRIMARY KEY,
@@ -316,7 +407,11 @@ export class SqliteTaskStore implements TaskStore {
           state TEXT NOT NULL,
           configuration_revision_id TEXT NOT NULL,
           attempt INTEGER NOT NULL,
-          data TEXT NOT NULL
+          data TEXT NOT NULL,
+          agent_id TEXT,
+          agent_revision_id TEXT,
+          provider_id TEXT,
+          model_id TEXT
         ) STRICT;
         CREATE TABLE IF NOT EXISTS configuration_revisions (
           id TEXT PRIMARY KEY,
@@ -345,9 +440,31 @@ export class SqliteTaskStore implements TaskStore {
           approval_reason_digest TEXT,
           approval_decided_at TEXT
         ) STRICT;
+        CREATE TABLE IF NOT EXISTS agents (
+          id TEXT PRIMARY KEY,
+          current_revision_id TEXT NOT NULL,
+          archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
+        ) STRICT;
+        CREATE TABLE IF NOT EXISTS agent_revisions (
+          id TEXT PRIMARY KEY,
+          agent_id TEXT NOT NULL REFERENCES agents(id),
+          name TEXT NOT NULL,
+          instructions TEXT NOT NULL,
+          provider_id TEXT NOT NULL,
+          model_id TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        ) STRICT;
+        CREATE TABLE IF NOT EXISTS agent_state (
+          singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+          default_agent_id TEXT REFERENCES agents(id)
+        ) STRICT;
       `);
+      this.migrateAgentSchema();
+      this.database.exec('INSERT OR IGNORE INTO agent_state (singleton, default_agent_id) VALUES (1, NULL)');
+      this.database.exec('PRAGMA user_version = 1; COMMIT;');
       this.bootstrapConfiguration();
     } catch (cause) {
+      try { this.database.exec('ROLLBACK;'); } catch { /* No migration transaction is open. */ }
       this.database.close();
       if (isDatabaseLocked(cause)) throw new DatabaseInstanceError();
       throw cause;
@@ -359,14 +476,19 @@ export class SqliteTaskStore implements TaskStore {
       this.database.exec('BEGIN IMMEDIATE');
       this.database.prepare(`
         INSERT INTO tasks (
-          id, prompt, model, configuration_revision_id, state, attempt, output, partial_output, error
-        ) VALUES (?, ?, ?, ?, 'queued', ?, NULL, NULL, NULL)
+          id, prompt, model, configuration_revision_id, state, attempt, output, partial_output, error,
+          agent_id, agent_revision_id, provider_id, model_id
+        ) VALUES (?, ?, ?, ?, 'queued', ?, NULL, NULL, NULL, ?, ?, ?, ?)
       `).run(
         input.id,
         input.prompt,
         input.model,
         input.configurationRevisionId,
         input.attempt,
+        input.agentId ?? null,
+        input.agentRevisionId ?? null,
+        input.providerId ?? null,
+        input.modelId ?? null,
       );
       this.insertEvent({
         taskId: input.id,
@@ -374,6 +496,10 @@ export class SqliteTaskStore implements TaskStore {
         state: 'queued',
         configurationRevisionId: input.configurationRevisionId,
         attempt: input.attempt,
+        ...(input.agentId ? { agentId: input.agentId } : {}),
+        ...(input.agentRevisionId ? { agentRevisionId: input.agentRevisionId } : {}),
+        ...(input.providerId ? { providerId: input.providerId } : {}),
+        ...(input.modelId ? { modelId: input.modelId } : {}),
       });
       this.database.exec('COMMIT');
     } catch (cause) {
@@ -384,6 +510,192 @@ export class SqliteTaskStore implements TaskStore {
       throw cause;
     }
     return this.getTask(input.id)!;
+  }
+
+  createAgentTask(input: AgentTaskCreateInput): TaskSnapshot {
+    try {
+      this.database.exec('BEGIN IMMEDIATE');
+      const agent = this.getAgentRow(input.agentId);
+      if (!agent) throw new AgentNotFoundError();
+      if (agent.archived) throw new AgentConflictError('Archived Agents cannot start new tasks.');
+      if (agent.current_revision_id !== input.expectedAgentRevisionId) {
+        throw new AgentConflictError(`Agent revision changed; current revision is ${agent.current_revision_id}.`);
+      }
+      const profile = this.getAgentRevision(input.agentId, agent.current_revision_id);
+      if (!profile) throw new AgentNotFoundError();
+      const providerId = input.modelOverride?.providerId ?? profile.providerId;
+      const modelId = input.modelOverride?.modelId ?? profile.modelId;
+      const configuration = this.database.prepare(
+        'SELECT revision_id FROM configuration_state WHERE singleton = 1',
+      ).get() as ConfigurationActiveRow | undefined;
+      if (!configuration) throw new Error('Configuration state is missing.');
+      const agentId = input.agentId as AgentId;
+      const agentRevisionId = profile.id;
+      const configurationRevisionId = configuration.revision_id as ConfigurationRevisionId;
+      this.database.prepare(`
+        INSERT INTO tasks (
+          id, prompt, model, configuration_revision_id, state, attempt,
+          output, partial_output, error, agent_id, agent_revision_id, provider_id, model_id
+        ) VALUES (?, ?, ?, ?, 'queued', 1, NULL, NULL, NULL, ?, ?, ?, ?)
+      `).run(input.id, input.prompt, modelId, configurationRevisionId,
+        agentId, agentRevisionId, providerId, modelId);
+      this.insertEvent({
+        taskId: input.id,
+        type: 'task.queued',
+        state: 'queued',
+        configurationRevisionId,
+        attempt: 1,
+        agentId,
+        agentRevisionId,
+        providerId,
+        modelId,
+      });
+      this.database.exec('COMMIT');
+    } catch (cause) {
+      this.database.exec('ROLLBACK');
+      if (String(cause).includes('UNIQUE')) throw new TaskConflictError('Task id already exists.');
+      throw cause;
+    }
+    return this.getTask(input.id)!;
+  }
+
+  createAgent(input: AgentProfileInput): AgentDetail {
+    const profile = parseAgentProfile(input);
+    const id = newAgentId();
+    const revision = newAgentRevision(profile, this.clock());
+    this.database.exec('BEGIN IMMEDIATE');
+    try {
+      this.database.prepare('INSERT INTO agents (id, current_revision_id, archived) VALUES (?, ?, 0)')
+        .run(id, revision.id);
+      this.insertAgentRevision(id, revision);
+      const count = this.database.prepare('SELECT COUNT(*) AS count FROM agents').get() as { count: number };
+      if (count.count === 1) {
+        this.database.prepare('UPDATE agent_state SET default_agent_id = ? WHERE singleton = 1').run(id);
+      }
+      this.database.exec('COMMIT');
+    } catch (cause) {
+      this.database.exec('ROLLBACK');
+      throw cause;
+    }
+    return this.getAgent(id)!;
+  }
+
+  updateAgent(agentId: string, expectedRevisionId: string, input: AgentProfileInput): AgentDetail {
+    const profile = parseAgentProfile(input);
+    const revision = newAgentRevision(profile, this.clock());
+    this.database.exec('BEGIN IMMEDIATE');
+    try {
+      const agent = this.getAgentRow(agentId);
+      if (!agent) throw new AgentNotFoundError();
+      if (agent.archived) throw new AgentConflictError('Archived Agents cannot be edited.');
+      if (agent.current_revision_id !== expectedRevisionId) {
+        throw new AgentConflictError(`Agent revision changed; current revision is ${agent.current_revision_id}.`);
+      }
+      this.insertAgentRevision(agentId, revision);
+      this.database.prepare('UPDATE agents SET current_revision_id = ? WHERE id = ?').run(revision.id, agentId);
+      this.database.exec('COMMIT');
+    } catch (cause) {
+      this.database.exec('ROLLBACK');
+      throw cause;
+    }
+    return this.getAgent(agentId)!;
+  }
+
+  duplicateAgent(agentId: string, revisionId?: string, input?: AgentProfileInput): AgentDetail {
+    const source = this.getAgentRevision(agentId, revisionId ?? this.getAgentRow(agentId)?.current_revision_id ?? '');
+    if (!source) throw new AgentNotFoundError();
+    return this.createAgent(input ?? {
+      name: `${source.name} copy`.slice(0, 120),
+      instructions: source.instructions,
+      providerId: source.providerId,
+      modelId: source.modelId,
+    });
+  }
+
+  archiveAgent(agentId: string): AgentRecord {
+    this.database.exec('BEGIN IMMEDIATE');
+    try {
+      const agent = this.getAgentRow(agentId);
+      if (!agent) throw new AgentNotFoundError();
+      this.database.prepare('UPDATE agents SET archived = 1 WHERE id = ?').run(agentId);
+      this.database.prepare(`
+        UPDATE agent_state SET default_agent_id = NULL
+        WHERE singleton = 1 AND default_agent_id = ?
+      `).run(agentId);
+      this.database.exec('COMMIT');
+    } catch (cause) {
+      this.database.exec('ROLLBACK');
+      throw cause;
+    }
+    return this.agentRecord(agentId)!;
+  }
+
+  applyAgentRevision(agentId: string, revisionId: string, expectedRevisionId: string): AgentDetail {
+    this.database.exec('BEGIN IMMEDIATE');
+    try {
+      const agent = this.getAgentRow(agentId);
+      if (!agent) throw new AgentNotFoundError();
+      if (agent.archived) throw new AgentConflictError('Archived Agents cannot be changed.');
+      if (agent.current_revision_id !== expectedRevisionId) {
+        throw new AgentConflictError(`Agent revision changed; current revision is ${agent.current_revision_id}.`);
+      }
+      const historical = this.getAgentRevision(agentId, revisionId);
+      if (!historical) throw new AgentNotFoundError();
+      const revision = newAgentRevision({
+        name: historical.name,
+        instructions: historical.instructions,
+        providerId: historical.providerId,
+        modelId: historical.modelId,
+      }, this.clock());
+      this.insertAgentRevision(agentId, revision);
+      this.database.prepare('UPDATE agents SET current_revision_id = ? WHERE id = ?')
+        .run(revision.id, agentId);
+      this.database.exec('COMMIT');
+    } catch (cause) {
+      this.database.exec('ROLLBACK');
+      throw cause;
+    }
+    return this.getAgent(agentId)!;
+  }
+
+  setDefaultAgent(agentId: string | null): string | null {
+    this.database.exec('BEGIN IMMEDIATE');
+    try {
+      if (agentId !== null) {
+        const agent = this.getAgentRow(agentId);
+        if (!agent) throw new AgentNotFoundError();
+        if (agent.archived) throw new AgentConflictError('Archived Agents cannot be the default.');
+      }
+      this.database.prepare('UPDATE agent_state SET default_agent_id = ? WHERE singleton = 1').run(agentId);
+      this.database.exec('COMMIT');
+    } catch (cause) {
+      this.database.exec('ROLLBACK');
+      throw cause;
+    }
+    return agentId;
+  }
+
+  listAgents(): readonly AgentRecord[] {
+    const rows = this.database.prepare('SELECT id FROM agents ORDER BY id').all() as unknown as { id: string }[];
+    return Object.freeze(rows.map((row) => this.agentRecord(row.id)!).filter(Boolean));
+  }
+
+  getAgent(agentId: string): AgentDetail | null {
+    const record = this.agentRecord(agentId);
+    if (!record) return null;
+    const rows = this.database.prepare(`
+      SELECT id, agent_id, name, instructions, provider_id, model_id, created_at
+      FROM agent_revisions WHERE agent_id = ? ORDER BY rowid DESC
+    `).all(agentId) as unknown as AgentRevisionRow[];
+    return Object.freeze({ ...record, revisions: Object.freeze(rows.map(toAgentRevision)) });
+  }
+
+  getAgentRevision(agentId: string, revisionId: string): AgentRevision | null {
+    const row = this.database.prepare(`
+      SELECT id, agent_id, name, instructions, provider_id, model_id, created_at
+      FROM agent_revisions WHERE agent_id = ? AND id = ?
+    `).get(agentId, revisionId) as AgentRevisionRow | undefined;
+    return row ? toAgentRevision(row) : null;
   }
 
   getTask(taskId: string): TaskSnapshot | null {
@@ -648,8 +960,9 @@ export class SqliteTaskStore implements TaskStore {
     const sequence = (last.sequence ?? 0) + 1;
     this.database.prepare(`
       INSERT INTO events (
-        sequence, id, task_id, type, state, configuration_revision_id, attempt, data
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        sequence, id, task_id, type, state, configuration_revision_id, attempt, data,
+        agent_id, agent_revision_id, provider_id, model_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       sequence,
       formatEventId(sequence),
@@ -659,7 +972,63 @@ export class SqliteTaskStore implements TaskStore {
       input.configurationRevisionId,
       input.attempt,
       JSON.stringify(input.data ?? {}),
+      input.agentId ?? null,
+      input.agentRevisionId ?? null,
+      input.providerId ?? null,
+      input.modelId ?? null,
     );
+  }
+
+  private migrateAgentSchema(): void {
+    const versionRow = this.database.prepare('PRAGMA user_version').get() as { user_version: number };
+    if (versionRow.user_version > 1) {
+      throw new Error(`Database schema version ${versionRow.user_version} is newer than this runtime supports.`);
+    }
+    for (const [table, column] of [
+      ['tasks', 'agent_id'],
+      ['tasks', 'agent_revision_id'],
+      ['tasks', 'provider_id'],
+      ['tasks', 'model_id'],
+      ['events', 'agent_id'],
+      ['events', 'agent_revision_id'],
+      ['events', 'provider_id'],
+      ['events', 'model_id'],
+    ] as const) {
+      const columns = this.database.prepare(`PRAGMA table_info(${table})`).all() as unknown as { name: string }[];
+      if (!columns.some((item) => item.name === column)) {
+        this.database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`);
+      }
+    }
+  }
+
+  private getAgentRow(agentId: string): AgentRow | null {
+    const row = this.database.prepare('SELECT id, current_revision_id, archived FROM agents WHERE id = ?')
+      .get(agentId) as AgentRow | undefined;
+    return row ?? null;
+  }
+
+  private agentRecord(agentId: string): AgentRecord | null {
+    const row = this.getAgentRow(agentId);
+    if (!row) return null;
+    const current = this.getAgentRevision(agentId, row.current_revision_id);
+    if (!current) return null;
+    const state = this.database.prepare('SELECT default_agent_id FROM agent_state WHERE singleton = 1')
+      .get() as { default_agent_id: string | null } | undefined;
+    return Object.freeze({
+      id: row.id as AgentId,
+      currentRevisionId: row.current_revision_id as AgentRevisionId,
+      archived: row.archived === 1,
+      isDefault: state?.default_agent_id === row.id,
+      current,
+    });
+  }
+
+  private insertAgentRevision(agentId: string, revision: AgentRevision): void {
+    this.database.prepare(`
+      INSERT INTO agent_revisions (id, agent_id, name, instructions, provider_id, model_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(revision.id, agentId, revision.name, revision.instructions,
+      revision.providerId, revision.modelId, revision.createdAt);
   }
 
   private toolRequestByIdempotencyKey(key: string): ToolRequestRecord | null {

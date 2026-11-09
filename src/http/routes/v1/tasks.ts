@@ -1,5 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import {
+  AgentConflictError,
+  AgentNotFoundError,
+  AgentValidationError,
   TaskValidationError,
   ToolRequestConflictError,
   ToolRequestNotFoundError,
@@ -17,6 +20,14 @@ const createTaskSchema = {
   properties: {
     prompt: { type: 'string', minLength: 1, maxLength: 20_000 },
     model: { type: 'string', minLength: 1, maxLength: 300 },
+    agentId: { type: 'string', pattern: '^agt_[a-f0-9]{32}$' },
+    modelOverride: {
+      type: 'object', additionalProperties: false, required: ['providerId', 'modelId'],
+      properties: {
+        providerId: { type: 'string', pattern: '^[a-z][a-z0-9-]{0,63}$' },
+        modelId: { type: 'string', minLength: 1, maxLength: 300 },
+      },
+    },
   },
 } as const;
 
@@ -36,6 +47,10 @@ function toTaskResponse(task: {
   readonly output: string | null;
   readonly partialOutput: string | null;
   readonly error: string | null;
+  readonly agentId?: string;
+  readonly agentRevisionId?: string;
+  readonly providerId?: string;
+  readonly modelId?: string;
 }) {
   return {
     id: task.id,
@@ -47,6 +62,10 @@ function toTaskResponse(task: {
     output: task.output,
     partialOutput: task.partialOutput,
     error: task.error,
+    ...(task.agentId ? { agentId: task.agentId } : {}),
+    ...(task.agentRevisionId ? { agentRevisionId: task.agentRevisionId } : {}),
+    ...(task.providerId ? { providerId: task.providerId } : {}),
+    ...(task.modelId ? { modelId: task.modelId } : {}),
   };
 }
 
@@ -84,6 +103,29 @@ export function registerTaskRoutes(
 
   app.post('/v1/tasks', { schema: { body: createTaskSchema } }, async (request, reply) => {
     if (!taskService) return unavailable(reply);
+    const body = request.body as { agentId?: unknown; model?: unknown; modelOverride?: unknown };
+    if (body.agentId === undefined && body.modelOverride !== undefined) {
+      return reply.code(400).send({ error: 'modelOverride requires agentId.' });
+    }
+    if (body.agentId !== undefined) {
+      if (body.model !== undefined) {
+        return reply.code(400).send({ error: 'Agent-backed tasks cannot include legacy model.' });
+      }
+      let agentTask;
+      try { agentTask = await taskService.createAgentTask(request.body); }
+      catch (cause) {
+        if (cause instanceof TaskValidationError) return reply.code(400).send({ error: cause.message });
+        if (cause instanceof TaskNotFoundError) return reply.code(404).send({ error: cause.message });
+        if (cause instanceof TaskConflictError) return reply.code(409).send({ error: cause.message });
+        if (cause instanceof AgentValidationError) return reply.code(400).send({ error: cause.message });
+        if (cause instanceof AgentNotFoundError) return reply.code(404).send({ error: cause.message });
+        if (cause instanceof AgentConflictError) return reply.code(409).send({ error: cause.message });
+        throw cause;
+      }
+      taskService.startTask(agentTask.id);
+      reply.code(202);
+      return { task: toTaskResponse(agentTask) };
+    }
     const task = taskService.createTask(request.body);
     taskService.startTask(task.id);
     reply.code(202);

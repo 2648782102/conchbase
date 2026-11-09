@@ -58,6 +58,14 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
       '/v1/health',
       '/v1/runtime',
       '/v1/models',
+      '/v1/model-catalog',
+      '/v1/agents',
+      '/v1/agents/{agentId}',
+      '/v1/agents/{agentId}/duplicate',
+      '/v1/agents/{agentId}/archive',
+      '/v1/agents/{agentId}/revisions',
+      '/v1/agents/{agentId}/revisions/apply',
+      '/v1/agents/default',
       '/v1/tasks',
       '/v1/tasks/{taskId}',
       '/v1/tasks/{taskId}/cancel',
@@ -78,7 +86,13 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
   assert.match(spec, /\$ref: '#\/components\/schemas\/RuntimeStatus'/);
   assertSchemaFields('Health', ['status', 'service', 'apiVersion']);
   assertSchemaFields('RuntimeStatus', ['name', 'version', 'state', 'capabilities']);
-  assertSchemaFields('CreateTaskRequest', ['prompt']);
+  assert.match(spec, /CreateTaskRequest:[\s\S]*?allOf:/);
+  assertSchemaFields('AgentReference', ['providerId', 'modelId']);
+  assertSchemaFields('ProviderModel', ['providerId', 'modelId', 'reference', 'displayName', 'capabilities']);
+  assertSchemaFields('AgentProfile', ['name', 'instructions', 'providerId', 'modelId']);
+  assertSchemaFields('AgentRevision', ['id', 'name', 'instructions', 'providerId', 'modelId', 'createdAt']);
+  assertSchemaFields('AgentRecord', ['id', 'currentRevisionId', 'archived', 'isDefault', 'current']);
+  assertSchemaFields('Agent', ['id', 'currentRevisionId', 'archived', 'isDefault', 'current', 'revisions']);
   assertSchemaFields('Task', [
     'id',
     'prompt',
@@ -90,6 +104,7 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
     'partialOutput',
     'error',
   ]);
+  assert.match(spec.slice(spec.indexOf('    Task:'), spec.indexOf('    TaskEnvelope:')), /agentRevisionId:/);
   assertSchemaFields('RuntimeEvent', [
     'sequence',
     'id',
@@ -139,7 +154,7 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
   assert.match(spec, /enum: \[inline, file, registry, env\]/);
   assert.doesNotMatch(spec, /enum: \[[^\]]*\burl\b/);
   assert.match(spec, /ApplyConfigurationRequest:[\s\S]*?oneOf:/);
-  assert.match(spec, /^  version: 0\.7\.0$/m);
+  assert.match(spec, /^  version: 0\.8\.0$/m);
   assert.match(spec, /compositionDocumentId/);
   assert.match(spec, /compositionNodeId/);
   assertSchemaFields('CreateProviderToolCallObservation', ['version', 'provider', 'payload']);
@@ -174,7 +189,7 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
     'approval',
   ]);
   assertSchemaFields('ToolRequestDecisionRequest', ['decision', 'reason']);
-  assert.match(spec, /^  version: 0\.7\.0$/m);
+  assert.match(spec, /^  version: 0\.8\.0$/m);
   assert.match(spec, /tool-approval-ledger/);
   assert.match(spec, /provider-tool-call-observation records/);
   assert.match(spec, /No tool is executed/);
