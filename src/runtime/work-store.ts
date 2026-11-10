@@ -1,4 +1,5 @@
 import {
+  WORK_CONTRACT_VERSION,
   WORK_EVENT_TYPES,
   WorkConflictError,
   WorkNotFoundError,
@@ -9,8 +10,10 @@ import {
   type WorkEnvelope,
   type WorkEvent,
   type WorkEventType,
+  type WorkAssignment,
   type WorkItem,
   type WorkItemDetail,
+  type WorkOutboxRecord,
   type WorkThread,
   type WorkTrigger,
   type WorkTriggerRequest,
@@ -56,7 +59,7 @@ export class InMemoryWorkStore implements WorkStore {
     }
 
     const thread: WorkThread = Object.freeze({
-      version: 1,
+      version: WORK_CONTRACT_VERSION,
       id: plan.threadId,
       threadKey: plan.threadKey,
       contextOnly: true,
@@ -80,7 +83,7 @@ export class InMemoryWorkStore implements WorkStore {
     const thread = [...this.threads.values()].find((item) => item.id === plan.threadId);
     if (!thread) throw new WorkNotFoundError();
     return Object.freeze({
-      version: 1,
+      version: WORK_CONTRACT_VERSION,
       workItem: plan.workItem,
       thread,
       mandate: plan.mandate,
@@ -112,7 +115,7 @@ export class InMemoryWorkStore implements WorkStore {
       if (type === 'work.outbox_recorded') data.outboxId = plan.outbox[0]!.id;
       if (type === 'work.delivery_observed') data.deliveryReceiptId = plan.deliveryReceipts[0]!.id;
       this.events.push(Object.freeze({
-        version: 1,
+        version: WORK_CONTRACT_VERSION,
         id: `evt_${String(sequence).padStart(12, '0')}`,
         sequence,
         type,
@@ -135,7 +138,7 @@ export class InMemoryWorkStore implements WorkStore {
     if (!thread || !plan) throw new WorkNotFoundError();
     const events = this.events.filter((event) => event.workItemId === plan.workItem.id);
     return Object.freeze({
-      version: 1,
+      version: WORK_CONTRACT_VERSION,
       created,
       workItemCreated,
       contextOnly,
@@ -262,9 +265,9 @@ export class SqliteWorkStore implements WorkStore {
   listWorkItems(): readonly WorkItem[] {
     const rows = this.database.prepare('SELECT * FROM work_items ORDER BY id').all() as unknown as WorkItemRow[];
     return Object.freeze(rows.map((row) => Object.freeze({
-      version: 1,
+      version: WORK_CONTRACT_VERSION,
       id: row.id,
-      state: 'open',
+      state: row.state as WorkItem['state'],
       threadId: row.thread_id,
       triggerId: row.trigger_id,
       mandateId: row.mandate_id,
@@ -289,10 +292,10 @@ export class SqliteWorkStore implements WorkStore {
       'SELECT * FROM work_delivery_receipts WHERE work_item_id = ? ORDER BY id',
     ).all(workItemId) as unknown as WorkDeliveryReceiptRow[]).map(toDeliveryReceipt);
     return Object.freeze({
-      version: 1,
+      version: WORK_CONTRACT_VERSION,
       workItem: item,
       thread: Object.freeze({
-        version: 1,
+        version: WORK_CONTRACT_VERSION,
         id: threadRow.id,
         threadKey: threadRow.thread_key,
         contextOnly: true,
@@ -300,7 +303,7 @@ export class SqliteWorkStore implements WorkStore {
         workItemId: threadRow.work_item_id,
       }),
       mandate: Object.freeze({
-        version: 1,
+        version: WORK_CONTRACT_VERSION,
         id: mandateRow.id,
         workItemId: mandateRow.work_item_id,
         revision: 1,
@@ -385,7 +388,7 @@ export class SqliteWorkStore implements WorkStore {
     if (!triggerRow) throw new WorkNotFoundError();
     const detail = this.getWorkItemDetail(this.workItemIdForThread(triggerRow.thread_id));
     const trigger: WorkTrigger = Object.freeze({
-      version: 1,
+      version: WORK_CONTRACT_VERSION,
       id: triggerRow.id,
       sourceEventId: triggerRow.source_event_id,
       sourceId: triggerRow.source_id,
@@ -400,7 +403,7 @@ export class SqliteWorkStore implements WorkStore {
     const events = (this.database.prepare(
       'SELECT * FROM work_events WHERE work_item_id = ? ORDER BY sequence',
     ).all(detail.workItem.id) as unknown as WorkEventRow[]).map((row) => Object.freeze({
-      version: 1,
+      version: WORK_CONTRACT_VERSION,
       id: row.id,
       sequence: row.sequence,
       type: row.type as WorkEventType,
@@ -408,7 +411,7 @@ export class SqliteWorkStore implements WorkStore {
       data: Object.freeze(JSON.parse(row.data) as Record<string, string | number | boolean>),
     }));
     return Object.freeze({
-      version: 1,
+      version: WORK_CONTRACT_VERSION,
       created,
       workItemCreated,
       contextOnly,
@@ -509,10 +512,10 @@ interface WorkEventRow {
 
 function toAssignment(row: WorkAssignmentRow) {
   return Object.freeze({
-    version: 1,
+    version: WORK_CONTRACT_VERSION,
     id: row.id,
     workItemId: row.work_item_id,
-    state: 'planned',
+    state: row.state as WorkAssignment['state'],
     agentRevisionId: row.agent_revision_id,
     configurationRevisionId: row.configuration_revision_id,
     mandateRevision: 1,
@@ -522,11 +525,11 @@ function toAssignment(row: WorkAssignmentRow) {
 
 function toOutbox(row: WorkOutboxRow) {
   return Object.freeze({
-    version: 1,
+    version: WORK_CONTRACT_VERSION,
     id: row.id,
     workItemId: row.work_item_id,
     assignmentId: row.assignment_id,
-    status: 'pending',
+    status: row.status as WorkOutboxRecord['status'],
     destinationDigest: row.destination_digest,
     payloadDigest: row.payload_digest,
   });
@@ -534,11 +537,11 @@ function toOutbox(row: WorkOutboxRow) {
 
 function toDeliveryReceipt(row: WorkDeliveryReceiptRow) {
   return Object.freeze({
-    version: 1,
+    version: WORK_CONTRACT_VERSION,
     id: row.id,
     workItemId: row.work_item_id,
     outboxId: row.outbox_id,
-    status: 'observed',
+    status: row.status as WorkDeliveryReceipt['status'],
     destinationDigest: row.destination_digest,
     payloadDigest: row.payload_digest,
   });

@@ -9,6 +9,7 @@ test('uses loopback defaults', () => {
     databasePath: '.conchbase/runtime.sqlite',
     magpieBaseUrl: 'http://127.0.0.1:3425',
     defaultModel: '',
+    allowAuthenticatedRemoteBinding: false,
   });
 });
 
@@ -21,6 +22,7 @@ test('accepts configured loopback host and decimal port', () => {
       databasePath: '.conchbase/runtime.sqlite',
       magpieBaseUrl: 'http://127.0.0.1:3425',
       defaultModel: '',
+      allowAuthenticatedRemoteBinding: false,
     },
   );
   assert.equal(loadRuntimeConfig({ CONCHBASE_HOST: 'localhost' }).host, 'localhost');

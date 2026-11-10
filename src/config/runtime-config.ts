@@ -1,4 +1,5 @@
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
+const LOOPBACK_URL_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 
 export interface RuntimeConfig {
   host: string;
@@ -7,17 +8,25 @@ export interface RuntimeConfig {
   magpieBaseUrl: string;
   magpieAppKey?: string;
   defaultModel: string;
+  allowAuthenticatedRemoteBinding: boolean;
+  authTokenDigest?: string;
 }
-
-const LOOPBACK_URL_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 
 export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
   const host = env.CONCHBASE_HOST ?? '127.0.0.1';
   const portValue = env.CONCHBASE_PORT ?? '4318';
   const port = Number(portValue);
+  const allowAuthenticatedRemoteBinding = env.CONCHBASE_ALLOW_AUTHENTICATED_REMOTE_BINDING === '1';
+  const authTokenDigest = env.CONCHBASE_AUTH_TOKEN_DIGEST;
 
-  if (!LOOPBACK_HOSTS.has(host)) {
-    throw new Error('This runtime only supports loopback binding until API authentication is implemented.');
+  if (!LOOPBACK_HOSTS.has(host) && !allowAuthenticatedRemoteBinding) {
+    throw new Error('This runtime only supports loopback binding until authenticated pairing is enabled.');
+  }
+  if (!LOOPBACK_HOSTS.has(host) && !authTokenDigest) {
+    throw new Error('Authenticated remote binding requires CONCHBASE_AUTH_TOKEN_DIGEST.');
+  }
+  if (authTokenDigest !== undefined && !/^sha256:[0-9a-f]{64}$/.test(authTokenDigest)) {
+    throw new Error('CONCHBASE_AUTH_TOKEN_DIGEST must be sha256:<64 lowercase hex>.');
   }
 
   if (!/^\d+$/.test(portValue) || !Number.isInteger(port) || port < 1 || port > 65_535) {
@@ -44,15 +53,14 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
   if (magpieAppKey !== undefined && !/^magpie-[a-zA-Z0-9_-]+$/.test(magpieAppKey)) {
     throw new Error('CONCHBASE_MAGPIE_APP_KEY has an invalid format.');
   }
-  const defaultModel = env.CONCHBASE_MODEL ?? '';
-  const databasePath = env.CONCHBASE_DB ?? '.conchbase/runtime.sqlite';
-
   return {
     host,
     port,
-    databasePath,
+    databasePath: env.CONCHBASE_DB ?? '.conchbase/runtime.sqlite',
     magpieBaseUrl,
     ...(magpieAppKey ? { magpieAppKey } : {}),
-    defaultModel,
+    defaultModel: env.CONCHBASE_MODEL ?? '',
+    allowAuthenticatedRemoteBinding,
+    ...(authTokenDigest ? { authTokenDigest } : {}),
   };
 }

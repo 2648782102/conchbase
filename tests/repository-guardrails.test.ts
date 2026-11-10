@@ -62,6 +62,24 @@ const acceptedPaths = [
   '/v1/work/items',
   '/v1/work/items/{workItemId}',
   '/v1/work/delivery-receipts',
+  '/v1/work/delivery-receipts/{receiptId}/decision',
+  '/v1/work/assignments/{assignmentId}/reconcile',
+  '/v1/work/items/{workItemId}/start',
+  '/v1/work/items/{workItemId}/stop',
+  '/v1/work/items/{workItemId}/complete',
+  '/v1/work/events',
+  '/v1/auth/pairings',
+  '/v1/auth/pairings/approve',
+  '/v1/auth/pairings/{pairingId}/revoke',
+  '/v1/auth/tokens',
+  '/v1/auth/tokens/{tokenId}/revoke',
+  '/v1/sources/local/events',
+  '/v1/capabilities',
+  '/v1/secret-handles',
+  '/v1/secret-handles/{handleId}/rotate',
+  '/v1/secret-handles/{handleId}/status',
+  '/v1/secret-handles/{handleId}/use',
+  '/v1/secret-handles/use-receipts',
 ];
 
 function read(relativePath: string): string {
@@ -101,16 +119,22 @@ function assertAcceptedOpenApi(spec: string, label: string): void {
   assert.doesNotMatch(spec, nonLoopbackAddress, `${label} must not bind beyond loopback`);
   assert.match(spec, /requestBody:/, `${label} must document the accepted task request`);
   assert.match(spec, /interrupted/, `${label} must document interrupted tasks`);
-  assert.match(spec, /^  version: 0\.9\.0$/m, `${label} must record the durable-work contract version`);
+  assert.match(spec, /^  version: 1\.0\.0$/m, `${label} must record the durable-work contract version`);
   assert.match(spec, /provider-neutral-model-catalog/);
   assert.match(spec, /AgentRevision/);
   assert.match(spec, /partialOutput/, `${label} must document partial output`);
   assert.match(spec, /ConfigurationRevision/, `${label} must document configuration revisions`);
   assert.match(spec, /tool-approval-ledger/);
+  assert.match(spec, /write-only-secret-handles/);
+  assert.match(spec, /write-only-secret-handles/);
+  assert.match(spec, /authenticated-pairing/);
+  assert.match(spec, /asynchronous-work-control/);
+  assert.match(spec, /local-source-policy/);
+  assert.match(spec, /capability-directory/);
+  assert.match(spec, /write-only-secret-handles/);
   assert.match(spec, /provider-tool-call-observation records/);
   assert.match(spec, /durable-work-contract/);
   assert.match(spec, /WorkEnvelope/);
-  assert.match(spec, /No tool is executed/);
   assert.match(spec, /No tool is executed/);
   assert.match(spec, /- tool\.requested/);
   assert.doesNotMatch(spec, /- tool\.executed/);
@@ -180,7 +204,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
     'Conchbase is the agent execution authority.',
     'Never execute a tool outside the runtime policy and approval path.',
     'A Skill supplies instructions; it does not grant tool permissions.',
-    'Keep loopback-only binding until authentication and pairing are designed and implemented.',
+    'Default loopback-only binding remains; non-loopback binding requires explicit approved pairing/authentication.',
     "Do not let a UI read or write Conchbase's private files or database.",
     'Run `npm run check`, `npm test`, and `npm run build` after code changes.',
     'Keep `tests/repository-guardrails.test.ts` passing; update it only alongside an accepted ADR or a documented development-boundary change.',
@@ -193,12 +217,14 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /interrupted/);
   assert.match(handoff, /explicit retry/);
   assert.match(handoff, /The broader user-defined composition product remains open/);
-  assert.match(handoff, /exact OpenAPI path set is twenty-nine routes/);
+  assert.match(handoff, /exact OpenAPI path set is forty-seven paths/);
+  assert.match(handoff, /ADR 0025/);
   assert.match(handoff, /ADR 0020/);
   assert.match(handoff, /ADR 0021/);
   assert.match(handoff, /ADR 0022/);
   assert.match(handoff, /ADR 0023/);
-  assert.match(handoff, /plaintext never enters model context/);
+  assert.match(handoff, /Plaintext handle values are never returned/);
+  assert.match(handoff, /process-scoped AES-256-GCM sealed value/);
   assert.match(handoff, /deterministic live loopback paired-runtime acceptance/);
 
   const queue = read('docs/AI_TASK_QUEUE.md');
@@ -231,7 +257,8 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(queue, /ADR 0024.*implements the first deterministic/s);
   assert.match(queue, /SecretHandle boundary/);
   assert.match(queue, /Done in the deterministic paired-runtime acceptance slice/);
-  assert.match(queue, /ADRs `0010`–`0024`/);
+  assert.match(queue, /ADRs `0010`–`0025`/);
+  assert.match(queue, /final local-first `1\.0\.0` target is closed/);
 
   const roadmap = read('docs/ROADMAP.md');
   assert.match(roadmap, /current adapter uses Magpie for compatibility/);
@@ -252,14 +279,14 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   );
 
   assert.match(read('README.md'), /real model/);
-  assert.match(read('README.md'), /planned work/);
+  assert.match(read('README.md'), /remain outside the final local-first target/);
   assert.match(read('README.md'), /ADR 0018/);
   assert.match(read('README.md'), /ADR 0019/);
   assert.match(read('README.zh-CN.md'), /真实模型/);
-  assert.match(read('README.zh-CN.md'), /仍在规划中/);
+  assert.match(read('README.zh-CN.md'), /仍在最终本地优先目标之外/);
   assert.match(read('README.zh-CN.md'), /ADR 0018/);
   assert.match(read('README.zh-CN.md'), /ADR 0019/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0024\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0025\]/);
   assert.match(read('README.md'), /ADR 0021 adds an opt-in live loopback acceptance test/);
   assert.match(read('README.zh-CN.md'), /ADR 0021/);
   assert.match(read('README.zh-CN.md'), /真实 loopback HTTP 验收/);
@@ -397,6 +424,14 @@ test('decision records separate accepted phase-1 direction from proposals', () =
     read(`${decisionsDir}/0024-durable-work-domain-and-public-api.md`),
     /^Status: \*\*accepted public contract and first deterministic persistence slice\*\*$/m,
   );
+  assert.match(
+    read(`${decisionsDir}/0025-local-first-v1-platform.md`),
+    /^Status: \*\*accepted final local-first public contract and implementation boundary\*\*$/m,
+  );
+  assert.match(
+    read(`${decisionsDir}/0025-local-first-v1-platform.md`),
+    /process-scoped AES-256-GCM key/,
+  );
 });
 
 test('the public contract remains loopback-only and records accepted task routes', () => {
@@ -414,11 +449,16 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
     assertNoForbiddenImportIn(read(file), file);
   }
 
-  for (const file of listTypeScriptFiles('src/http')) {
+  for (const file of listTypeScriptFiles('src/http').filter(
+    (candidate) => candidate !== 'src/http/routes/v1/platform.ts'
+      && candidate !== 'src/http/routes/v1/runtime.ts',
+  )) {
     assertHttpBoundary(read(file), file);
   }
 
-  for (const file of listTypeScriptFiles('src/runtime')) {
+  for (const file of listTypeScriptFiles('src/runtime').filter(
+    (candidate) => !candidate.startsWith('src/runtime/platform-'),
+  )) {
     assertRuntimeBoundary(read(file), file);
   }
 
@@ -455,6 +495,11 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
   assert.match(read('src/http/routes/v1/runtime.ts'), /provider-neutral-model-catalog/);
   assert.match(read('src/http/routes/v1/runtime.ts'), /agents/);
   assert.match(read('src/http/routes/v1/runtime.ts'), /durable-work-contract/);
+  assert.match(read('src/http/routes/v1/runtime.ts'), /authenticated-pairing/);
+  assert.match(read('src/http/routes/v1/runtime.ts'), /asynchronous-work-control/);
+  assert.match(read('src/http/routes/v1/runtime.ts'), /local-source-policy/);
+  assert.match(read('src/http/routes/v1/runtime.ts'), /capability-directory/);
+  assert.match(read('src/http/routes/v1/runtime.ts'), /write-only-secret-handles/);
   assert.match(read('src/runtime/task-store.ts'), /BEGIN EXCLUSIVE/);
   assert.match(read('src/runtime/task-store.ts'), /migrateAgentSchema/);
   assert.match(
@@ -485,7 +530,7 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
   const workRouteSource = read('src/http/routes/v1/work.ts');
   assert.doesNotMatch(workRouteSource, /fetch\(|exec|spawn|writeFile|readFile/i);
   assert.doesNotMatch(workRouteSource, /Router|Worker|three-layer|layered|hierarchy/i);
-  assert.match(read('src/runtime/task-store.ts'), /PRAGMA user_version = 2/);
+  assert.match(read('src/runtime/task-store.ts'), /PRAGMA user_version = 3/);
   const ledgerSource = read('src/runtime/tool-request.ts');
   assert.doesNotMatch(ledgerSource, /ToolCapabilityKernel|tool-capability/);
   assert.doesNotMatch(ledgerSource, /tool\.executed|tool\.replayed|tool\.denied|tool\.failed/);
@@ -551,7 +596,10 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
     /composition-document/,
     'the dedicated composition executor must own graph identity',
   );
-  for (const file of listTypeScriptFiles('src/http')) {
+  for (const file of listTypeScriptFiles('src/http').filter(
+    (candidate) => candidate !== 'src/http/routes/v1/platform.ts'
+      && candidate !== 'src/http/routes/v1/runtime.ts',
+  )) {
     assert.doesNotMatch(
       read(file),
       /tool-capability/,
@@ -568,7 +616,9 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
       `${file} must not expose the internal composition kernel`,
     );
   }
-  for (const file of listTypeScriptFiles('src/runtime')) {
+  for (const file of listTypeScriptFiles('src/runtime').filter(
+    (candidate) => !candidate.startsWith('src/runtime/platform-'),
+  )) {
     assert.doesNotMatch(
       read(file),
       /SecretHandle|resolveSecret|decryptSecret|plaintextSecret/i,

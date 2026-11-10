@@ -84,6 +84,24 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
       '/v1/work/items',
       '/v1/work/items/{workItemId}',
       '/v1/work/delivery-receipts',
+      '/v1/work/delivery-receipts/{receiptId}/decision',
+      '/v1/work/assignments/{assignmentId}/reconcile',
+      '/v1/work/items/{workItemId}/start',
+      '/v1/work/items/{workItemId}/stop',
+      '/v1/work/items/{workItemId}/complete',
+      '/v1/work/events',
+      '/v1/auth/pairings',
+      '/v1/auth/pairings/approve',
+      '/v1/auth/pairings/{pairingId}/revoke',
+      '/v1/auth/tokens',
+      '/v1/auth/tokens/{tokenId}/revoke',
+      '/v1/sources/local/events',
+      '/v1/capabilities',
+      '/v1/secret-handles',
+      '/v1/secret-handles/{handleId}/rotate',
+      '/v1/secret-handles/{handleId}/status',
+      '/v1/secret-handles/{handleId}/use',
+      '/v1/secret-handles/use-receipts',
     ],
   );
   assert.match(spec, /\$ref: '#\/components\/schemas\/Health'/);
@@ -158,7 +176,7 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
   assert.match(spec, /enum: \[inline, file, registry, env\]/);
   assert.doesNotMatch(spec, /enum: \[[^\]]*\burl\b/);
   assert.match(spec, /ApplyConfigurationRequest:[\s\S]*?oneOf:/);
-  assert.match(spec, /^  version: 0\.9\.0$/m);
+  assert.match(spec, /^  version: 1\.0\.0$/m);
   assert.match(spec, /compositionDocumentId/);
   assert.match(spec, /compositionNodeId/);
   assertSchemaFields('CreateProviderToolCallObservation', ['version', 'provider', 'payload']);
@@ -224,8 +242,10 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
     'approval',
   ]);
   assertSchemaFields('ToolRequestDecisionRequest', ['decision', 'reason']);
-  assert.match(spec, /^  version: 0\.9\.0$/m);
+  assert.match(spec, /^  version: 1\.0\.0$/m);
   assert.match(spec, /tool-approval-ledger/);
+  assert.match(spec, /write-only-secret-handles/);
+  assert.match(spec, /write-only-secret-handles/);
   assert.match(spec, /provider-tool-call-observation records/);
   assert.match(spec, /No tool is executed/);
   assert.match(spec, /- tool\.requested/);

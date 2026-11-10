@@ -7,7 +7,7 @@ The service listens on `127.0.0.1:4318` by default. The machine-readable source 
 | Method and path | Behavior |
 |---|---|
 | `GET /v1/health` | Service health and API version `1`. |
-| `GET /v1/runtime` | Runtime identity, version `0.9.0`, and advertised capabilities including `durable-work-contract`. |
+| `GET /v1/runtime` | Runtime identity, version `1.0.0`, and advertised capabilities including `durable-work-contract`. |
 | `GET /v1/models` | Chat model ids from the configured local Magpie gateway; `502` when the catalog is unavailable. |
 | `GET /v1/model-catalog` | Provider-neutral model references with normalized capabilities; currently the `magpie` compatibility adapter; `502` when unavailable. |
 | `GET /v1/agents` | Runtime-local Agent collection and current revisions. |
@@ -39,6 +39,29 @@ The service listens on `127.0.0.1:4318` by default. The machine-readable source 
 | `GET /v1/work/items` | List durable WorkItems and their current state. |
 | `GET /v1/work/items/{workItemId}` | Read one WorkItem with its context-only Thread, immutable Mandate, planned Assignments, pending Outbox records, and observed DeliveryReceipts; `404` when absent. |
 | `GET /v1/work/delivery-receipts` | List digest-only delivery evidence across durable WorkItems. |
+| `POST /v1/work/delivery-receipts/{receiptId}/decision` | Record `accepted` or `rejected` on an observed receipt; `409` after a decision. |
+| `POST /v1/work/assignments/{assignmentId}/reconcile` | Resolve an interrupted assignment as `succeeded` or `failed`; `409` for other states. |
+| `POST /v1/work/items/{workItemId}/start` | Start or resume a WorkItem from its exact expected state. |
+| `POST /v1/work/items/{workItemId}/stop` | Stop a running or paused WorkItem. |
+| `POST /v1/work/items/{workItemId}/complete` | Complete a running WorkItem and mark bounded evidence delivered/accepted. |
+| `GET /v1/work/events` | Read bounded durable work, Source, capability, pairing, token, and SecretHandle evidence events. |
+| `GET /v1/auth/pairings` | List pairing sessions; values are challenge digests and metadata only. |
+| `POST /v1/auth/pairings` | Create a pending pairing session; `201`. |
+| `POST /v1/auth/pairings/approve` | Approve a pairing by exact challenge digest; `409` on mismatch. |
+| `POST /v1/auth/pairings/{pairingId}/revoke` | Revoke a pairing and its tokens. |
+| `GET /v1/auth/tokens` | List token records; only digests and metadata are returned. |
+| `POST /v1/auth/tokens` | Register a token digest for an approved pairing; `201`. |
+| `POST /v1/auth/tokens/{tokenId}/revoke` | Revoke one token record. |
+| `GET /v1/sources/local/events` | List bounded local Source evidence. |
+| `POST /v1/sources/local/events` | Ingest a deterministic `allow`/`deny` Source event; allowed events may start matching work. |
+| `GET /v1/capabilities` | List bounded capability directory records. |
+| `POST /v1/capabilities` | Upsert one `mcp`, `skill`, `plugin`, or `secret-handle` directory record; `201`. Records do not grant execution. |
+| `GET /v1/secret-handles` | List digest-only handle metadata; no value, cipher, IV, or tag is returned. |
+| `POST /v1/secret-handles` | Register one write-only value; `201`. |
+| `POST /v1/secret-handles/{handleId}/rotate` | Rotate to another one-shot value and increment `secretVersion`. |
+| `POST /v1/secret-handles/{handleId}/status` | Set `active` or `disabled`. |
+| `POST /v1/secret-handles/{handleId}/use` | Invoke the runtime-owned fixed adapter with pinned identities; returns a digest-only `injected`/`denied` receipt. |
+| `GET /v1/secret-handles/use-receipts` | List digest-only use receipts. |
 
 An Agent profile is a versioned resource with bounded name, instructions, and `{ providerId, modelId }` default model reference. It contains no credential, provider URL, permission, or tool grant. The first Agent becomes default; there is no implicit default selection for task creation. Profile edits and history apply use `expectedRevisionId`; rollback appends a revision. Archiving is soft and irreversible in the current API, preserves history, and prevents new tasks. Existing tasks, including retries, stay bound to their pinned revision.
 
@@ -54,16 +77,18 @@ Tool request documents are provider-neutral data. A request includes `taskId`, `
 
 Provider observation documents are transient, untrusted normalization inputs. A request has `version: 1`, `provider: 'openai-chat-completions'`, and one bounded plain-JSON `payload`. The route returns a `version: 1` observation with `providerToolCallId`, a normalized `toolCall`, and an `argumentsDigest`, or `null` for a no-tool-call response. It rejects unsupported providers, raw envelope fields, secret-like or absolute-URL data, streaming deltas, mixed answers, multiple calls, and malformed shapes with bounded `details`. A client that wants a durable ledger record must explicitly submit the normalized `toolCall` to `POST /v1/tool-requests` with task, attempt, and composition node identity. See [ADR 0019](decisions/0019-explicit-provider-tool-call-observation-boundary.md).
 
-Durable work documents are deterministic, topology-neutral state from [ADR 0024](decisions/0024-durable-work-domain-and-public-api.md). A Trigger request contains bounded `source`, `trigger`, `mandate`, provider-neutral `model`, and pinned revision ids; all digests are `sha256:<64 lowercase hex>`. `POST /v1/work/triggers` parses its raw `application/json` body and delegates exact shape validation to the pure domain contract, so top-level or nested unknown fields, malformed JSON, and unsupported shape changes return `400` before persistence. The `trigger.triggerId` is stored as `sourceEventId`, while the Runtime derives an opaque `trg_` id. An exact replay returns the stored envelope without new rows or events. A later Trigger with the same `threadKey` must carry the same Mandate and Assignment proposal; it adds context to the Thread but creates no second WorkItem, Mandate, Assignment, Outbox record, or DeliveryReceipt. A changed proposal returns `409`. WorkItem state (`open`) is distinct from Assignment state (`planned`); Outbox `pending` and DeliveryReceipt `observed` are evidence records, not proof of an external write or acceptance. The runtime advertises `durable-work-contract`; clients must gate workbench reads on that capability. No start/stop, execution, approval, secret, or external Source route exists in this slice.
+Durable work documents are deterministic, topology-neutral state from [ADR 0024](decisions/0024-durable-work-domain-and-public-api.md) and [ADR 0025](decisions/0025-local-first-v1-platform.md). A Trigger request contains bounded `source`, `trigger`, `mandate`, provider-neutral `model`, and pinned revision ids; all digests are `sha256:<64 lowercase hex>`. `POST /v1/work/triggers` parses its raw `application/json` body and delegates exact shape validation to the pure domain contract, so top-level or nested unknown fields, malformed JSON, and unsupported shape changes return `400` before persistence. The `trigger.triggerId` is stored as `sourceEventId`, while the Runtime derives an opaque `trg_` id. An exact replay returns the stored envelope without new rows or events. A later Trigger with the same `threadKey` must carry the same Mandate and Assignment proposal; it adds context to the Thread but creates no second WorkItem, Mandate, Assignment, Outbox record, or DeliveryReceipt. A changed proposal returns `409`. Version-2 WorkItem, Assignment, Outbox, and DeliveryReceipt states have widened enums; all evidence remains digest-only and is not proof of an external write. The runtime advertises `durable-work-contract`, `authenticated-pairing`, `asynchronous-work-control`, `local-source-policy`, `capability-directory`, and `write-only-secret-handles`; clients must gate features on those capabilities. ADR 0025 adds start/stop/complete, recovery, delivery decisions, local Source events, capability records, and write-only SecretHandle routes.
 
 ## Boundaries
 
-- The API is loopback-only. Remote binding requires a reviewed authentication and pairing design.
+- The API defaults to loopback-only. Remote binding requires explicit authenticated pairing and an approved token digest.
 - Legacy model ids come from the user's Magpie catalog. Agent profiles and the new model catalog use provider-neutral references; only the `magpie` adapter is currently registered. No model credentials enter Agent documents or API responses.
 - A `schemaVersion: 1` task performs one streaming text completion. Reasoning text is ignored and model-requested tools are rejected, not executed.
 - The ADR 0018 parser is wired into the provider and the transient observation route by ADR 0019. A whole message-shaped tool call becomes a transient observation; streaming deltas and unsupported shapes remain rejected. No observation creates a ledger request, task transition, event, or execution permission.
 - A legacy `schemaVersion: 2` task performs bounded deterministic graph traversal. It makes no model call and executes no model-requested or real host tool. Agent-backed tasks use a single model turn and do not implicitly execute the global composition graph.
-- No public tool execution, executable approval, MCP, Skill, plugin, model-driven composition, or dedicated composition management route exists yet. Composition is part of the versioned configuration document; the tool request/approval routes are ledger records only.
+- No public tool execution, executable approval, real MCP/Skill/plugin lifecycle, model-driven composition, or dedicated composition management route exists yet. Capability records are configuration data. Composition is part of the versioned configuration document; the tool request/approval routes are ledger records only.
 - Configuration document routes do not install, enable, grant, resolve secrets, load code, or execute tools.
 - Tool request and approval routes do not execute tools, transition task state, load code, resolve secrets, or grant capabilities.
-- Work routes do not call a model, execute a tool, perform an external write, resolve a secret, read a private file from a client, define a canonical topology, or reinterpret the phase-1 `Task` resource.
+- Work and platform routes do not call a model, execute a host tool, perform an external write, expose a generic secret resolver, read a private file from a client, define a canonical topology, or reinterpret the phase-1 `Task` resource. A submitted SecretHandle value is sealed with a process-scoped key and is exposed only to one runtime-owned fixed adapter; restart invalidates old sealed values.
+
+> Final local-first target: Conchbase `1.0.0` and ADR 0025 close the exact 47-path platform contract. Write-only SecretHandle values are sealed at rest with a process-scoped AES-256-GCM key, exposed only to one runtime-owned fixed adapter, and never returned, logged, or sent to a model, client, event, or UI. Restart invalidates previously sealed values; cross-process key sources, real external adapters, executors, Sources, external writes, and tools require separate ADRs.

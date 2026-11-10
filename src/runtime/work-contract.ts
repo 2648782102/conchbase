@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-export const WORK_CONTRACT_VERSION = 1;
+export const WORK_CONTRACT_VERSION = 2;
 
 export type WorkSourceKind = 'manual' | 'fake';
 
@@ -72,7 +72,7 @@ export interface WorkMandate {
 export interface WorkItem {
   readonly version: typeof WORK_CONTRACT_VERSION;
   readonly id: string;
-  readonly state: 'open';
+  readonly state: 'open' | 'running' | 'paused' | 'completed' | 'cancelled';
   readonly threadId: string;
   readonly triggerId: string;
   readonly mandateId: string;
@@ -83,7 +83,7 @@ export interface WorkAssignment {
   readonly version: typeof WORK_CONTRACT_VERSION;
   readonly id: string;
   readonly workItemId: string;
-  readonly state: 'planned';
+  readonly state: 'planned' | 'running' | 'interrupted' | 'succeeded' | 'failed' | 'cancelled';
   readonly agentRevisionId: string;
   readonly configurationRevisionId: string;
   readonly mandateRevision: 1;
@@ -95,7 +95,7 @@ export interface WorkOutboxRecord {
   readonly id: string;
   readonly workItemId: string;
   readonly assignmentId: string;
-  readonly status: 'pending';
+  readonly status: 'pending' | 'sent' | 'delivered' | 'failed';
   readonly destinationDigest: string;
   readonly payloadDigest: string;
 }
@@ -105,7 +105,7 @@ export interface WorkDeliveryReceipt {
   readonly id: string;
   readonly workItemId: string;
   readonly outboxId: string;
-  readonly status: 'observed';
+  readonly status: 'observed' | 'accepted' | 'rejected';
   readonly destinationDigest: string;
   readonly payloadDigest: string;
 }
@@ -115,7 +115,19 @@ export type WorkEventType =
   | 'work.item_created'
   | 'work.assignment_planned'
   | 'work.outbox_recorded'
-  | 'work.delivery_observed';
+  | 'work.delivery_observed'
+  | 'work.started'
+  | 'work.stopped'
+  | 'work.completed'
+  | 'work.recovered'
+  | 'work.reconciled'
+  | 'work.delivery_decided'
+  | 'source.event_observed'
+  | 'capability.configured'
+  | 'secret.handle_configured'
+  | 'secret.handle_rotated'
+  | 'secret.handle_status_changed'
+  | 'secret.handle_used';
 
 export interface WorkEvent {
   readonly version: typeof WORK_CONTRACT_VERSION;

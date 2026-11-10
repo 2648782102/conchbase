@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Conchbase Runtime API
-  version: 0.9.0
-  description: Local, versioned API for Conchbase Agent profiles and revisions, provider-neutral model references, pinned tasks, bounded composition execution, ordered progress events, versioned runtime configuration, durable tool request/approval records without execution, and deterministic durable work contracts without execution. Runtime capabilities include agents, provider-neutral-model-catalog, tool-approval-ledger, provider-tool-call-observation records, and durable-work-contract.
+  version: 1.0.0
+  description: Local, versioned API for Conchbase Agent profiles and revisions, provider-neutral model references, pinned tasks, bounded composition execution, ordered progress events, versioned runtime configuration, durable tool request/approval records without execution, durable asynchronous work control, reviewed authenticated pairing, one local Source, a capability directory, and write-only SecretHandles with digest-only use receipts. Runtime capabilities include agents, provider-neutral-model-catalog, tool-approval-ledger, provider-tool-call-observation records, durable-work-contract, authenticated-pairing, asynchronous-work-control, local-source-policy, capability-directory, and write-only-secret-handles.
 servers:
   - url: http://127.0.0.1:4318
     description: Local runtime default; loopback only.
@@ -725,6 +725,477 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/work/delivery-receipts/{receiptId}/decision:
+    post:
+      operationId: decideWorkDeliveryReceipt
+      summary: Record an explicit accepted or rejected delivery decision.
+      parameters:
+        - $ref: '#/components/parameters/ReceiptId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeliveryDecisionRequest'
+      responses:
+        '200':
+          description: Updated WorkItem snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkControlResponse'
+        '400':
+          $ref: '#/components/responses/PlatformValidationError'
+        '404':
+          $ref: '#/components/responses/PlatformNotFoundError'
+        '409':
+          $ref: '#/components/responses/PlatformConflictError'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+  /v1/work/assignments/{assignmentId}/reconcile:
+    post:
+      operationId: reconcileWorkAssignment
+      summary: Reconcile one interrupted Assignment after restart.
+      parameters:
+        - $ref: '#/components/parameters/AssignmentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecoveryRequest'
+      responses:
+        '200':
+          description: Updated WorkItem snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkControlResponse'
+        '400':
+          $ref: '#/components/responses/PlatformValidationError'
+        '404':
+          $ref: '#/components/responses/PlatformNotFoundError'
+        '409':
+          $ref: '#/components/responses/PlatformConflictError'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+  /v1/work/items/{workItemId}/start:
+    post:
+      operationId: startWorkItem
+      summary: Start or resume one durable WorkItem with expected-state concurrency.
+      parameters:
+        - $ref: '#/components/parameters/WorkItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkControlRequest'
+      responses:
+        '200':
+          description: Started WorkItem snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkControlResponse'
+        '400':
+          $ref: '#/components/responses/PlatformValidationError'
+        '404':
+          $ref: '#/components/responses/PlatformNotFoundError'
+        '409':
+          $ref: '#/components/responses/PlatformConflictError'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+  /v1/work/items/{workItemId}/stop:
+    post:
+      operationId: stopWorkItem
+      summary: Stop one running or paused durable WorkItem.
+      parameters:
+        - $ref: '#/components/parameters/WorkItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkControlRequest'
+      responses:
+        '200':
+          description: Cancelled WorkItem snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkControlResponse'
+        '400':
+          $ref: '#/components/responses/PlatformValidationError'
+        '404':
+          $ref: '#/components/responses/PlatformNotFoundError'
+        '409':
+          $ref: '#/components/responses/PlatformConflictError'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+  /v1/work/items/{workItemId}/complete:
+    post:
+      operationId: completeWorkItem
+      summary: Complete one running durable WorkItem and mark bounded delivery evidence.
+      parameters:
+        - $ref: '#/components/parameters/WorkItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkControlRequest'
+      responses:
+        '200':
+          description: Completed WorkItem snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkControlResponse'
+        '400':
+          $ref: '#/components/responses/PlatformValidationError'
+        '404':
+          $ref: '#/components/responses/PlatformNotFoundError'
+        '409':
+          $ref: '#/components/responses/PlatformConflictError'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+  /v1/work/events:
+    get:
+      operationId: listWorkEvents
+      summary: List bounded durable work and platform evidence events.
+      responses:
+        '200':
+          description: Durable event collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformEventList'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+  /v1/auth/pairings:
+    get:
+      operationId: listPairings
+      summary: List local pairing sessions without challenge values.
+      responses:
+        '200':
+          description: Pairing collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PairingList'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+    post:
+      operationId: createPairing
+      summary: Create one pending local pairing session with a runtime challenge digest.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePairingRequest'
+      responses:
+        '201':
+          description: Pending pairing session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PairingEnvelope'
+        '400':
+          $ref: '#/components/responses/PlatformValidationError'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+  /v1/auth/pairings/approve:
+    post:
+      operationId: approvePairing
+      summary: Approve one pending pairing session by exact challenge digest.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovePairingRequest'
+      responses:
+        '200':
+          description: Approved pairing session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PairingEnvelope'
+        '400':
+          $ref: '#/components/responses/PlatformValidationError'
+        '404':
+          $ref: '#/components/responses/PlatformNotFoundError'
+        '409':
+          $ref: '#/components/responses/PlatformConflictError'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+  /v1/auth/pairings/{pairingId}/revoke:
+    post:
+      operationId: revokePairing
+      summary: Revoke one pairing session and its issued tokens.
+      parameters:
+        - $ref: '#/components/parameters/PairingId'
+      responses:
+        '200':
+          description: Revoked pairing session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PairingEnvelope'
+        '404':
+          $ref: '#/components/responses/PlatformNotFoundError'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+  /v1/auth/tokens:
+    get:
+      operationId: listAuthTokens
+      summary: List token metadata and digests without token values.
+      responses:
+        '200':
+          description: Token collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokenList'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+    post:
+      operationId: createAuthToken
+      summary: Register one token digest against an approved pairing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAuthTokenRequest'
+      responses:
+        '201':
+          description: Token metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokenEnvelope'
+        '400':
+          $ref: '#/components/responses/PlatformValidationError'
+        '404':
+          $ref: '#/components/responses/PlatformNotFoundError'
+        '409':
+          $ref: '#/components/responses/PlatformConflictError'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+  /v1/auth/tokens/{tokenId}/revoke:
+    post:
+      operationId: revokeAuthToken
+      summary: Revoke one registered token digest.
+      parameters:
+        - $ref: '#/components/parameters/TokenId'
+      responses:
+        '200':
+          description: Revoked token metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokenEnvelope'
+        '404':
+          $ref: '#/components/responses/PlatformNotFoundError'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+  /v1/sources/local/events:
+    get:
+      operationId: listLocalSourceEvents
+      summary: List deterministic local Source policy observations.
+      responses:
+        '200':
+          description: Local Source event collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocalSourceEventList'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+    post:
+      operationId: ingestLocalSourceEvent
+      summary: Ingest one bounded local Source event through deterministic policy filtering.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LocalSourceEventRequest'
+      responses:
+        '201':
+          description: Stored Source event.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocalSourceEventEnvelope'
+        '400':
+          $ref: '#/components/responses/PlatformValidationError'
+        '404':
+          $ref: '#/components/responses/PlatformNotFoundError'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+  /v1/capabilities:
+    get:
+      operationId: listCapabilities
+      summary: List configured MCP, Skill, plugin, and SecretHandle directory records.
+      responses:
+        '200':
+          description: Capability collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapabilityList'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+    post:
+      operationId: putCapability
+      summary: Upsert one bounded capability directory record; configuration is data, not installation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CapabilityWriteRequest'
+      responses:
+        '201':
+          description: Capability record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapabilityEnvelope'
+        '400':
+          $ref: '#/components/responses/PlatformValidationError'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+  /v1/secret-handles:
+    get:
+      operationId: listSecretHandles
+      summary: List write-only handle metadata and digests; never return handle values.
+      responses:
+        '200':
+          description: SecretHandle collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretHandleList'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+    post:
+      operationId: createSecretHandle
+      summary: Submit one sensitive value once; the response contains only non-secret metadata.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSecretHandleRequest'
+      responses:
+        '201':
+          description: Non-secret handle metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretHandleEnvelope'
+        '400':
+          $ref: '#/components/responses/PlatformValidationError'
+        '409':
+          $ref: '#/components/responses/PlatformConflictError'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+  /v1/secret-handles/{handleId}/rotate:
+    post:
+      operationId: rotateSecretHandle
+      summary: Rotate one handle from one submitted value; the response contains only non-secret metadata.
+      parameters:
+        - $ref: '#/components/parameters/HandleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RotateSecretHandleRequest'
+      responses:
+        '200':
+          description: Rotated handle metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretHandleEnvelope'
+        '400':
+          $ref: '#/components/responses/PlatformValidationError'
+        '404':
+          $ref: '#/components/responses/PlatformNotFoundError'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+  /v1/secret-handles/{handleId}/status:
+    post:
+      operationId: setSecretHandleStatus
+      summary: Enable or disable one handle without returning a value.
+      parameters:
+        - $ref: '#/components/parameters/HandleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretHandleStatusRequest'
+      responses:
+        '200':
+          description: Updated handle metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretHandleEnvelope'
+        '400':
+          $ref: '#/components/responses/PlatformValidationError'
+        '404':
+          $ref: '#/components/responses/PlatformNotFoundError'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+  /v1/secret-handles/{handleId}/use:
+    post:
+      operationId: useSecretHandle
+      summary: Ask the runtime-owned fixed adapter to use one handle and return a digest-only receipt.
+      parameters:
+        - $ref: '#/components/parameters/HandleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UseSecretHandleRequest'
+      responses:
+        '200':
+          description: Digest-only use receipt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretHandleUseReceiptEnvelope'
+        '400':
+          $ref: '#/components/responses/PlatformValidationError'
+        '404':
+          $ref: '#/components/responses/PlatformNotFoundError'
+        '409':
+          $ref: '#/components/responses/PlatformConflictError'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+  /v1/secret-handles/use-receipts:
+    get:
+      operationId: listSecretHandleUseReceipts
+      summary: List digest-only SecretHandle use receipts.
+      responses:
+        '200':
+          description: Use receipt collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretHandleUseReceiptList'
+        '503':
+          $ref: '#/components/responses/PlatformUnavailableError'
+
 components:
   parameters:
     TaskId:
@@ -754,6 +1225,36 @@ components:
       schema:
         type: string
         pattern: '^tqr_[0-9a-f]{24}$'
+    ReceiptId:
+      name: receiptId
+      in: path
+      required: true
+      schema:
+        type: string
+    AssignmentId:
+      name: assignmentId
+      in: path
+      required: true
+      schema:
+        type: string
+    PairingId:
+      name: pairingId
+      in: path
+      required: true
+      schema:
+        type: string
+    TokenId:
+      name: tokenId
+      in: path
+      required: true
+      schema:
+        type: string
+    HandleId:
+      name: handleId
+      in: path
+      required: true
+      schema:
+        type: string
     WorkItemId:
       name: workItemId
       in: path
@@ -970,6 +1471,31 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ProviderModel'
+  responses:
+    PlatformValidationError:
+      description: Invalid JSON, unknown field, or unsupported contract shape.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    PlatformNotFoundError:
+      description: Platform resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    PlatformConflictError:
+      description: State, digest, identity, or idempotency conflict.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    PlatformUnavailableError:
+      description: Platform store is not configured.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
   schemas:
     Health:
       type: object
@@ -1470,7 +1996,7 @@ components:
       required: [version, kind, provider, providerToolCallId, toolCall, argumentsDigest]
       properties:
         version:
-          const: 1
+          const: 2
         kind:
           const: tool_call
         provider:
@@ -1491,7 +2017,7 @@ components:
       required: [version, provider, payload]
       properties:
         version:
-          const: 1
+          const: 2
         provider:
           const: openai-chat-completions
         payload:
@@ -1557,7 +2083,7 @@ components:
       required: [version, id, taskId, attempt, configurationRevisionId, compositionDocumentId, compositionNodeId, toolName, argumentsDigest, idempotencyKey, status, createdAt, approval]
       properties:
         version:
-          const: 1
+          const: 2
         id:
           type: string
           pattern: '^tqr_[0-9a-f]{24}$'
@@ -1724,7 +2250,7 @@ components:
       required: [version, id, sourceEventId, sourceId, sourceKind, threadKey, threadId, payloadDigest, occurredAt, canonicalDigest, proposalDigest]
       properties:
         version:
-          const: 1
+          const: 2
         id:
           type: string
           pattern: '^trg_[0-9a-f]{24}$'
@@ -1755,7 +2281,7 @@ components:
       required: [version, id, threadKey, contextOnly, triggerIds, workItemId]
       properties:
         version:
-          const: 1
+          const: 2
         id:
           type: string
           pattern: '^thr_[0-9a-f]{24}$'
@@ -1777,7 +2303,7 @@ components:
       required: [version, id, workItemId, revision, scope, allowedOperations, capabilitiesDigest]
       properties:
         version:
-          const: 1
+          const: 2
         id:
           type: string
           pattern: '^man_[0-9a-f]{24}$'
@@ -1802,12 +2328,12 @@ components:
       required: [version, id, state, threadId, triggerId, mandateId, mandateRevision]
       properties:
         version:
-          const: 1
+          const: 2
         id:
           type: string
           pattern: '^work_[0-9a-f]{24}$'
         state:
-          const: open
+          $ref: '#/components/schemas/WorkState'
         threadId:
           type: string
           pattern: '^thr_[0-9a-f]{24}$'
@@ -1825,7 +2351,7 @@ components:
       required: [version, id, workItemId, state, agentRevisionId, configurationRevisionId, mandateRevision, model]
       properties:
         version:
-          const: 1
+          const: 2
         id:
           type: string
           pattern: '^asg_[0-9a-f]{24}$'
@@ -1833,7 +2359,7 @@ components:
           type: string
           pattern: '^work_[0-9a-f]{24}$'
         state:
-          const: planned
+          $ref: '#/components/schemas/AssignmentState'
         agentRevisionId:
           type: string
         configurationRevisionId:
@@ -1848,7 +2374,7 @@ components:
       required: [version, id, workItemId, assignmentId, status, destinationDigest, payloadDigest]
       properties:
         version:
-          const: 1
+          const: 2
         id:
           type: string
           pattern: '^obx_[0-9a-f]{24}$'
@@ -1859,7 +2385,7 @@ components:
           type: string
           pattern: '^asg_[0-9a-f]{24}$'
         status:
-          const: pending
+          $ref: '#/components/schemas/OutboxState'
         destinationDigest:
           $ref: '#/components/schemas/WorkDigest'
         payloadDigest:
@@ -1870,7 +2396,7 @@ components:
       required: [version, id, workItemId, outboxId, status, destinationDigest, payloadDigest]
       properties:
         version:
-          const: 1
+          const: 2
         id:
           type: string
           pattern: '^dlv_[0-9a-f]{24}$'
@@ -1881,7 +2407,7 @@ components:
           type: string
           pattern: '^obx_[0-9a-f]{24}$'
         status:
-          const: observed
+          $ref: '#/components/schemas/ReceiptState'
         destinationDigest:
           $ref: '#/components/schemas/WorkDigest'
         payloadDigest:
@@ -1892,7 +2418,7 @@ components:
       required: [version, id, sequence, type, workItemId, data]
       properties:
         version:
-          const: 1
+          const: 2
         id:
           type: string
           pattern: '^evt_[0-9]{12}$'
@@ -1901,7 +2427,29 @@ components:
           minimum: 1
         type:
           type: string
-          enum: [work.trigger_ingested, work.item_created, work.assignment_planned, work.outbox_recorded, work.delivery_observed]
+          enum:
+            - work.trigger_ingested
+            - work.item_created
+            - work.assignment_planned
+            - work.outbox_recorded
+            - work.delivery_observed
+            - work.started
+            - work.stopped
+            - work.completed
+            - work.recovered
+            - work.reconciled
+            - work.delivery_decided
+            - source.event_observed
+            - capability.configured
+            - secret.handle_configured
+            - secret.handle_rotated
+            - secret.handle_status_changed
+            - secret.handle_used
+            - pairing.created
+            - pairing.approved
+            - pairing.revoked
+            - auth.token_created
+            - auth.token_revoked
         workItemId:
           type: string
           pattern: '^work_[0-9a-f]{24}$'
@@ -1915,7 +2463,7 @@ components:
       required: [version, created, workItemCreated, contextOnly, trigger, thread, mandate, workItem, assignments, outbox, deliveryReceipts, events]
       properties:
         version:
-          const: 1
+          const: 2
         created:
           type: boolean
         workItemCreated:
@@ -1952,7 +2500,7 @@ components:
       required: [version, workItems]
       properties:
         version:
-          const: 1
+          const: 2
         workItems:
           type: array
           items:
@@ -1963,7 +2511,7 @@ components:
       required: [version, workItem, thread, mandate, assignments, outbox, deliveryReceipts]
       properties:
         version:
-          const: 1
+          const: 2
         workItem:
           $ref: '#/components/schemas/WorkItem'
         thread:
@@ -1988,8 +2536,491 @@ components:
       required: [version, deliveryReceipts]
       properties:
         version:
-          const: 1
+          const: 2
         deliveryReceipts:
           type: array
           items:
             $ref: '#/components/schemas/WorkDeliveryReceipt'
+    PlatformBoundedString:
+      type: string
+      minLength: 1
+      maxLength: 120
+    PlatformDigest:
+      type: string
+      pattern: '^sha256:[0-9a-f]{64}$'
+    PlatformOpaqueId:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: '^[a-z][a-z0-9_-]{0,127}$'
+    PlatformTimestamp:
+      type: string
+      format: date-time
+      maxLength: 40
+    WorkState:
+      type: string
+      enum: [open, running, paused, completed, cancelled]
+    AssignmentState:
+      type: string
+      enum: [planned, running, interrupted, succeeded, failed, cancelled]
+    OutboxState:
+      type: string
+      enum: [pending, sent, delivered, failed]
+    ReceiptState:
+      type: string
+      enum: [observed, accepted, rejected]
+    WorkControlRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedState]
+      properties:
+        expectedState:
+          $ref: '#/components/schemas/WorkState'
+    WorkControlResponse:
+      type: object
+      additionalProperties: false
+      required: [version, workItem]
+      properties:
+        version:
+          const: 2
+        workItem:
+          $ref: '#/components/schemas/WorkSnapshot'
+    WorkSnapshot:
+      type: object
+      additionalProperties: false
+      required: [version, id, state, threadId, triggerId, mandateId, mandateRevision]
+      properties:
+        version:
+          const: 2
+        id:
+          $ref: '#/components/schemas/PlatformOpaqueId'
+        state:
+          $ref: '#/components/schemas/WorkState'
+        threadId:
+          $ref: '#/components/schemas/PlatformOpaqueId'
+        triggerId:
+          $ref: '#/components/schemas/PlatformOpaqueId'
+        mandateId:
+          $ref: '#/components/schemas/PlatformOpaqueId'
+        mandateRevision:
+          const: 1
+    RecoveryRequest:
+      type: object
+      additionalProperties: false
+      required: [outcome]
+      properties:
+        outcome:
+          type: string
+          enum: [succeeded, failed]
+    DeliveryDecisionRequest:
+      type: object
+      additionalProperties: false
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [accepted, rejected]
+    PlatformEvent:
+      type: object
+      additionalProperties: false
+      required: [version, id, sequence, type, workItemId, data]
+      properties:
+        version:
+          const: 2
+        id:
+          type: string
+        sequence:
+          type: integer
+          minimum: 1
+        type:
+          type: string
+        workItemId:
+          type: string
+        data:
+          type: object
+          additionalProperties:
+            type: [string, number, boolean]
+    PlatformEventList:
+      type: object
+      additionalProperties: false
+      required: [version, events]
+      properties:
+        version:
+          const: 2
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEvent'
+    CreatePairingRequest:
+      type: object
+      additionalProperties: false
+      required: [label]
+      properties:
+        label:
+          $ref: '#/components/schemas/PlatformBoundedString'
+    ApprovePairingRequest:
+      type: object
+      additionalProperties: false
+      required: [pairingId, challengeDigest]
+      properties:
+        pairingId:
+          $ref: '#/components/schemas/PlatformOpaqueId'
+        challengeDigest:
+          $ref: '#/components/schemas/PlatformDigest'
+    PairingSession:
+      type: object
+      additionalProperties: false
+      required: [version, id, status, label, createdAt, approvedAt, challengeDigest]
+      properties:
+        version:
+          const: 2
+        id:
+          $ref: '#/components/schemas/PlatformOpaqueId'
+        status:
+          type: string
+          enum: [pending, approved, revoked]
+        label:
+          $ref: '#/components/schemas/PlatformBoundedString'
+        createdAt:
+          $ref: '#/components/schemas/PlatformTimestamp'
+        approvedAt:
+          type: [string, 'null']
+        challengeDigest:
+          $ref: '#/components/schemas/PlatformDigest'
+    PairingEnvelope:
+      type: object
+      additionalProperties: false
+      required: [version, pairing]
+      properties:
+        version:
+          const: 2
+        pairing:
+          $ref: '#/components/schemas/PairingSession'
+    PairingList:
+      type: object
+      additionalProperties: false
+      required: [version, pairings]
+      properties:
+        version:
+          const: 2
+        pairings:
+          type: array
+          items:
+            $ref: '#/components/schemas/PairingSession'
+    CreateAuthTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [pairingId, name, tokenDigest]
+      properties:
+        pairingId:
+          $ref: '#/components/schemas/PlatformOpaqueId'
+        name:
+          $ref: '#/components/schemas/PlatformBoundedString'
+        tokenDigest:
+          $ref: '#/components/schemas/PlatformDigest'
+    AuthToken:
+      type: object
+      additionalProperties: false
+      required: [version, id, pairingId, name, tokenDigest, createdAt, revokedAt]
+      properties:
+        version:
+          const: 2
+        id:
+          $ref: '#/components/schemas/PlatformOpaqueId'
+        pairingId:
+          $ref: '#/components/schemas/PlatformOpaqueId'
+        name:
+          $ref: '#/components/schemas/PlatformBoundedString'
+        tokenDigest:
+          $ref: '#/components/schemas/PlatformDigest'
+        createdAt:
+          $ref: '#/components/schemas/PlatformTimestamp'
+        revokedAt:
+          type: [string, 'null']
+    AuthTokenEnvelope:
+      type: object
+      additionalProperties: false
+      required: [version, token]
+      properties:
+        version:
+          const: 2
+        token:
+          $ref: '#/components/schemas/AuthToken'
+    AuthTokenList:
+      type: object
+      additionalProperties: false
+      required: [version, tokens]
+      properties:
+        version:
+          const: 2
+        tokens:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthToken'
+    LocalSourceEventRequest:
+      type: object
+      additionalProperties: false
+      required: [sourceId, threadKey, payloadDigest, occurredAt, policy, mandateDigest]
+      properties:
+        sourceId:
+          $ref: '#/components/schemas/PlatformBoundedString'
+        threadKey:
+          $ref: '#/components/schemas/PlatformBoundedString'
+        payloadDigest:
+          $ref: '#/components/schemas/PlatformDigest'
+        occurredAt:
+          $ref: '#/components/schemas/PlatformTimestamp'
+        policy:
+          type: string
+          enum: [allow, deny]
+        mandateDigest:
+          $ref: '#/components/schemas/PlatformDigest'
+    LocalSourceEvent:
+      type: object
+      additionalProperties: false
+      required: [version, id, sourceId, threadKey, payloadDigest, occurredAt, policy, mandateDigest]
+      properties:
+        version:
+          const: 2
+        id:
+          $ref: '#/components/schemas/PlatformOpaqueId'
+        sourceId:
+          $ref: '#/components/schemas/PlatformBoundedString'
+        threadKey:
+          $ref: '#/components/schemas/PlatformBoundedString'
+        payloadDigest:
+          $ref: '#/components/schemas/PlatformDigest'
+        occurredAt:
+          $ref: '#/components/schemas/PlatformTimestamp'
+        policy:
+          type: string
+          enum: [allow, deny]
+        mandateDigest:
+          $ref: '#/components/schemas/PlatformDigest'
+    LocalSourceEventEnvelope:
+      type: object
+      additionalProperties: false
+      required: [version, event]
+      properties:
+        version:
+          const: 2
+        event:
+          $ref: '#/components/schemas/LocalSourceEvent'
+    LocalSourceEventList:
+      type: object
+      additionalProperties: false
+      required: [version, events]
+      properties:
+        version:
+          const: 2
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocalSourceEvent'
+    CapabilityWriteRequest:
+      type: object
+      additionalProperties: false
+      required: [kind, name, status, descriptor]
+      properties:
+        kind:
+          type: string
+          enum: [mcp, skill, plugin, secret-handle]
+        name:
+          $ref: '#/components/schemas/PlatformBoundedString'
+        status:
+          type: string
+          enum: [enabled, disabled]
+        descriptor:
+          type: string
+          minLength: 1
+          maxLength: 200
+    CapabilityRecord:
+      type: object
+      additionalProperties: false
+      required: [version, id, kind, name, status, descriptor, createdAt]
+      properties:
+        version:
+          const: 2
+        id:
+          $ref: '#/components/schemas/PlatformOpaqueId'
+        kind:
+          type: string
+          enum: [mcp, skill, plugin, secret-handle]
+        name:
+          $ref: '#/components/schemas/PlatformBoundedString'
+        status:
+          type: string
+          enum: [enabled, disabled]
+        descriptor:
+          type: string
+        createdAt:
+          $ref: '#/components/schemas/PlatformTimestamp'
+    CapabilityEnvelope:
+      type: object
+      additionalProperties: false
+      required: [version, capability]
+      properties:
+        version:
+          const: 2
+        capability:
+          $ref: '#/components/schemas/CapabilityRecord'
+    CapabilityList:
+      type: object
+      additionalProperties: false
+      required: [version, capabilities]
+      properties:
+        version:
+          const: 2
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/CapabilityRecord'
+    CreateSecretHandleRequest:
+      type: object
+      additionalProperties: false
+      required: [key, value, purpose, allowedAdapter, destinationBinding]
+      properties:
+        key:
+          $ref: '#/components/schemas/PlatformBoundedString'
+        value:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          writeOnly: true
+          description: Submitted once to the runtime; never returned by any response, event, or receipt.
+        purpose:
+          type: string
+          minLength: 1
+          maxLength: 200
+        allowedAdapter:
+          $ref: '#/components/schemas/PlatformBoundedString'
+        destinationBinding:
+          $ref: '#/components/schemas/PlatformBoundedString'
+    RotateSecretHandleRequest:
+      type: object
+      additionalProperties: false
+      required: [value]
+      properties:
+        value:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          writeOnly: true
+    SecretHandleStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [active, disabled]
+    UseSecretHandleRequest:
+      type: object
+      additionalProperties: false
+      required: [handleId, workItemId, assignmentId, grantRevision]
+      properties:
+        handleId:
+          $ref: '#/components/schemas/PlatformOpaqueId'
+        workItemId:
+          $ref: '#/components/schemas/PlatformOpaqueId'
+        assignmentId:
+          $ref: '#/components/schemas/PlatformOpaqueId'
+        grantRevision:
+          $ref: '#/components/schemas/PlatformOpaqueId'
+    SecretHandle:
+      type: object
+      additionalProperties: false
+      required: [version, id, key, secretVersion, status, purpose, allowedAdapter, destinationBinding, valueDigest, createdAt, rotatedAt]
+      properties:
+        version:
+          const: 2
+        id:
+          $ref: '#/components/schemas/PlatformOpaqueId'
+        key:
+          $ref: '#/components/schemas/PlatformBoundedString'
+        secretVersion:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [active, disabled]
+        purpose:
+          type: string
+        allowedAdapter:
+          $ref: '#/components/schemas/PlatformBoundedString'
+        destinationBinding:
+          $ref: '#/components/schemas/PlatformBoundedString'
+        valueDigest:
+          $ref: '#/components/schemas/PlatformDigest'
+        createdAt:
+          $ref: '#/components/schemas/PlatformTimestamp'
+        rotatedAt:
+          type: [string, 'null']
+    SecretHandleEnvelope:
+      type: object
+      additionalProperties: false
+      required: [version, handle]
+      properties:
+        version:
+          const: 2
+        handle:
+          $ref: '#/components/schemas/SecretHandle'
+    SecretHandleList:
+      type: object
+      additionalProperties: false
+      required: [version, handles]
+      properties:
+        version:
+          const: 2
+        handles:
+          type: array
+          items:
+            $ref: '#/components/schemas/SecretHandle'
+    SecretHandleUseReceipt:
+      type: object
+      additionalProperties: false
+      required: [version, id, handleId, secretVersionDigest, grantRevision, adapterId, destinationDigest, outcome, workItemId, assignmentId, createdAt]
+      properties:
+        version:
+          const: 2
+        id:
+          $ref: '#/components/schemas/PlatformOpaqueId'
+        handleId:
+          $ref: '#/components/schemas/PlatformOpaqueId'
+        secretVersionDigest:
+          $ref: '#/components/schemas/PlatformDigest'
+        grantRevision:
+          $ref: '#/components/schemas/PlatformOpaqueId'
+        adapterId:
+          $ref: '#/components/schemas/PlatformBoundedString'
+        destinationDigest:
+          $ref: '#/components/schemas/PlatformDigest'
+        outcome:
+          type: string
+          enum: [injected, denied]
+        workItemId:
+          $ref: '#/components/schemas/PlatformOpaqueId'
+        assignmentId:
+          $ref: '#/components/schemas/PlatformOpaqueId'
+        createdAt:
+          $ref: '#/components/schemas/PlatformTimestamp'
+    SecretHandleUseReceiptEnvelope:
+      type: object
+      additionalProperties: false
+      required: [version, receipt]
+      properties:
+        version:
+          const: 2
+        receipt:
+          $ref: '#/components/schemas/SecretHandleUseReceipt'
+    SecretHandleUseReceiptList:
+      type: object
+      additionalProperties: false
+      required: [version, receipts]
+      properties:
+        version:
+          const: 2
+        receipts:
+          type: array
+          items:
+            $ref: '#/components/schemas/SecretHandleUseReceipt'

@@ -3,6 +3,7 @@ import {
   WorkConflictError,
   WorkNotFoundError,
   WorkValidationError,
+  WORK_CONTRACT_VERSION,
   parseWorkTriggerRequest,
 } from '../../../runtime/work-contract.js';
 import type { WorkStore } from '../../../runtime/work-store.js';
@@ -50,7 +51,7 @@ export function registerWorkRoutes(app: FastifyInstance, workStore: WorkStore | 
 
     scope.get('/v1/work/items', async (_request, reply) => {
       if (!workStore) return unavailable(reply);
-      return { version: 1, workItems: workStore.listWorkItems() };
+      return { version: WORK_CONTRACT_VERSION, workItems: workStore.listWorkItems() };
     });
 
     scope.get<{ Params: { workItemId: string } }>(
@@ -70,7 +71,7 @@ export function registerWorkRoutes(app: FastifyInstance, workStore: WorkStore | 
 
     scope.get('/v1/work/delivery-receipts', async (_request, reply) => {
       if (!workStore) return unavailable(reply);
-      return { version: 1, deliveryReceipts: workStore.listDeliveryReceipts() };
+      return { version: WORK_CONTRACT_VERSION, deliveryReceipts: workStore.listDeliveryReceipts() };
     });
   });
 }

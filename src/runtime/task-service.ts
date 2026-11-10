@@ -135,6 +135,7 @@ export class TaskService {
       ...(config.fetch ? { fetch: config.fetch } : {}),
     });
     this.interruptIncompleteTasks();
+    this.store.platform.recoverAssignments();
   }
 
   get activeConfigurationRevisionId(): string {

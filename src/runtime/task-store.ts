@@ -32,6 +32,7 @@ import {
   type ModelReference,
 } from './agent-profile.js';
 import { SqliteWorkStore, type WorkStore } from './work-store.js';
+import { SqlitePlatformStore, migratePlatformSchema, type PlatformStore } from './platform-store.js';
 
 export interface TaskSnapshot {
   readonly id: string;
@@ -147,6 +148,7 @@ export interface TaskStore {
   applyConfiguration(document: ConfigurationDocument): ApplyConfigurationResult;
   rollbackConfiguration(id: string): ApplyConfigurationResult;
   readonly work: WorkStore;
+  readonly platform: PlatformStore;
   close(): void;
 }
 
@@ -374,6 +376,7 @@ function toAgentRevision(row: AgentRevisionRow): AgentRevision {
 
 export class SqliteTaskStore implements TaskStore {
   readonly work: WorkStore;
+  readonly platform: PlatformStore;
   private readonly database: DatabaseSync;
   private readonly clock: () => string;
 
@@ -381,6 +384,7 @@ export class SqliteTaskStore implements TaskStore {
     this.database = new DatabaseSync(filename);
     this.clock = options.clock ?? (() => new Date().toISOString());
     this.work = new SqliteWorkStore(this.database);
+    this.platform = new SqlitePlatformStore(this.database, this.work);
     try {
       this.database.exec('PRAGMA busy_timeout = 0;');
       this.database.exec('PRAGMA foreign_keys = ON;');
@@ -464,8 +468,9 @@ export class SqliteTaskStore implements TaskStore {
         ) STRICT;
       `);
       this.migrateAgentSchema();
+      migratePlatformSchema(this.database);
       this.database.exec('INSERT OR IGNORE INTO agent_state (singleton, default_agent_id) VALUES (1, NULL)');
-      this.database.exec('PRAGMA user_version = 2; COMMIT;');
+      this.database.exec('PRAGMA user_version = 3; COMMIT;');
       this.bootstrapConfiguration();
     } catch (cause) {
       try { this.database.exec('ROLLBACK;'); } catch { /* No migration transaction is open. */ }
@@ -985,7 +990,7 @@ export class SqliteTaskStore implements TaskStore {
 
   private migrateAgentSchema(): void {
     const versionRow = this.database.prepare('PRAGMA user_version').get() as { user_version: number };
-    if (versionRow.user_version > 2) {
+    if (versionRow.user_version > 3) {
       throw new Error(`Database schema version ${versionRow.user_version} is newer than this runtime supports.`);
     }
     for (const [table, column] of [
@@ -1033,7 +1038,7 @@ export class SqliteTaskStore implements TaskStore {
       ) STRICT;
       CREATE TABLE IF NOT EXISTS work_items (
         id TEXT PRIMARY KEY,
-        state TEXT NOT NULL CHECK (state = 'open'),
+        state TEXT NOT NULL CHECK (state IN ('open', 'running', 'paused', 'completed', 'cancelled')),
         thread_id TEXT NOT NULL,
         trigger_id TEXT NOT NULL,
         mandate_id TEXT NOT NULL,
@@ -1042,7 +1047,7 @@ export class SqliteTaskStore implements TaskStore {
       CREATE TABLE IF NOT EXISTS work_assignments (
         id TEXT PRIMARY KEY,
         work_item_id TEXT NOT NULL,
-        state TEXT NOT NULL CHECK (state = 'planned'),
+        state TEXT NOT NULL CHECK (state IN ('planned', 'running', 'interrupted', 'succeeded', 'failed', 'cancelled')),
         agent_revision_id TEXT NOT NULL,
         configuration_revision_id TEXT NOT NULL,
         mandate_revision INTEGER NOT NULL,
@@ -1053,7 +1058,7 @@ export class SqliteTaskStore implements TaskStore {
         id TEXT PRIMARY KEY,
         work_item_id TEXT NOT NULL,
         assignment_id TEXT NOT NULL,
-        status TEXT NOT NULL CHECK (status = 'pending'),
+        status TEXT NOT NULL CHECK (status IN ('pending', 'sent', 'delivered', 'failed')),
         destination_digest TEXT NOT NULL,
         payload_digest TEXT NOT NULL
       ) STRICT;
@@ -1061,7 +1066,7 @@ export class SqliteTaskStore implements TaskStore {
         id TEXT PRIMARY KEY,
         work_item_id TEXT NOT NULL,
         outbox_id TEXT NOT NULL,
-        status TEXT NOT NULL CHECK (status = 'observed'),
+        status TEXT NOT NULL CHECK (status IN ('observed', 'accepted', 'rejected')),
         destination_digest TEXT NOT NULL,
         payload_digest TEXT NOT NULL
       ) STRICT;

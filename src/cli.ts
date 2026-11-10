@@ -7,7 +7,7 @@ import { MagpieModelCatalog } from './runtime/model-catalog.js';
 import { createTaskService } from './runtime/task-service.js';
 
 function usage(): string {
-  return `Conchbase 0.9.0
+  return `Conchbase 1.0.0
 
 Usage:
   conchbase serve                 Start the local Runtime API
@@ -25,6 +25,8 @@ Configuration:
   CONCHBASE_MAGPIE_APP_KEY       Optional app-naming key (magpie-<app-id>)
   CONCHBASE_MODEL                Model id; run and models do not require it
   CONCHBASE_DB                   Runtime SQLite path (default .conchbase/runtime.sqlite)
+  CONCHBASE_ALLOW_AUTHENTICATED_REMOTE_BINDING=1   Enable reviewed non-loopback binding
+  CONCHBASE_AUTH_TOKEN_DIGEST    sha256 digest of an approved bearer token
 `;
 }
 
@@ -50,7 +52,7 @@ async function main(argv: readonly string[]): Promise<void> {
       ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
       defaultModel: config.defaultModel,
     });
-    const app = createApp({ taskService: service });
+    const app = createApp({ taskService: service, config });
     try {
       await app.listen({ host: config.host, port: config.port });
     } catch (cause) {

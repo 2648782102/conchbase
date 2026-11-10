@@ -18,8 +18,8 @@
 | Agent orchestration | Conchbase-owned task state machine with a narrow provider adapter and a deterministic composition executor | In use for one bounded text turn or bounded graph traversal; tool loops and model-driven composition pending |
 | Configuration and Skills | Content-addressed revision id, v1/v2 documents, and future portable profile files | Revision id and configuration write API in use; profile files and Skills lifecycle deferred |
 | Agent profiles | Runtime-local identities, immutable opaque revisions, optimistic updates, default/archive, and task pinning | In use under ADR 0020; portable profile files and more provider adapters deferred |
-| Durable work | Deterministic `Source / Trigger / Thread / Mandate / WorkItem / Assignment / Outbox / DeliveryReceipt` contract, four `/v1/work` routes, and `work_*` SQLite tables | Implemented by ADR 0024 in `0.9.0`; topology-neutral, idempotent, and execution-free |
-| SecretHandles | Central write-only registry, bounded runtime injection, and digest-only receipts | Proposed by ADR 0023; no store, crypto, resolver, injector, public route, or client editor implemented |
+| Durable work | Version-2 `Source / Trigger / Thread / Mandate / WorkItem / Assignment / Outbox / DeliveryReceipt` contract, work-control paths, `work_*` and `platform_*` SQLite tables | Implemented by ADR 0025 in `1.0.0`; topology-neutral, idempotent, recoverable, and execution-free |
+| SecretHandles | Process-scoped AES-256-GCM sealed values, one-way digests, one runtime-owned fixed adapter, and digest-only receipts | Implemented by ADR 0025; restart invalidates old sealed values and the paired Pagurus editor is live |
 
 The runtime is primarily I/O orchestration. Model inference belongs to a local gateway or external provider, so a separate inference language is not part of the baseline. The public API stays language-neutral for non-TypeScript clients.
 
@@ -36,7 +36,9 @@ Repository guardrails use Node's built-in test runner and local-file assertions;
 ## Deferred choices
 
 - Provider capability discovery, streaming tool-call accumulation, multi-turn context, error classification, direct vendor adapters, public tool execution routes, durable execution results, crash-safe side effects, model-driven composition scheduling, portable configuration files, secret resolution, and install/enable/grant operations.
-- Asynchronous WorkItems, background completion, restart reconciliation, Outbox delivery, real external Sources, SecretHandle storage/encryption/rotation, fixed-destination injectors, adapter isolation, and write-only client editor.
+- Stable cross-process SecretHandle keys, OS keychain custody, replayable encrypted-at-rest values, real external Sources, real Outbox writes, arbitrary fixed injectors, executable tools, multi-process ownership, and cloud deployment.
 - Production SQLite driver, schema migrations, retention, SSE, and `Last-Event-ID` mapping.
 - Plugin isolation and capability grants.
 - Remote authentication, pairing, and desktop packaging.
+
+> Final local-first target: Conchbase `1.0.0` and ADR 0025 close the exact 47-path platform contract. Write-only SecretHandle values are sealed at rest with a process-scoped AES-256-GCM key, exposed only to one runtime-owned fixed adapter, and never returned, logged, or sent to a model, client, event, or UI. Restart invalidates previously sealed values; cross-process key sources, real external adapters, executors, Sources, external writes, and tools require separate ADRs.

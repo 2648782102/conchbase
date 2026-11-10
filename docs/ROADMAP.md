@@ -17,7 +17,7 @@ The product target is a collection of independently customizable Agents through 
 
 Agent definitions and Runtime API contracts must not depend on Magpie catalog ids, response fields, settings, or credentials. Define stable provider/model references and discovery, adapter capabilities, provider-specific settings ownership, normalized failures, and no implicit provider fallback through an accepted provider-neutral adapter contract. Preserve Magpie through its compatibility adapter and exercise the contract with deterministic fake adapters.
 
-ADR 0020 and Conchbase 0.9.0 have implemented Agent profiles and revisions, default/archive behavior, a provider-neutral model catalog contract, additive SQLite migration, optimistic concurrency, and Agent task bindings. Agent tasks pin Agent revision, runtime configuration revision, and effective provider/model and execute one model turn. Legacy tasks retain their previous global v1/v2 behavior. ADR 0021 closes the deterministic paired-runtime acceptance matrix for the Pagurus collection/editor and two-Agent regression over live loopback HTTP.
+ADR 0020 and Conchbase 1.0.0 have implemented Agent profiles and revisions, default/archive behavior, a provider-neutral model catalog contract, additive SQLite migration, optimistic concurrency, and Agent task bindings. Agent tasks pin Agent revision, runtime configuration revision, and effective provider/model and execute one model turn. Legacy tasks retain their previous global v1/v2 behavior. ADR 0021 closes the deterministic paired-runtime acceptance matrix for the Pagurus collection/editor and two-Agent regression over live loopback HTTP.
 
 1. **Implemented:** Ship the Pagurus Agent collection/editor using the published contract: create, edit, duplicate, select/default, archive, model selection, history and rollback, task launch and inspection. Preserve task/configuration workflows when a Runtime does not advertise `agents`.
 2. **Implemented:** Verify at least two Agents with distinct instructions and models end to end over deterministic live loopback HTTP. Exercise profile changes, task pins, default/archive behavior, model override, cancellation, restart and retry, and global configuration apply/rollback.
@@ -44,17 +44,15 @@ The existing configuration document is a single runtime-wide revision with opaqu
 - Add topology-neutral, user-authored visual composition forms after the Agent collection/task-binding loop and their own accepted client ADR; the runtime schema and bounded deterministic execution contract are already accepted.
 - Connect one local MCP server and one Skill directory after their lifecycle and grant boundaries are accepted.
 
-## Product direction: durable, event-driven work (first deterministic slice implemented)
+## Product direction: durable, event-driven work (final local-first slice implemented)
 
-ADR 0022 accepts a local-first, persistent, event-driven, topology-neutral personal Agent Runtime. Sessions, prompts, provider calls, and the current single-turn `Task` become implementation details beneath long-lived authorized work. ADR 0024 publishes and implements the first deterministic `0.9.0` `Source / Trigger / Thread / Mandate / WorkItem / Assignment / Outbox / DeliveryReceipt` contract: idempotent fake/manual Trigger intake, immutable Mandates, context-only Threads, open WorkItems, planned Assignments, pending Outbox records, observed DeliveryReceipts, bounded work events, additive `user_version = 2` tables, and four `/v1/work` routes. Pagurus ADR 0009 implements a capability-gated, read-only attention workbench over the three published GET routes. Router/Worker and layered roles remain examples, not a canonical topology.
+ADR 0022 accepts a local-first, persistent, event-driven, topology-neutral personal Agent Runtime. ADR 0024 is the historical first `Source / Trigger / Thread / Mandate / WorkItem / Assignment / Outbox / DeliveryReceipt` contract. ADR 0025 completes the final local-first `1.0.0` target: 47 paths, work contract v2, authenticated pairing, explicitly enabled authenticated non-loopback binding, durable start/stop/complete and restart recovery, Outbox/DeliveryReceipt decisions, bounded work events, one local Source, a capability directory, and write-only SecretHandles. Pagurus ADR 0010 implements the paired control client. Router/Worker and layered roles remain examples, not a canonical topology.
 
-ADR 0025 and later own asynchronous start/stop, background completion, restart reconciliation, real external Sources, and Outbox delivery. ADR 0023 still proposes one central write-only SecretHandle registry: Agent-visible keys only, runtime-mediated bounded injection, no plaintext in model/UI/events/logs. Pagurus ADR 0008 remains a proposal for work-control actions and the write-only handle editor. No dependency, secret store, real Source, external write, or tool execution is added by the first slice.
+ADR 0025 implements asynchronous control, restart reconciliation, a deterministic local Source, capability records, and process-scoped write-only SecretHandles. Pagurus ADR 0008/0009 remain historical records; ADR 0010 implements the control workbench, capability panel, write-only editor, and digest-only receipt view. Stable cross-process keys, real external Sources, external writes, and executable tools require new ADRs.
 
-1. **Implemented:** Accept the durable-work domain and versioned API contract with deterministic fake/manual Triggers, duplicate Trigger handling, Mandate scope, and no external writes. Pagurus ADR 0009 adds the read-only client view.
-2. Accept durable async execution and Outbox/DeliveryReceipt reconciliation with fake executors; keep explicit interruption/retry semantics until recovery is proven.
-3. Accept one local controllable Source and deterministic two-level filtering after authorization and tool boundaries exist.
-4. Accept a SecretHandle implementation only after local authorization/pairing, fixed-adapter isolation, redaction, rotation, and sentinel no-leak tests are defined.
-5. Add Pagurus work-control actions and a write-only handle editor only after Conchbase publishes and accepts the consumed routes.
+1. **Implemented:** ADR 0024 accepts the historical durable-work domain and deterministic fake/manual Trigger intake.
+2. **Implemented:** ADR 0025 accepts durable start/stop/complete, restart recovery, Outbox/DeliveryReceipt decisions, events, local Source policy, capability records, authentication/pairing metadata, and process-scoped SecretHandles. Pagurus ADR 0010 implements the paired `1.0.0` control client.
+3. **Deferred:** stable cross-process keys, real external Sources, external writes, and executable tools require new ADRs.
 
 ## Phase 3: interoperability and hardening
 
@@ -68,3 +66,5 @@ ADR 0025 and later own asynchronous start/stop, background completion, restart r
 - Portable memory import/export and retrieval providers.
 - Process-isolated plugin host after the trust and capability model is defined.
 - Packaging and desktop service lifecycle.
+
+> Final local-first target: Conchbase `1.0.0` and ADR 0025 close the exact 47-path platform contract. Write-only SecretHandle values are sealed at rest with a process-scoped AES-256-GCM key, exposed only to one runtime-owned fixed adapter, and never returned, logged, or sent to a model, client, event, or UI. Restart invalidates previously sealed values; cross-process key sources, real external adapters, executors, Sources, external writes, and tools require separate ADRs.

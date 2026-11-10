@@ -12,6 +12,6 @@ const taskService = createTaskService(config.databasePath, {
   ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
   defaultModel: config.defaultModel,
 });
-const app = createApp({ taskService });
+const app = createApp({ taskService, config });
 
 await app.listen(config);
