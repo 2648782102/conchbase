@@ -211,7 +211,9 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(queue, /Check legacy `\/v1\/tasks`/);
   assert.match(queue, /Streaming tool-call accumulation and execution/);
   assert.match(queue, /short-lived private database ownership/);
-  assert.match(queue, /Client follow-up/);
+  assert.match(queue, /Client validation follow-up/);
+  assert.match(queue, /Pagurus ADR 0007/);
+  assert.match(queue, /History contract, if needed/);
   assert.match(queue, /ADR 0021/);
   assert.match(queue, /Done in the deterministic paired-runtime acceptance slice/);
   assert.match(queue, /ADRs `0010`–`0021`/);
