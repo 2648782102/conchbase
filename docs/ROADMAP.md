@@ -44,6 +44,16 @@ The existing configuration document is a single runtime-wide revision with opaqu
 - Add topology-neutral, user-authored visual composition forms after the Agent collection/task-binding loop and their own accepted client ADR; the runtime schema and bounded deterministic execution contract are already accepted.
 - Connect one local MCP server and one Skill directory after their lifecycle and grant boundaries are accepted.
 
+## Product direction: durable, event-driven work (accepted direction, not implemented)
+
+ADR 0022 accepts a local-first, persistent, event-driven, topology-neutral personal Agent Runtime. Sessions, prompts, provider calls, and the current single-turn `Task` become implementation details beneath long-lived authorized work. Future accepted ADRs own `Source / Trigger / Thread / Mandate / WorkItem / Assignment / Outbox / DeliveryReceipt`, async start/stop, restart reconciliation, and a human-attention workbench in Pagurus. Router/Worker and layered roles remain examples, not a canonical topology. ADR 0023 proposes one central write-only SecretHandle registry: Agent-visible keys only, runtime-mediated bounded injection, no plaintext in model/UI/events/logs. Pagurus ADR 0008 records the matching client proposal. No route, schema, dependency, secret store, real Source, external write, or tool execution is added by these decisions.
+
+1. Accept the durable-work domain and versioned API contract with deterministic fake Sources, duplicate Trigger handling, Mandate scope, and no external writes.
+2. Accept durable async execution and Outbox/DeliveryReceipt reconciliation with fake executors; keep explicit interruption/retry semantics until recovery is proven.
+3. Accept one local controllable Source and deterministic two-level filtering after authorization and tool boundaries exist.
+4. Accept a SecretHandle implementation only after local authorization/pairing, fixed-adapter isolation, redaction, rotation, and sentinel no-leak tests are defined.
+5. Add a paired Pagurus attention workbench and write-only handle editor after Conchbase publishes the consumed routes.
+
 ## Phase 3: interoperability and hardening
 
 - Publish a TypeScript client from the stable API contract.

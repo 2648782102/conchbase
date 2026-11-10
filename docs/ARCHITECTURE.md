@@ -6,6 +6,8 @@ Conchbase is the execution authority. It owns Agent identity and revisions, task
 
 User-defined agent composition is topology-neutral. A layered multi-role setup is only an illustrative example and must not become a built-in structure, default template, required layer count, or role-name convention. A `schemaVersion: 1` task uses one streaming model turn; a `schemaVersion: 2` task uses a bounded deterministic composition executor. Neither is a general multi-agent scheduling product. See [ADR 0005](decisions/0005-user-defined-agent-topology-proposal.md), [ADR 0010](decisions/0010-first-real-model-slice.md), and [ADR 0016](decisions/0016-composition-execution-and-public-schema.md).
 
+[ADR 0022](decisions/0022-persistent-work-runtime-direction.md) accepts the direction of durable, event-driven, topology-neutral work. Future ADRs will define `Source / Trigger / Thread / Mandate / WorkItem / Assignment / Outbox / DeliveryReceipt` state above the current Task implementation; no such module, route, or table exists yet. [ADR 0023](decisions/0023-secret-handle-and-runtime-injection-proposal.md) proposes a private SecretHandle registry and a runtime-owned fixed-destination injector; no plaintext may cross the model, UI, event, log, or error boundary. The diagram below remains the implemented `0.8.0` architecture, not a roadmap diagram.
+
 ```text
 CLI ────────────┐
 Pagurus ────────┼── versioned Runtime API ── Conchbase TaskService

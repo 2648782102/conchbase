@@ -189,6 +189,9 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /exact OpenAPI path set is twenty-five routes/);
   assert.match(handoff, /ADR 0020/);
   assert.match(handoff, /ADR 0021/);
+  assert.match(handoff, /ADR 0022/);
+  assert.match(handoff, /ADR 0023/);
+  assert.match(handoff, /plaintext never enters model context/);
   assert.match(handoff, /deterministic live loopback paired-runtime acceptance/);
 
   const queue = read('docs/AI_TASK_QUEUE.md');
@@ -215,6 +218,10 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(queue, /Pagurus ADR 0007/);
   assert.match(queue, /History contract, if needed/);
   assert.match(queue, /ADR 0021/);
+  assert.match(queue, /ADR 0022/);
+  assert.match(queue, /ADR 0023/);
+  assert.match(queue, /Durable work contract/);
+  assert.match(queue, /SecretHandle boundary/);
   assert.match(queue, /Done in the deterministic paired-runtime acceptance slice/);
   assert.match(queue, /ADRs `0010`–`0021`/);
 
@@ -259,6 +266,25 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(decision0021, /`TaskService\.stop\(\)` is an asynchronous shutdown boundary/);
   assert.match(decision0021, /no public API contract changes/);
   assert.match(decision0021, /The exact `0\.8\.0` 25-route OpenAPI contract/);
+  const decision0022 = read('docs/decisions/0022-persistent-work-runtime-direction.md');
+  assert.match(
+    decision0022,
+    /^Status: \*\*accepted product and architecture direction; no public API contract changes\*\*$/m,
+  );
+  assert.match(decision0022, /WorkItem/);
+  assert.match(decision0022, /DeliveryReceipt/);
+  assert.match(decision0022, /no public API contract changes/);
+  const decision0023 = read('docs/decisions/0023-secret-handle-and-runtime-injection-proposal.md');
+  assert.match(
+    decision0023,
+    /^Status: \*\*proposed, not accepted as a public contract\*\*$/m,
+  );
+  assert.match(decision0023, /SecretHandle/);
+  assert.match(decision0023, /An Agent revision may contain bounded handle references/);
+  assert.match(decision0023, /Rejected because arbitrary tool execution plus a resolver is an exfiltration primitive/);
+  const referenceProjects = read('docs/REFERENCE_PROJECTS.md');
+  assert.match(referenceProjects, /Super-agent research cross-check/);
+  assert.match(referenceProjects, /Session is an implementation detail/);
   const taskService = read('src/runtime/task-service.ts');
   assert.match(taskService, /private stopping = false;/);
   assert.match(taskService, /async stop\(\): Promise<void>/);
@@ -349,6 +375,14 @@ test('decision records separate accepted phase-1 direction from proposals', () =
   assert.match(
     read(`${decisionsDir}/0020-multi-agent-and-provider-neutral-model-contract.md`),
     /^Status: \*\*accepted product and public API direction; contracts are versioned in `docs\/openapi\.yaml`\*\*$/m,
+  );
+  assert.match(
+    read(`${decisionsDir}/0022-persistent-work-runtime-direction.md`),
+    /^Status: \*\*accepted product and architecture direction; no public API contract changes\*\*$/m,
+  );
+  assert.match(
+    read(`${decisionsDir}/0023-secret-handle-and-runtime-injection-proposal.md`),
+    /^Status: \*\*proposed, not accepted as a public contract\*\*$/m,
   );
 });
 
@@ -507,8 +541,20 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
     );
     assert.doesNotMatch(
       read(file),
+      /secret-handle|SecretHandle|resolveSecret|getValue|plaintext/i,
+      `${file} must not expose an unaccepted SecretHandle resolver`,
+    );
+    assert.doesNotMatch(
+      read(file),
       /composition-document/,
       `${file} must not expose the internal composition kernel`,
+    );
+  }
+  for (const file of listTypeScriptFiles('src/runtime')) {
+    assert.doesNotMatch(
+      read(file),
+      /SecretHandle|resolveSecret|decryptSecret|plaintextSecret/i,
+      `${file} must not implement an unaccepted secret resolver`,
     );
   }
   for (const file of listTypeScriptFiles('src/runtime').filter(

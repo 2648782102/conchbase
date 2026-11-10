@@ -10,6 +10,8 @@
 
 Conchbase `0.8.0` 提供运行时内 Agent profile、不可变版本、默认选择、复制/归档、供应商中立的模型引用和 Agent 任务绑定。每个 Agent 任务固定 Agent 版本、全局运行时配置版本和生效的 provider/model，并执行一轮模型调用。旧任务继续按原来的全局 v1/v2 规则运行，其中 v2 是不调用模型或工具的确定性组合遍历。当前唯一注册的 provider adapter 是 Magpie 兼容实现；它不是产品目的或唯一未来供应商。任务状态、进度、最终输出、错误和事件存储在本地 SQLite 中。进程重启会把未完成任务标记为 `interrupted`；显式重试生成新的 attempt，并保留原事件。
 
+[ADR 0022](docs/decisions/0022-persistent-work-runtime-direction.md) 已接受下一阶段产品方向：海螺成为持久化、事件驱动、拓扑中立的个人 Agent Runtime；Session 与单轮 Task 是长期授权工作之下的实现细节，工作身份、事件历史、执行分配、Outbox 和交付证据由 Runtime 持有。[ADR 0023](docs/decisions/0023-secret-handle-and-runtime-injection-proposal.md) 提议一个集中、只写的 SecretHandle 注册表：Agent 只看到 key，值由运行时在固定目的地代为使用，明文绝不进入模型上下文、界面、事件、日志或错误。两者都是方向记录，不新增已实现路由或能力；`docs/openapi.yaml` 仍为 `0.8.0`、25 条路由。
+
 Agent profile 与全局策略/能力配置分别管理。Agent 指令是用户自定义上下文，不会授予工具或权限。Agent 任务不会因为全局配置是 v2 就隐式执行组合图；旧任务行为保持不变。
 
 第一阶段的 SQLite 数据库同一时间只允许一个进程持有。第二个 CLI 或服务实例会快速失败，避免把正在运行的任务误判为中断。`conchbase models` 目前直接读取 Magpie 兼容目录，不打开数据库；未来可由供应商中立的发现契约统一目录，而不改变 Agent 身份。海螺服务运行时，不要执行其他读写任务状态的 CLI 命令，并发查看任务应使用 Runtime API。这是开发期的单实例边界，不代表已支持生产级多进程，详见 [ADR 0011](docs/decisions/0011-phase-one-database-instance-ownership.md)。
@@ -72,6 +74,8 @@ curl -X POST http://127.0.0.1:4318/v1/tasks \
 ## 面向 AI 开发
 
 本项目主要由 AI 编码 Agent 开发，代码结构、说明和验证流程优先服务于 AI 快速理解、完成边界清楚的改动并确定性验证；不把后续由人类接手作为产品要求。先读根目录 [`AGENTS.md`](AGENTS.md)，再读 [AI 交接说明](docs/AI_HANDOFF.md)、[ADR 0010](docs/decisions/0010-first-real-model-slice.md)、[ADR 0011](docs/decisions/0011-phase-one-database-instance-ownership.md)、[ADR 0012](docs/decisions/0012-streaming-output-progress.md)、[ADR 0013](docs/decisions/0013-bounded-tool-capability-kernel.md)、[ADR 0014](docs/decisions/0014-versioned-configuration-api.md)、[ADR 0015](docs/decisions/0015-composition-identity-kernel.md)、[ADR 0016](docs/decisions/0016-composition-execution-and-public-schema.md)、[ADR 0017](docs/decisions/0017-public-tool-request-approval-ledger.md)、[ADR 0018](docs/decisions/0018-provider-tool-call-parsing-boundary.md)、[ADR 0019](docs/decisions/0019-explicit-provider-tool-call-observation-boundary.md)、[ADR 0020](docs/decisions/0020-multi-agent-and-provider-neutral-model-contract.md)、[ADR 0021](docs/decisions/0021-cross-repository-paired-runtime-acceptance.md)、[开发约定](docs/AI_DEVELOPMENT.md) 和 [任务队列](docs/AI_TASK_QUEUE.md)。
+
+实现下一产品切片前还要读 [ADR 0022](docs/decisions/0022-persistent-work-runtime-direction.md) 与提议中的 [ADR 0023](docs/decisions/0023-secret-handle-and-runtime-injection-proposal.md)。在独立契约被接受前，不得添加其路由、schema、密钥仓库、Source、外部写入或工具执行。
 
 代码改动后运行 `npm run check`、`npm test` 和 `npm run build`。
 

@@ -37,7 +37,9 @@ CI makes no public-network call and uses no real credential or user data. Manual
 3. **Model-driven composition:** per-node provider calls, context passing, delegation, concurrency, scheduling, and cancellation across active nodes after accepted contracts.
 4. **Tools and security:** streaming tool-call accumulation, public execution contract, durable execution results, crash-safe side effects, real executor isolation, fake MCP server, secret resolution, install/enable/grant isolation, secrets absent from events/logs, untrusted tool output, and explicit grants.
 5. **Client/resilience:** SSE or polling reconnection with cursor semantics, malformed payloads, live loopback bind assertions, and a separately accepted history query contract if complete-list history becomes insufficient.
-6. **Access control:** authenticated pairing before any non-loopback bind; desktop packaging checks when that scope is accepted.
+6. **Access control:** authenticated pairing before any non-loopback bind; local secret-write authorization before a SecretHandle registry; desktop packaging checks when that scope is accepted.
+7. **Durable work:** deterministic fake Sources, duplicate Triggers, context-only Subscriptions, Mandate scope, WorkItem/Assignment state separation, async completion, restart reconciliation, Outbox receipts, and delivery evidence without external writes.
+8. **SecretHandle no-leak:** sentinel-value fixtures that serialize every prompt, task row, event, client response, log/error boundary, tool argument, and adapter result to prove plaintext never appears; fixed-destination injection and digest-only use receipts.
 
 ## Critical scenarios
 

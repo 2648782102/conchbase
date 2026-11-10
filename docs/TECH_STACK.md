@@ -18,6 +18,7 @@
 | Agent orchestration | Conchbase-owned task state machine with a narrow provider adapter and a deterministic composition executor | In use for one bounded text turn or bounded graph traversal; tool loops and model-driven composition pending |
 | Configuration and Skills | Content-addressed revision id, v1/v2 documents, and future portable profile files | Revision id and configuration write API in use; profile files and Skills lifecycle deferred |
 | Agent profiles | Runtime-local identities, immutable opaque revisions, optimistic updates, default/archive, and task pinning | In use under ADR 0020; portable profile files and more provider adapters deferred |
+| Durable work and secrets | Future Source/Trigger/Thread/Mandate/WorkItem/Assignment/Outbox/DeliveryReceipt state and write-only SecretHandles | Direction accepted by ADR 0022 and proposed by ADR 0023; no public API, schema, crypto, resolver, or external Source implemented |
 
 The runtime is primarily I/O orchestration. Model inference belongs to a local gateway or external provider, so a separate inference language is not part of the baseline. The public API stays language-neutral for non-TypeScript clients.
 
@@ -34,6 +35,7 @@ Repository guardrails use Node's built-in test runner and local-file assertions;
 ## Deferred choices
 
 - Provider capability discovery, streaming tool-call accumulation, multi-turn context, error classification, direct vendor adapters, public tool execution routes, durable execution results, crash-safe side effects, model-driven composition scheduling, portable configuration files, secret resolution, and install/enable/grant operations.
+- Durable-work domain/public API, deterministic fake Sources, asynchronous WorkItems, Outbox/DeliveryReceipt reconciliation, SecretHandle storage/encryption/rotation, fixed-destination injectors, adapter isolation, and write-only client editor.
 - Production SQLite driver, schema migrations, retention, SSE, and `Last-Event-ID` mapping.
 - Plugin isolation and capability grants.
 - Remote authentication, pairing, and desktop packaging.

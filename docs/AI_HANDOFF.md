@@ -12,6 +12,10 @@ The paired product direction is a user-managed collection of independently custo
 
 Users can later define highly customizable Agent compositions through a versioned, topology-neutral configuration section. A layered arrangement with several specialized roles is an illustrative example, not a built-in structure, default template, required hierarchy, or scheduling policy. [ADR 0016](decisions/0016-composition-execution-and-public-schema.md) accepts one bounded public graph representation and a deterministic execution rule, not model-driven multi-agent work. The broader user-defined composition product remains open: model-driven node work, delegation, concurrency, role registries, and coordination patterns are not implemented. See [ADR 0005](decisions/0005-user-defined-agent-topology-proposal.md).
 
+[ADR 0022](decisions/0022-persistent-work-runtime-direction.md) accepts a wider product direction: Conchbase becomes a local-first, persistent, event-driven, topology-neutral personal Agent Runtime. Sessions, prompts, provider calls, and single-turn Tasks are implementation details; long-lived work identity, immutable authorization, event history, execution assignments, Outbox, and delivery evidence become Runtime-owned product state. Router/Worker and any layered role arrangement remain non-normative examples. This is accepted direction, not an implemented API: the exact `Source / Trigger / Thread / Mandate / WorkItem / Assignment / Outbox / DeliveryReceipt` vocabulary, schemas, routes, and migrations require future ADRs. Pagurus's matching [ADR 0008](https://github.com/2648782102/pagurus/blob/main/docs/decisions/0008-human-attention-workbench-proposal.md) proposes a human-attention workbench, not a second execution authority.
+
+[ADR 0023](decisions/0023-secret-handle-and-runtime-injection-proposal.md) proposes a central write-only SecretHandle registry. An Agent sees only an opaque handle key and a capability description; plaintext never enters model context, prompts, durable events, task state, logs, errors, client responses, Agent revisions, or configuration documents. Only a runtime-owned, explicitly authorized adapter may inject the value into a fixed, allowlisted destination. No secret store, resolver, injector, public route, encryption implementation, or tool execution exists yet. Current provider credentials remain behind Magpie, and `secretRefs` remain opaque data.
+
 ## Read in this order
 
 1. `AGENTS.md` — mandatory coding constraints and AI-first development rule.
@@ -28,11 +32,13 @@ Users can later define highly customizable Agent compositions through a versione
 12. [ADR 0019](decisions/0019-explicit-provider-tool-call-observation-boundary.md) — accepted `0.7.0` explicit provider observation boundary; transient normalization, no auto-ledger, no execution.
 13. [ADR 0020](decisions/0020-multi-agent-and-provider-neutral-model-contract.md) — accepted Agent resource, provider-neutral catalog, task binding, and additive migration.
 14. [ADR 0021](decisions/0021-cross-repository-paired-runtime-acceptance.md) — accepted deterministic live loopback acceptance boundary; no public API contract change.
-15. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
-16. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
-17. `docs/TECH_STACK.md` — chosen and deferred technology.
-18. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` — wider intended sequencing and still-open contracts.
-19. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
+15. [ADR 0022](decisions/0022-persistent-work-runtime-direction.md) — accepted durable, event-driven work direction; no public API change.
+16. [ADR 0023](decisions/0023-secret-handle-and-runtime-injection-proposal.md) — proposed write-only SecretHandle and runtime-mediated use boundary.
+17. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
+18. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
+19. `docs/TECH_STACK.md` — chosen and deferred technology.
+20. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` plus `0023` — wider intended sequencing and still-open contracts.
+21. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
 
 ## Current repository facts
 
@@ -63,10 +69,13 @@ Implemented:
 - ADR 0021 adds deterministic live loopback paired-runtime acceptance. `tests/agent-paired-runtime.test.ts` starts a fake Magpie-compatible gateway and the real Fastify Runtime, maps Pagurus's relative `/v1/...` client fetches over HTTP, dynamically imports the published Pagurus clients, and verifies two independent Agents, revision pins, stale writes, configuration apply/rollback, archive/default/override, cancellation, restart interruption, retry, event replay, legacy task dispatch, deterministic v2 composition, streaming, and CLI compatibility. The test skips only when the optional nested Pagurus checkout is absent. It uses no real model credential, public-network call, or private database access from Pagurus.
 - Pagurus ADR 0007 adds read-only task history and Agent revision comparison on top of the existing `GET /v1/tasks` and Agent detail contracts. It does not require a Conchbase source change, new route, pagination/filter schema, SSE transport, event reconstruction, or Runtime write. Its local Runtime screen has been validated manually and visually with two Agents, two revisions, mixed Agent/legacy tasks, success and provider-error records, state/Agent filters, explicit refresh, offline refresh error and recovery, read-only revision comparison, and a 320px viewport.
 - GitHub Actions runs `npm run check`, `npm test`, and `npm run build`.
+- ADR 0022 and ADR 0023 are direction records only. The OpenAPI `0.8.0` 25-route contract, dependency baseline, loopback-only binding, single-owner SQLite, one-turn Agent task loop, and no-real-tool-execution boundary are unchanged.
 
 Not implemented yet:
 
 - Model-driven composition nodes, role registry, multi-turn model context, streaming tool-call accumulation, model-driven tool execution, public tool execution API, real executor isolation, crash-safe side effects, MCP client, Skills loader, install/enable/grant operations, secret resolution, portable file import/export, production approval workflow, plugin host, memory, artifacts, SSE event stream, reasoning display, event retention policy, production driver compatibility matrix, authentication/pairing, or remote binding.
+- ADR 0022's durable work domain, Sources, Threads, Mandates, WorkItems, Assignments, Outbox, DeliveryReceipts, asynchronous start/stop, deterministic fake Sources, and restart reconciliation.
+- ADR 0023's SecretHandle registry, encrypted-at-rest values, write-only client editor, rotation, use receipts, fixed destination injection, and fake-injector no-leak acceptance.
 - A Magpie upstream Agents-page adapter. Magpie currently requires such an adapter in its own source; Conchbase phase 1 uses the local gateway directly.
 
 Do not describe planned features as implemented. Do not describe the phase-1 single-turn loop or the bounded v2 deterministic executor as a general multi-agent scheduling product.
@@ -83,6 +92,8 @@ Do not describe planned features as implemented. Do not describe the phase-1 sin
 - Existing tasks bind to one runtime configuration revision for life; future changes affect later tasks. The current document is not an Agent definition: its references are opaque, and legacy v2 execution makes no model call.
 - Agent profiles never repurpose the one global `configuration_state` pointer. Agent instructions are untrusted user customization content and never grant tools. Any future tool execution must bind authorization and audit identity to the selected Agent revision.
 - `schemaVersion: 1` and `schemaVersion: 2` configuration documents are accepted. New sections require a new ADR and a new schema version, never silent reinterpretation of an existing version.
+- ADR 0022 keeps Sessions and Tasks as implementation details of durable work, but does not reinterpret the current `Task` resource. A future accepted contract must define compatibility and migration.
+- ADR 0023 forbids plaintext secret values and generic model/tool value resolvers. A handle may be used only through a runtime-owned adapter with pinned authorization, an exact operation, and a bound destination.
 - The public composition section is topology-neutral user-authored data. The runtime must not hardcode an agent topology, layer count, role name, or coordination pattern. Link labels are opaque data. The deterministic topological order is a bounded execution fixture rule, not a concurrency, delegation, or authority contract.
 - Bind to loopback only until a reviewed authentication and pairing design exists. The local loopback API is a development boundary, not an authenticated remote deployment design.
 - Do not load arbitrary plugins in-process before isolation and grants are designed.
@@ -130,6 +141,10 @@ When an implementation depends on one of these, record options, consequences, an
 
 1. Add real-provider conformance and accessibility validation as separate layers; the manual/visual ADR 0007 screen walkthrough is complete and is not a substitute for either.
 2. If complete-list history no longer fits local usage, accept a separate Runtime contract for ordering, retention, pagination, filtering, and live update semantics before extending Pagurus.
-3. Add another provider adapter only after its credential/settings boundary and deterministic adapter fixtures are available; keep Magpie compatibility covered.
-4. Decide separately whether an Agent may explicitly select the global topology and what model-driven node context, delegation, concurrency, and permission semantics apply. Do not infer these from the deterministic executor.
-5. Leave tool execution, Skills, MCP, and plugins for separately accepted contracts. Remote-runtime validation remains a separate layer.
+3. Accept ADR 0024's exact durable-work domain/event contract and versioned API, using deterministic fake Sources and no external writes. Keep current `Task` behavior intact until that migration is accepted.
+4. Accept ADR 0025's durable asynchronous execution, start/stop, background completion, restart recovery, and Outbox reconciliation with fake executors before real host tools or external writes.
+5. Accept ADR 0026's one local controllable Source and two-level filtering after authorization, tool, and secret boundaries exist; defer GitHub/IM/email integrations.
+6. Accept a SecretHandle implementation ADR only after local authorization/pairing, fixed-adapter isolation, redaction, and sentinel-based no-leak fixtures are defined. Do not expose a generic resolve route.
+7. Add another provider adapter only after its credential/settings boundary and deterministic adapter fixtures are available; keep Magpie compatibility covered.
+8. Decide separately whether an Agent may explicitly select a topology and what model-driven node context, delegation, concurrency, and permission semantics apply. Do not infer these from the deterministic executor.
+9. Leave tool execution, Skills, MCP, plugins, cloud persistence, BYOM daemons, remote pairing, and model-driven Watchdogs for separately accepted contracts. Remote-runtime validation remains a separate layer.

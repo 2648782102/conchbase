@@ -8,6 +8,8 @@ Conchbase owns Agent execution, identity and revisions, task bindings, model cal
 
 Conchbase `0.8.0` provides runtime-local Agent profiles with immutable revision history, default selection, duplicate/archive, provider-neutral model references, and Agent-bound tasks. Each Agent task pins its Agent revision, the separate runtime-wide configuration revision, and effective provider/model, then runs one model turn. The global configuration still owns policy/capability references and optional topology; legacy tasks retain their established v1/v2 dispatch, including deterministic v2 composition with no model call.
 
+[ADR 0022](docs/decisions/0022-persistent-work-runtime-direction.md) accepts the next product direction: a persistent, event-driven, topology-neutral personal Agent Runtime where Sessions and single-turn Tasks are implementation details beneath durable authorized work, event history, assignments, Outbox, and delivery evidence. [ADR 0023](docs/decisions/0023-secret-handle-and-runtime-injection-proposal.md) proposes one central write-only SecretHandle registry: Agent-visible keys only, runtime-mediated use at fixed destinations, and no plaintext in model context, UI, events, logs, or errors. These are direction records, not implemented routes or capabilities; `docs/openapi.yaml` remains `0.8.0` with 25 routes.
+
 ## Current status
 
 A `schemaVersion: 1` task currently runs one real streaming model turn through Conchbase's Magpie compatibility adapter, which uses a local [Magpie](https://usemagpie.ai/docs/integrate) gateway. Magpie is the supported compatibility path today; it is not the product's only intended provider or the definition of future Agent model references. A `schemaVersion: 2` task runs a bounded deterministic composition with node-level events and no model or tool call. A task's state, progress, final output, error, and events are stored in a local SQLite database. CLI and Pagurus can create, inspect, cancel, and retry tasks. A process restart marks unfinished tasks as `interrupted`; explicit retry creates a new attempt and preserves history. The runtime does not silently continue an in-flight model call or composition.
@@ -73,6 +75,8 @@ See [architecture](docs/ARCHITECTURE.md), [technology baseline](docs/TECH_STACK.
 ## AI-first development
 
 This project is developed primarily by AI coding agents. Architecture, documentation, and validation optimize for fast context loading, bounded changes, and deterministic verification; future human handoff is not a product requirement. Start with [`AGENTS.md`](AGENTS.md), then read the [AI handoff](docs/AI_HANDOFF.md), accepted ADRs [0010–0021](docs/decisions/), the [development guide](docs/AI_DEVELOPMENT.md), and [task queue](docs/AI_TASK_QUEUE.md).
+
+Before implementing the next product slice, also read [ADR 0022](docs/decisions/0022-persistent-work-runtime-direction.md) and proposed [ADR 0023](docs/decisions/0023-secret-handle-and-runtime-injection-proposal.md). Do not add their routes, schemas, secret store, Sources, external writes, or tool execution until separate accepted contracts exist.
 
 Run `npm run check`, `npm test`, and `npm run build` after code changes.
 

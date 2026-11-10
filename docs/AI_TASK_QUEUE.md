@@ -25,6 +25,8 @@ This queue is for coding models continuing from the repository. It records bound
 - `tests/repository-guardrails.test.ts` checks AI-first entry documents, accepted ADR status, the exact 25-route `0.8.0` OpenAPI path set, loopback-only configuration, source boundaries, dependency boundaries, the public ledger's no-execution rules, and ADR 0019 parser wiring boundaries.
 - The deterministic paired-runtime acceptance test skips only when the optional nested Pagurus checkout is absent. Standalone Conchbase CI keeps every other test and remains green.
 - Both repositories have protected `main` rulesets against force pushes and deletion; normal pushes remain allowed.
+- [ADR 0022](decisions/0022-persistent-work-runtime-direction.md) accepts the durable, event-driven, topology-neutral work direction without changing the `0.8.0` public contract. Sessions, prompts, provider calls, and current Tasks are implementation details; future ADRs own the exact domain/public API. [ADR 0023](decisions/0023-secret-handle-and-runtime-injection-proposal.md) proposes write-only SecretHandles with runtime-mediated, destination-bound injection and no plaintext read path. Neither is implemented.
+- Pagurus [ADR 0008](https://github.com/2648782102/pagurus/blob/main/docs/decisions/0008-human-attention-workbench-proposal.md) proposes a human-attention workbench and write-only handle editor after Conchbase publishes each contract. It adds no client route or source change.
 
 ## Done in the composition execution slice
 
@@ -57,12 +59,16 @@ This queue is for coding models continuing from the repository. It records bound
 
 ## Next bounded slices
 
-The first collection/editor and task-binding slice is closed by ADR 0021. Its deterministic live loopback evidence covers at least two Agents, cancellation/interruption, explicit retry, legacy and Agent task dispatch, configuration/version pins, streaming, composition, and CLI compatibility. Pagurus ADR 0007 adds a read-only client inspection slice without changing this Runtime, and its local Runtime screen has been validated manually and visually. Real-provider conformance, accessibility validation, and production-scale history querying remain separate future layers. Do not expand into tools or model-driven composition while continuing the client work.
+The first collection/editor and task-binding slice is closed by ADR 0021. Its deterministic live loopback evidence covers at least two Agents, cancellation/interruption, explicit retry, legacy and Agent task dispatch, configuration/version pins, streaming, composition, and CLI compatibility. Pagurus ADR 0007 adds a read-only client inspection slice without changing this Runtime, and its local Runtime screen has been validated manually and visually. ADR 0022 now reorders the product queue around durable work; ADR 0023 records the secret-handle proposal. Keep conformance, accessibility, and production-scale history as separate quality layers. Do not implement ADR 0022 or ADR 0023 by silently extending the current Task or configuration schema.
 
-1. **Interface validation.** Add separate real-provider conformance and accessibility fixtures. Keep these layers distinct from ADR 0021's deterministic HTTP acceptance and from the completed manual/visual ADR 0007 screen walkthrough.
-2. **History contract, if needed.** If task volume or live updates require more than the current complete list, first accept a Runtime API contract for ordering, retention, pagination, server-side filtering, cursor/reconnect semantics, and authorization. Then add a paired client ADR and implementation.
-3. **Additional provider adapter.** Add only after each adapter has a defined credential/settings owner, normalized error boundary, and deterministic contract fixtures. Magpie remains a compatibility path, not the product target.
-4. **Composition evolution.** Decide separately whether Agents may explicitly run a runtime-wide topology and what model-driven node context, delegation, concurrency, and permission semantics apply. Do not infer these from ADR 0016's deterministic executor.
+1. **Durable work contract.** Accept ADR 0024's domain/event vocabulary, versioned API, and compatibility migration for `Source / Trigger / Thread / Mandate / WorkItem / Assignment / Outbox / DeliveryReceipt`. Use deterministic fake Sources, temporary state, and no external writes.
+2. **Durable execution.** Accept ADR 0025's asynchronous start/stop, background completion events, restart recovery, and Outbox reconciliation with fake executors. Do not automatically continue in-flight provider calls or side effects.
+3. **Controllable Source.** Accept ADR 0026's one local Source and deterministic two-level filtering after Mandate and authorization boundaries exist. Defer GitHub/IM/email/calendar adapters.
+4. **SecretHandle boundary.** Accept a separate implementation ADR after local authorization/pairing, fixed-adapter isolation, redaction, rotation, and sentinel-based no-leak fixtures are defined. Never expose a generic resolve route or plaintext to a model, client, event, log, or error.
+5. **Interface validation.** Add separate real-provider conformance and accessibility fixtures. Keep these distinct from ADR 0021's deterministic HTTP acceptance and from the completed manual/visual ADR 0007 screen walkthrough.
+6. **History contract, if needed.** If task volume or live updates require more than the current complete list, first accept a Runtime API contract for ordering, retention, pagination, server-side filtering, cursor/reconnect semantics, and authorization. Then add a paired client ADR and implementation.
+7. **Additional provider adapter.** Add only after each adapter has a defined credential/settings owner, normalized error boundary, and deterministic contract fixtures. Magpie remains a compatibility path, not the product target.
+8. **Composition evolution.** Decide separately whether Agents may explicitly run a topology and what model-driven node context, delegation, concurrency, and permission semantics apply. Do not infer these from ADR 0016's deterministic executor.
 
 ## Done in the deterministic paired-runtime acceptance slice
 
@@ -77,6 +83,7 @@ The first collection/editor and task-binding slice is closed by ADR 0021. Its de
 - **Pagurus tool approval client.** Only after Conchbase has a real, reviewed execution and authorization workflow and Pagurus accepts its own client ADR. Never read private runtime state.
 - **Agent-aware tool authorization.** Before any tool executes for a selected Agent, extend the request/approval/authorization/audit scope to include Agent identity and the pinned Agent revision, then verify runtime-wide policy and grants. Agent instructions or profile fields alone never grant capability.
 - **Capability lifecycle.** Portable files, Skill/plugin/MCP bundle schemas, secret resolution, installation/enabling/grants, and process lifecycle require explicit runtime contracts and security boundaries.
+- **SecretHandles.** Central encrypted storage, write-only creation/rotation, fixed-destination runtime injection, digest-only use receipts, and Pagurus's editor require accepted local authorization, adapter isolation, redaction, and no-leak contracts. A model or tool must never receive a generic value resolver.
 - **Persistence hardening.** Add supported OS/architecture/Node CI coverage, migrations, WAL crash recovery, retention, and multi-process ownership before calling the storage layer production-ready.
 - **Magpie compatibility.** Keep the existing adapter working and covered by regression fixtures while defining the provider-neutral adapter contract. Do not make upstream Magpie Agents-page integration a prerequisite for Agent management through Conchbase.
 - **Authoritative client reads.** Replace direct CLI database reads with a documented Runtime API path after API parity and authentication direction are accepted. Keep the single-owner lock until that contract exists.
@@ -84,7 +91,8 @@ The first collection/editor and task-binding slice is closed by ADR 0021. Its de
 
 ## Blocked until direction
 
-- Generated client types built from an unaccepted schema, portable configuration files, secret resolution, Skill/plugin/MCP installers, and capability grants.
+- Generated client types built from an unaccepted schema, portable configuration files, secret resolution, Skill/plugin/MCP installers, capability grants, and any SecretHandle store, resolver, injector, route, or plaintext read path.
+- The ADR 0022 domain/API objects, ADR 0023 SecretHandles, deterministic fake Sources, asynchronous WorkItems, Outbox writes, DeliveryReceipts, real external Sources, cloud persistence, BYOM daemons, and model-driven Watchdogs.
 - Model-driven tool execution, public tool execution routes, real host tools, MCP servers, Skills granting tools, arbitrary plugin loading, crash-safe side effects, real executor isolation, and streaming tool-call accumulation.
 - Model-driven composition nodes, delegation, concurrency, general scheduling, role registries, cyclic coordination, and automatic continuation of in-flight model or tool work after a crash.
 - Running task-state CLI commands concurrently with `conchbase serve`, or treating SQLite exclusive locking as multi-process support.
