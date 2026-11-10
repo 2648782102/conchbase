@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Conchbase Runtime API
-  version: 0.8.0
-  description: Local, versioned API for Conchbase Agent profiles and revisions, provider-neutral model references, pinned tasks, bounded composition execution, ordered progress events, versioned runtime configuration, and durable tool request/approval records without execution. Runtime capabilities include agents, provider-neutral-model-catalog, tool-approval-ledger, and provider-tool-call-observation records.
+  version: 0.9.0
+  description: Local, versioned API for Conchbase Agent profiles and revisions, provider-neutral model references, pinned tasks, bounded composition execution, ordered progress events, versioned runtime configuration, durable tool request/approval records without execution, and deterministic durable work contracts without execution. Runtime capabilities include agents, provider-neutral-model-catalog, tool-approval-ledger, provider-tool-call-observation records, and durable-work-contract.
 servers:
   - url: http://127.0.0.1:4318
     description: Local runtime default; loopback only.
@@ -626,6 +626,105 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ValidationError'
+  /v1/work/triggers:
+    post:
+      operationId: ingestWorkTrigger
+      summary: Ingest one deterministic Source Trigger idempotently.
+      description: >-
+        Creates one durable WorkItem, immutable Mandate, planned Assignment, pending Outbox record,
+        observed DeliveryReceipt, and bounded evidence events. It calls no model, executes no tool,
+        sends no external write, and resolves no secret. A later Trigger on the same Thread adds
+        context only and cannot widen the Mandate.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkTriggerRequest'
+      responses:
+        '201':
+          description: A new Trigger was ingested; workItemCreated reports whether it created the first WorkItem for the Thread.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkEnvelope'
+        '200':
+          description: An exact Trigger replay was returned without creating rows or events.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkEnvelope'
+        '400':
+          description: Invalid JSON, unknown field, bounded Trigger, digest, Mandate, model, or topology-neutral input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Trigger id conflict or a context event that would change an existing Mandate or Assignment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/work/items:
+    get:
+      operationId: listWorkItems
+      summary: List durable WorkItems and their current state.
+      responses:
+        '200':
+          description: Durable WorkItem collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkItemList'
+        '503':
+          description: Work store is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/work/items/{workItemId}:
+    get:
+      operationId: getWorkItem
+      summary: Read one WorkItem with Mandate, Thread, Assignments, Outbox, and DeliveryReceipt evidence.
+      parameters:
+        - $ref: '#/components/parameters/WorkItemId'
+      responses:
+        '200':
+          description: Durable WorkItem detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkItemDetail'
+        '404':
+          description: WorkItem not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Work store is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/work/delivery-receipts:
+    get:
+      operationId: listWorkDeliveryReceipts
+      summary: List digest-only delivery evidence across durable WorkItems.
+      responses:
+        '200':
+          description: Delivery receipt collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkDeliveryReceiptList'
+        '503':
+          description: Work store is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 components:
   parameters:
     TaskId:
@@ -655,6 +754,13 @@ components:
       schema:
         type: string
         pattern: '^tqr_[0-9a-f]{24}$'
+    WorkItemId:
+      name: workItemId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^work_[0-9a-f]{24}$'
     AgentReference:
       type: object
       additionalProperties: false
@@ -1521,3 +1627,369 @@ components:
           $ref: '#/components/schemas/ToolRequest'
         changed:
           type: boolean
+    WorkDigest:
+      type: string
+      pattern: '^sha256:[0-9a-f]{64}$'
+    WorkSource:
+      type: object
+      additionalProperties: false
+      required: [sourceId, kind]
+      properties:
+        sourceId:
+          type: string
+          minLength: 1
+          maxLength: 80
+        kind:
+          type: string
+          enum: [manual, fake]
+    WorkTriggerInput:
+      type: object
+      additionalProperties: false
+      required: [triggerId, threadKey, payloadDigest, occurredAt]
+      properties:
+        triggerId:
+          type: string
+          minLength: 1
+          maxLength: 120
+        threadKey:
+          type: string
+          minLength: 1
+          maxLength: 120
+        payloadDigest:
+          $ref: '#/components/schemas/WorkDigest'
+        occurredAt:
+          type: string
+          format: date-time
+          maxLength: 40
+    WorkMandateInput:
+      type: object
+      additionalProperties: false
+      required: [scope, allowedOperations, capabilitiesDigest]
+      properties:
+        scope:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items:
+            type: string
+            minLength: 1
+            maxLength: 80
+        allowedOperations:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items:
+            type: string
+            minLength: 1
+            maxLength: 80
+        capabilitiesDigest:
+          $ref: '#/components/schemas/WorkDigest'
+    WorkModelReference:
+      type: object
+      additionalProperties: false
+      required: [providerId, modelId]
+      properties:
+        providerId:
+          type: string
+          minLength: 1
+          maxLength: 80
+        modelId:
+          type: string
+          minLength: 1
+          maxLength: 120
+    CreateWorkTriggerRequest:
+      type: object
+      additionalProperties: false
+      required: [source, trigger, mandate, model, agentRevisionId, configurationRevisionId]
+      properties:
+        source:
+          $ref: '#/components/schemas/WorkSource'
+        trigger:
+          $ref: '#/components/schemas/WorkTriggerInput'
+        mandate:
+          $ref: '#/components/schemas/WorkMandateInput'
+        model:
+          $ref: '#/components/schemas/WorkModelReference'
+        agentRevisionId:
+          type: string
+          minLength: 1
+          maxLength: 120
+        configurationRevisionId:
+          type: string
+          minLength: 1
+          maxLength: 120
+    WorkTrigger:
+      type: object
+      additionalProperties: false
+      required: [version, id, sourceEventId, sourceId, sourceKind, threadKey, threadId, payloadDigest, occurredAt, canonicalDigest, proposalDigest]
+      properties:
+        version:
+          const: 1
+        id:
+          type: string
+          pattern: '^trg_[0-9a-f]{24}$'
+        sourceEventId:
+          type: string
+        sourceId:
+          type: string
+        sourceKind:
+          type: string
+          enum: [manual, fake]
+        threadKey:
+          type: string
+        threadId:
+          type: string
+          pattern: '^thr_[0-9a-f]{24}$'
+        payloadDigest:
+          $ref: '#/components/schemas/WorkDigest'
+        occurredAt:
+          type: string
+          format: date-time
+        canonicalDigest:
+          $ref: '#/components/schemas/WorkDigest'
+        proposalDigest:
+          $ref: '#/components/schemas/WorkDigest'
+    WorkThread:
+      type: object
+      additionalProperties: false
+      required: [version, id, threadKey, contextOnly, triggerIds, workItemId]
+      properties:
+        version:
+          const: 1
+        id:
+          type: string
+          pattern: '^thr_[0-9a-f]{24}$'
+        threadKey:
+          type: string
+        contextOnly:
+          const: true
+        triggerIds:
+          type: array
+          items:
+            type: string
+            pattern: '^trg_[0-9a-f]{24}$'
+        workItemId:
+          type: string
+          pattern: '^work_[0-9a-f]{24}$'
+    WorkMandate:
+      type: object
+      additionalProperties: false
+      required: [version, id, workItemId, revision, scope, allowedOperations, capabilitiesDigest]
+      properties:
+        version:
+          const: 1
+        id:
+          type: string
+          pattern: '^man_[0-9a-f]{24}$'
+        workItemId:
+          type: string
+          pattern: '^work_[0-9a-f]{24}$'
+        revision:
+          const: 1
+        scope:
+          type: array
+          items:
+            type: string
+        allowedOperations:
+          type: array
+          items:
+            type: string
+        capabilitiesDigest:
+          $ref: '#/components/schemas/WorkDigest'
+    WorkItem:
+      type: object
+      additionalProperties: false
+      required: [version, id, state, threadId, triggerId, mandateId, mandateRevision]
+      properties:
+        version:
+          const: 1
+        id:
+          type: string
+          pattern: '^work_[0-9a-f]{24}$'
+        state:
+          const: open
+        threadId:
+          type: string
+          pattern: '^thr_[0-9a-f]{24}$'
+        triggerId:
+          type: string
+          pattern: '^trg_[0-9a-f]{24}$'
+        mandateId:
+          type: string
+          pattern: '^man_[0-9a-f]{24}$'
+        mandateRevision:
+          const: 1
+    WorkAssignment:
+      type: object
+      additionalProperties: false
+      required: [version, id, workItemId, state, agentRevisionId, configurationRevisionId, mandateRevision, model]
+      properties:
+        version:
+          const: 1
+        id:
+          type: string
+          pattern: '^asg_[0-9a-f]{24}$'
+        workItemId:
+          type: string
+          pattern: '^work_[0-9a-f]{24}$'
+        state:
+          const: planned
+        agentRevisionId:
+          type: string
+        configurationRevisionId:
+          type: string
+        mandateRevision:
+          const: 1
+        model:
+          $ref: '#/components/schemas/WorkModelReference'
+    WorkOutboxRecord:
+      type: object
+      additionalProperties: false
+      required: [version, id, workItemId, assignmentId, status, destinationDigest, payloadDigest]
+      properties:
+        version:
+          const: 1
+        id:
+          type: string
+          pattern: '^obx_[0-9a-f]{24}$'
+        workItemId:
+          type: string
+          pattern: '^work_[0-9a-f]{24}$'
+        assignmentId:
+          type: string
+          pattern: '^asg_[0-9a-f]{24}$'
+        status:
+          const: pending
+        destinationDigest:
+          $ref: '#/components/schemas/WorkDigest'
+        payloadDigest:
+          $ref: '#/components/schemas/WorkDigest'
+    WorkDeliveryReceipt:
+      type: object
+      additionalProperties: false
+      required: [version, id, workItemId, outboxId, status, destinationDigest, payloadDigest]
+      properties:
+        version:
+          const: 1
+        id:
+          type: string
+          pattern: '^dlv_[0-9a-f]{24}$'
+        workItemId:
+          type: string
+          pattern: '^work_[0-9a-f]{24}$'
+        outboxId:
+          type: string
+          pattern: '^obx_[0-9a-f]{24}$'
+        status:
+          const: observed
+        destinationDigest:
+          $ref: '#/components/schemas/WorkDigest'
+        payloadDigest:
+          $ref: '#/components/schemas/WorkDigest'
+    WorkEvent:
+      type: object
+      additionalProperties: false
+      required: [version, id, sequence, type, workItemId, data]
+      properties:
+        version:
+          const: 1
+        id:
+          type: string
+          pattern: '^evt_[0-9]{12}$'
+        sequence:
+          type: integer
+          minimum: 1
+        type:
+          type: string
+          enum: [work.trigger_ingested, work.item_created, work.assignment_planned, work.outbox_recorded, work.delivery_observed]
+        workItemId:
+          type: string
+          pattern: '^work_[0-9a-f]{24}$'
+        data:
+          type: object
+          additionalProperties:
+            type: [string, number, boolean]
+    WorkEnvelope:
+      type: object
+      additionalProperties: false
+      required: [version, created, workItemCreated, contextOnly, trigger, thread, mandate, workItem, assignments, outbox, deliveryReceipts, events]
+      properties:
+        version:
+          const: 1
+        created:
+          type: boolean
+        workItemCreated:
+          type: boolean
+        contextOnly:
+          type: boolean
+        trigger:
+          $ref: '#/components/schemas/WorkTrigger'
+        thread:
+          $ref: '#/components/schemas/WorkThread'
+        mandate:
+          $ref: '#/components/schemas/WorkMandate'
+        workItem:
+          $ref: '#/components/schemas/WorkItem'
+        assignments:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkAssignment'
+        outbox:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkOutboxRecord'
+        deliveryReceipts:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkDeliveryReceipt'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkEvent'
+    WorkItemList:
+      type: object
+      additionalProperties: false
+      required: [version, workItems]
+      properties:
+        version:
+          const: 1
+        workItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkItem'
+    WorkItemDetail:
+      type: object
+      additionalProperties: false
+      required: [version, workItem, thread, mandate, assignments, outbox, deliveryReceipts]
+      properties:
+        version:
+          const: 1
+        workItem:
+          $ref: '#/components/schemas/WorkItem'
+        thread:
+          $ref: '#/components/schemas/WorkThread'
+        mandate:
+          $ref: '#/components/schemas/WorkMandate'
+        assignments:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkAssignment'
+        outbox:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkOutboxRecord'
+        deliveryReceipts:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkDeliveryReceipt'
+    WorkDeliveryReceiptList:
+      type: object
+      additionalProperties: false
+      required: [version, deliveryReceipts]
+      properties:
+        version:
+          const: 1
+        deliveryReceipts:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkDeliveryReceipt'

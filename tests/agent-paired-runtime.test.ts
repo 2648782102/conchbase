@@ -331,7 +331,7 @@ test('Pagurus clients and Conchbase close the two-Agent loop over live loopback 
     const runtimeApi = await import(pagurusModuleUrl('src/shared/api/runtime.ts')) as RuntimeClientModule;
 
     const status = await runtimeApi.getRuntimeInfo();
-    assert.equal(status.version, '0.8.0');
+    assert.equal(status.version, '0.9.0');
     assert.ok(status.capabilities.includes('agents'));
     assert.ok(status.capabilities.includes('provider-neutral-model-catalog'));
     assert.equal(await agentApi.supportsAgentManagement(), true);

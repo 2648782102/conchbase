@@ -10,7 +10,7 @@ Read `docs/AI_HANDOFF.md` first, then `docs/AI_DEVELOPMENT.md` and the linked ar
 - The paired product direction is user-managed, independently customizable Agents through clients such as Pagurus. Conchbase owns stable Agent identities and versioned Agent definitions; Agent revisions must remain distinct from runtime-wide policy/capability configuration unless an ADR explicitly chooses otherwise. Each Agent-backed task must pin both applicable revisions. Clients must not create competing schemas.
 - Provider integrations are replaceable adapters. Magpie is one currently supported compatibility path, not the product's required provider or an Agent configuration dependency. Keep Agent model references and Runtime API contracts provider-neutral; provider credentials and provider-specific settings stay behind their adapter boundary.
 - This project is meant to own the agent loop. It is not only a memory/context overlay for another agent.
-- ADR 0022 accepts the product direction of durable, event-driven, topology-neutral work: Sessions and single-turn Tasks are implementation details, while work identity, authorization, event history, execution assignments, Outbox, and delivery evidence become Runtime-owned product state. Do not implement that direction until its domain/public API ADRs are accepted.
+- ADR 0022 accepts the product direction of durable, event-driven, topology-neutral work. ADR 0024 accepts and implements the first deterministic durable-work contract: `0.9.0`, 29 routes, `durable-work-contract`, and `user_version = 2`. Sessions and single-turn Tasks remain implementation details; the existing `Task` resource is unchanged. ADR 0025 and later own asynchronous execution, start/stop, background completion, and recovery.
 - ADR 0023 proposes write-only SecretHandles. Plaintext must never enter model context, prompts, task state, durable events, logs, errors, client responses, Agent revisions, or configuration documents. Only a runtime-owned, authorized adapter may inject a value into a fixed destination; never give a model or tool a generic value resolver.
 - Never execute a tool outside the runtime policy and approval path.
 - A Skill supplies instructions; it does not grant tool permissions.
@@ -25,5 +25,6 @@ Read `docs/AI_HANDOFF.md` first, then `docs/AI_DEVELOPMENT.md` and the linked ar
 - Do not introduce real credentials, user data, external service calls, or machine-specific paths.
 - Before changing an unresolved decision in `docs/AI_HANDOFF.md`, surface the trade-off and record the decision.
 - Keep `tests/repository-guardrails.test.ts` passing; update it only alongside an accepted ADR or a documented development-boundary change.
+- Read `src/runtime/work-contract.ts` and `src/runtime/work-store.ts` before changing durable-work state; do not add a canonical topology, secret resolver, external write, or second SQLite owner.
 - Run `npm run check`, `npm test`, and `npm run build` after code changes. CI runs all three commands.
 

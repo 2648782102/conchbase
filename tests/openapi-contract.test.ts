@@ -80,6 +80,10 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
       '/v1/tool-requests/{requestId}',
       '/v1/tool-requests/{requestId}/approval',
       '/v1/provider-observations/tool-calls',
+      '/v1/work/triggers',
+      '/v1/work/items',
+      '/v1/work/items/{workItemId}',
+      '/v1/work/delivery-receipts',
     ],
   );
   assert.match(spec, /\$ref: '#\/components\/schemas\/Health'/);
@@ -154,7 +158,7 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
   assert.match(spec, /enum: \[inline, file, registry, env\]/);
   assert.doesNotMatch(spec, /enum: \[[^\]]*\burl\b/);
   assert.match(spec, /ApplyConfigurationRequest:[\s\S]*?oneOf:/);
-  assert.match(spec, /^  version: 0\.8\.0$/m);
+  assert.match(spec, /^  version: 0\.9\.0$/m);
   assert.match(spec, /compositionDocumentId/);
   assert.match(spec, /compositionNodeId/);
   assertSchemaFields('CreateProviderToolCallObservation', ['version', 'provider', 'payload']);
@@ -167,6 +171,37 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
     'argumentsDigest',
   ]);
   assertSchemaFields('ProviderToolCallObservationResponse', ['observation']);
+  assertSchemaFields('CreateWorkTriggerRequest', [
+    'source',
+    'trigger',
+    'mandate',
+    'model',
+    'agentRevisionId',
+    'configurationRevisionId',
+  ]);
+  assertSchemaFields('WorkEnvelope', [
+    'version',
+    'created',
+    'workItemCreated',
+    'contextOnly',
+    'trigger',
+    'thread',
+    'mandate',
+    'workItem',
+    'assignments',
+    'outbox',
+    'deliveryReceipts',
+    'events',
+  ]);
+  assertSchemaFields('WorkItemDetail', [
+    'version',
+    'workItem',
+    'thread',
+    'mandate',
+    'assignments',
+    'outbox',
+    'deliveryReceipts',
+  ]);
   assertSchemaFields('CreateToolRequest', [
     'taskId',
     'attempt',
@@ -189,7 +224,7 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
     'approval',
   ]);
   assertSchemaFields('ToolRequestDecisionRequest', ['decision', 'reason']);
-  assert.match(spec, /^  version: 0\.8\.0$/m);
+  assert.match(spec, /^  version: 0\.9\.0$/m);
   assert.match(spec, /tool-approval-ledger/);
   assert.match(spec, /provider-tool-call-observation records/);
   assert.match(spec, /No tool is executed/);

@@ -7,7 +7,7 @@ The service listens on `127.0.0.1:4318` by default. The machine-readable source 
 | Method and path | Behavior |
 |---|---|
 | `GET /v1/health` | Service health and API version `1`. |
-| `GET /v1/runtime` | Runtime identity, version `0.8.0`, and advertised capabilities. |
+| `GET /v1/runtime` | Runtime identity, version `0.9.0`, and advertised capabilities including `durable-work-contract`. |
 | `GET /v1/models` | Chat model ids from the configured local Magpie gateway; `502` when the catalog is unavailable. |
 | `GET /v1/model-catalog` | Provider-neutral model references with normalized capabilities; currently the `magpie` compatibility adapter; `502` when unavailable. |
 | `GET /v1/agents` | Runtime-local Agent collection and current revisions. |
@@ -35,6 +35,10 @@ The service listens on `127.0.0.1:4318` by default. The machine-readable source 
 | `GET /v1/tool-requests/{requestId}` | Read one durable tool request record; `404` when absent. |
 | `POST /v1/tool-requests/{requestId}/approval` | Record one explicit `approved` or `rejected` decision; `201`, or `200` for exact replay, `409` for a conflicting decision. No tool is executed. |
 | `POST /v1/provider-observations/tool-calls` | Normalize one bounded OpenAI Chat Completions-compatible non-streaming function tool call into a transient observation; `200`, including `observation: null` when no tool call is present. No state, ledger request, event, or tool execution. |
+| `POST /v1/work/triggers` | Idempotently ingest one bounded fake/manual Trigger; `201` for a new Trigger, `200` for exact replay, `409` for a conflict. Creates one immutable Mandate and one open WorkItem per Thread, pins one planned Assignment, and records digest-only Outbox/DeliveryReceipt evidence. No model, tool, external write, or secret resolution. |
+| `GET /v1/work/items` | List durable WorkItems and their current state. |
+| `GET /v1/work/items/{workItemId}` | Read one WorkItem with its context-only Thread, immutable Mandate, planned Assignments, pending Outbox records, and observed DeliveryReceipts; `404` when absent. |
+| `GET /v1/work/delivery-receipts` | List digest-only delivery evidence across durable WorkItems. |
 
 An Agent profile is a versioned resource with bounded name, instructions, and `{ providerId, modelId }` default model reference. It contains no credential, provider URL, permission, or tool grant. The first Agent becomes default; there is no implicit default selection for task creation. Profile edits and history apply use `expectedRevisionId`; rollback appends a revision. Archiving is soft and irreversible in the current API, preserves history, and prevents new tasks. Existing tasks, including retries, stay bound to their pinned revision.
 
@@ -50,6 +54,8 @@ Tool request documents are provider-neutral data. A request includes `taskId`, `
 
 Provider observation documents are transient, untrusted normalization inputs. A request has `version: 1`, `provider: 'openai-chat-completions'`, and one bounded plain-JSON `payload`. The route returns a `version: 1` observation with `providerToolCallId`, a normalized `toolCall`, and an `argumentsDigest`, or `null` for a no-tool-call response. It rejects unsupported providers, raw envelope fields, secret-like or absolute-URL data, streaming deltas, mixed answers, multiple calls, and malformed shapes with bounded `details`. A client that wants a durable ledger record must explicitly submit the normalized `toolCall` to `POST /v1/tool-requests` with task, attempt, and composition node identity. See [ADR 0019](decisions/0019-explicit-provider-tool-call-observation-boundary.md).
 
+Durable work documents are deterministic, topology-neutral state from [ADR 0024](decisions/0024-durable-work-domain-and-public-api.md). A Trigger request contains bounded `source`, `trigger`, `mandate`, provider-neutral `model`, and pinned revision ids; all digests are `sha256:<64 lowercase hex>`. `POST /v1/work/triggers` parses its raw `application/json` body and delegates exact shape validation to the pure domain contract, so top-level or nested unknown fields, malformed JSON, and unsupported shape changes return `400` before persistence. The `trigger.triggerId` is stored as `sourceEventId`, while the Runtime derives an opaque `trg_` id. An exact replay returns the stored envelope without new rows or events. A later Trigger with the same `threadKey` must carry the same Mandate and Assignment proposal; it adds context to the Thread but creates no second WorkItem, Mandate, Assignment, Outbox record, or DeliveryReceipt. A changed proposal returns `409`. WorkItem state (`open`) is distinct from Assignment state (`planned`); Outbox `pending` and DeliveryReceipt `observed` are evidence records, not proof of an external write or acceptance. The runtime advertises `durable-work-contract`; clients must gate workbench reads on that capability. No start/stop, execution, approval, secret, or external Source route exists in this slice.
+
 ## Boundaries
 
 - The API is loopback-only. Remote binding requires a reviewed authentication and pairing design.
@@ -60,3 +66,4 @@ Provider observation documents are transient, untrusted normalization inputs. A 
 - No public tool execution, executable approval, MCP, Skill, plugin, model-driven composition, or dedicated composition management route exists yet. Composition is part of the versioned configuration document; the tool request/approval routes are ledger records only.
 - Configuration document routes do not install, enable, grant, resolve secrets, load code, or execute tools.
 - Tool request and approval routes do not execute tools, transition task state, load code, resolve secrets, or grant capabilities.
+- Work routes do not call a model, execute a tool, perform an external write, resolve a secret, read a private file from a client, define a canonical topology, or reinterpret the phase-1 `Task` resource.

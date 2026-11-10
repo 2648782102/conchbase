@@ -58,6 +58,10 @@ const acceptedPaths = [
   '/v1/tool-requests/{requestId}',
   '/v1/tool-requests/{requestId}/approval',
   '/v1/provider-observations/tool-calls',
+  '/v1/work/triggers',
+  '/v1/work/items',
+  '/v1/work/items/{workItemId}',
+  '/v1/work/delivery-receipts',
 ];
 
 function read(relativePath: string): string {
@@ -97,13 +101,16 @@ function assertAcceptedOpenApi(spec: string, label: string): void {
   assert.doesNotMatch(spec, nonLoopbackAddress, `${label} must not bind beyond loopback`);
   assert.match(spec, /requestBody:/, `${label} must document the accepted task request`);
   assert.match(spec, /interrupted/, `${label} must document interrupted tasks`);
-  assert.match(spec, /^  version: 0\.8\.0$/m, `${label} must record the Agent contract version`);
+  assert.match(spec, /^  version: 0\.9\.0$/m, `${label} must record the durable-work contract version`);
   assert.match(spec, /provider-neutral-model-catalog/);
   assert.match(spec, /AgentRevision/);
   assert.match(spec, /partialOutput/, `${label} must document partial output`);
   assert.match(spec, /ConfigurationRevision/, `${label} must document configuration revisions`);
   assert.match(spec, /tool-approval-ledger/);
   assert.match(spec, /provider-tool-call-observation records/);
+  assert.match(spec, /durable-work-contract/);
+  assert.match(spec, /WorkEnvelope/);
+  assert.match(spec, /No tool is executed/);
   assert.match(spec, /No tool is executed/);
   assert.match(spec, /- tool\.requested/);
   assert.doesNotMatch(spec, /- tool\.executed/);
@@ -186,7 +193,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /interrupted/);
   assert.match(handoff, /explicit retry/);
   assert.match(handoff, /The broader user-defined composition product remains open/);
-  assert.match(handoff, /exact OpenAPI path set is twenty-five routes/);
+  assert.match(handoff, /exact OpenAPI path set is twenty-nine routes/);
   assert.match(handoff, /ADR 0020/);
   assert.match(handoff, /ADR 0021/);
   assert.match(handoff, /ADR 0022/);
@@ -220,10 +227,11 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(queue, /ADR 0021/);
   assert.match(queue, /ADR 0022/);
   assert.match(queue, /ADR 0023/);
-  assert.match(queue, /Durable work contract/);
+  assert.match(queue, /ADR 0024/);
+  assert.match(queue, /ADR 0024.*implements the first deterministic/s);
   assert.match(queue, /SecretHandle boundary/);
   assert.match(queue, /Done in the deterministic paired-runtime acceptance slice/);
-  assert.match(queue, /ADRs `0010`–`0021`/);
+  assert.match(queue, /ADRs `0010`–`0024`/);
 
   const roadmap = read('docs/ROADMAP.md');
   assert.match(roadmap, /current adapter uses Magpie for compatibility/);
@@ -251,7 +259,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('README.zh-CN.md'), /仍在规划中/);
   assert.match(read('README.zh-CN.md'), /ADR 0018/);
   assert.match(read('README.zh-CN.md'), /ADR 0019/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0021\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0024\]/);
   assert.match(read('README.md'), /ADR 0021 adds an opt-in live loopback acceptance test/);
   assert.match(read('README.zh-CN.md'), /ADR 0021/);
   assert.match(read('README.zh-CN.md'), /真实 loopback HTTP 验收/);
@@ -298,6 +306,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(pairedTest, /nested Pagurus checkout is not present/);
   assert.match(pairedTest, /delayedPrompts\.delete\(delayKey\)/);
   assert.match(pairedTest, /execFileAsync/);
+  assert.match(read('docs/decisions/0024-durable-work-domain-and-public-api.md'), /accepted public contract and first deterministic persistence slice/);
 });
 
 test('decision records separate accepted phase-1 direction from proposals', () => {
@@ -384,6 +393,10 @@ test('decision records separate accepted phase-1 direction from proposals', () =
     read(`${decisionsDir}/0023-secret-handle-and-runtime-injection-proposal.md`),
     /^Status: \*\*proposed, not accepted as a public contract\*\*$/m,
   );
+  assert.match(
+    read(`${decisionsDir}/0024-durable-work-domain-and-public-api.md`),
+    /^Status: \*\*accepted public contract and first deterministic persistence slice\*\*$/m,
+  );
 });
 
 test('the public contract remains loopback-only and records accepted task routes', () => {
@@ -441,6 +454,7 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
   );
   assert.match(read('src/http/routes/v1/runtime.ts'), /provider-neutral-model-catalog/);
   assert.match(read('src/http/routes/v1/runtime.ts'), /agents/);
+  assert.match(read('src/http/routes/v1/runtime.ts'), /durable-work-contract/);
   assert.match(read('src/runtime/task-store.ts'), /BEGIN EXCLUSIVE/);
   assert.match(read('src/runtime/task-store.ts'), /migrateAgentSchema/);
   assert.match(
@@ -468,6 +482,10 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
     /tool-request/,
     'the public ledger must use the separate tool request boundary',
   );
+  const workRouteSource = read('src/http/routes/v1/work.ts');
+  assert.doesNotMatch(workRouteSource, /fetch\(|exec|spawn|writeFile|readFile/i);
+  assert.doesNotMatch(workRouteSource, /Router|Worker|three-layer|layered|hierarchy/i);
+  assert.match(read('src/runtime/task-store.ts'), /PRAGMA user_version = 2/);
   const ledgerSource = read('src/runtime/tool-request.ts');
   assert.doesNotMatch(ledgerSource, /ToolCapabilityKernel|tool-capability/);
   assert.doesNotMatch(ledgerSource, /tool\.executed|tool\.replayed|tool\.denied|tool\.failed/);

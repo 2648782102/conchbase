@@ -98,7 +98,7 @@ test('Agent schema migration preserves legacy runtime rows and active configurat
 
     const migrated = new DatabaseSync(filename);
     try {
-      assert.equal((migrated.prepare('PRAGMA user_version').get() as { user_version: number }).user_version, 1);
+      assert.equal((migrated.prepare('PRAGMA user_version').get() as { user_version: number }).user_version, 2);
       for (const [table, expected] of [
         ['tasks', ['agent_id', 'agent_revision_id', 'provider_id', 'model_id']],
         ['events', ['agent_id', 'agent_revision_id', 'provider_id', 'model_id']],
@@ -115,6 +115,18 @@ test('Agent schema migration preserves legacy runtime rows and active configurat
         id: 'tqr_legacy', status: 'pending', arguments_digest: 'arg_legacy',
       });
       assert.equal((migrated.prepare('SELECT COUNT(*) AS count FROM events').get() as { count: number }).count, 1);
+      for (const table of [
+        'work_triggers',
+        'work_threads',
+        'work_mandates',
+        'work_items',
+        'work_assignments',
+        'work_outbox',
+        'work_delivery_receipts',
+        'work_events',
+      ]) {
+        assert.equal((migrated.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count, 0);
+      }
     } finally {
       migrated.close();
     }

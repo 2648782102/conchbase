@@ -31,6 +31,7 @@ import {
   type AgentRevisionId,
   type ModelReference,
 } from './agent-profile.js';
+import { SqliteWorkStore, type WorkStore } from './work-store.js';
 
 export interface TaskSnapshot {
   readonly id: string;
@@ -145,6 +146,7 @@ export interface TaskStore {
   getConfigurationRevision(id: string): ConfigurationRevision | null;
   applyConfiguration(document: ConfigurationDocument): ApplyConfigurationResult;
   rollbackConfiguration(id: string): ApplyConfigurationResult;
+  readonly work: WorkStore;
   close(): void;
 }
 
@@ -371,12 +373,14 @@ function toAgentRevision(row: AgentRevisionRow): AgentRevision {
 }
 
 export class SqliteTaskStore implements TaskStore {
+  readonly work: WorkStore;
   private readonly database: DatabaseSync;
   private readonly clock: () => string;
 
   constructor(filename: string, options: { readonly clock?: () => string } = {}) {
     this.database = new DatabaseSync(filename);
     this.clock = options.clock ?? (() => new Date().toISOString());
+    this.work = new SqliteWorkStore(this.database);
     try {
       this.database.exec('PRAGMA busy_timeout = 0;');
       this.database.exec('PRAGMA foreign_keys = ON;');
@@ -461,7 +465,7 @@ export class SqliteTaskStore implements TaskStore {
       `);
       this.migrateAgentSchema();
       this.database.exec('INSERT OR IGNORE INTO agent_state (singleton, default_agent_id) VALUES (1, NULL)');
-      this.database.exec('PRAGMA user_version = 1; COMMIT;');
+      this.database.exec('PRAGMA user_version = 2; COMMIT;');
       this.bootstrapConfiguration();
     } catch (cause) {
       try { this.database.exec('ROLLBACK;'); } catch { /* No migration transaction is open. */ }
@@ -981,7 +985,7 @@ export class SqliteTaskStore implements TaskStore {
 
   private migrateAgentSchema(): void {
     const versionRow = this.database.prepare('PRAGMA user_version').get() as { user_version: number };
-    if (versionRow.user_version > 1) {
+    if (versionRow.user_version > 2) {
       throw new Error(`Database schema version ${versionRow.user_version} is newer than this runtime supports.`);
     }
     for (const [table, column] of [
@@ -999,6 +1003,76 @@ export class SqliteTaskStore implements TaskStore {
         this.database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`);
       }
     }
+    this.database.exec(`
+      CREATE TABLE IF NOT EXISTS work_triggers (
+        id TEXT PRIMARY KEY,
+        source_event_id TEXT NOT NULL UNIQUE,
+        source_id TEXT NOT NULL,
+        source_kind TEXT NOT NULL,
+        thread_key TEXT NOT NULL,
+        thread_id TEXT NOT NULL,
+        payload_digest TEXT NOT NULL,
+        occurred_at TEXT NOT NULL,
+        canonical_digest TEXT NOT NULL,
+        proposal_digest TEXT NOT NULL
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS work_threads (
+        id TEXT PRIMARY KEY,
+        thread_key TEXT NOT NULL UNIQUE,
+        context_only INTEGER NOT NULL CHECK (context_only = 1),
+        trigger_ids TEXT NOT NULL,
+        work_item_id TEXT NOT NULL
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS work_mandates (
+        id TEXT PRIMARY KEY,
+        work_item_id TEXT NOT NULL,
+        revision INTEGER NOT NULL CHECK (revision = 1),
+        scope TEXT NOT NULL,
+        allowed_operations TEXT NOT NULL,
+        capabilities_digest TEXT NOT NULL
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS work_items (
+        id TEXT PRIMARY KEY,
+        state TEXT NOT NULL CHECK (state = 'open'),
+        thread_id TEXT NOT NULL,
+        trigger_id TEXT NOT NULL,
+        mandate_id TEXT NOT NULL,
+        mandate_revision INTEGER NOT NULL CHECK (mandate_revision = 1)
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS work_assignments (
+        id TEXT PRIMARY KEY,
+        work_item_id TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state = 'planned'),
+        agent_revision_id TEXT NOT NULL,
+        configuration_revision_id TEXT NOT NULL,
+        mandate_revision INTEGER NOT NULL,
+        provider_id TEXT NOT NULL,
+        model_id TEXT NOT NULL
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS work_outbox (
+        id TEXT PRIMARY KEY,
+        work_item_id TEXT NOT NULL,
+        assignment_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status = 'pending'),
+        destination_digest TEXT NOT NULL,
+        payload_digest TEXT NOT NULL
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS work_delivery_receipts (
+        id TEXT PRIMARY KEY,
+        work_item_id TEXT NOT NULL,
+        outbox_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status = 'observed'),
+        destination_digest TEXT NOT NULL,
+        payload_digest TEXT NOT NULL
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS work_events (
+        sequence INTEGER PRIMARY KEY,
+        id TEXT NOT NULL UNIQUE,
+        type TEXT NOT NULL,
+        work_item_id TEXT NOT NULL,
+        data TEXT NOT NULL
+      ) STRICT;
+    `);
   }
 
   private getAgentRow(agentId: string): AgentRow | null {

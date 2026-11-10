@@ -153,6 +153,8 @@ class CancelOnFirstNodeStore implements TaskStore {
 
   constructor(private readonly inner: SqliteTaskStore) {}
 
+  get work() { return this.inner.work; }
+
   createTask(input: TaskCreateInput): TaskSnapshot {
     return this.inner.createTask(input);
   }

@@ -6,7 +6,7 @@ Conchbase is the execution authority. It owns Agent identity and revisions, task
 
 User-defined agent composition is topology-neutral. A layered multi-role setup is only an illustrative example and must not become a built-in structure, default template, required layer count, or role-name convention. A `schemaVersion: 1` task uses one streaming model turn; a `schemaVersion: 2` task uses a bounded deterministic composition executor. Neither is a general multi-agent scheduling product. See [ADR 0005](decisions/0005-user-defined-agent-topology-proposal.md), [ADR 0010](decisions/0010-first-real-model-slice.md), and [ADR 0016](decisions/0016-composition-execution-and-public-schema.md).
 
-[ADR 0022](decisions/0022-persistent-work-runtime-direction.md) accepts the direction of durable, event-driven, topology-neutral work. Future ADRs will define `Source / Trigger / Thread / Mandate / WorkItem / Assignment / Outbox / DeliveryReceipt` state above the current Task implementation; no such module, route, or table exists yet. [ADR 0023](decisions/0023-secret-handle-and-runtime-injection-proposal.md) proposes a private SecretHandle registry and a runtime-owned fixed-destination injector; no plaintext may cross the model, UI, event, log, or error boundary. The diagram below remains the implemented `0.8.0` architecture, not a roadmap diagram.
+[ADR 0022](decisions/0022-persistent-work-runtime-direction.md) accepts the direction of durable, event-driven, topology-neutral work. [ADR 0024](decisions/0024-durable-work-domain-and-public-api.md) implements the first `Source / Trigger / Thread / Mandate / WorkItem / Assignment / Outbox / DeliveryReceipt` contract above the unchanged phase-1 `Task` resource: pure domain validation, `SqliteWorkStore` behind one database owner, four `/v1/work` routes, and additive `user_version = 2` tables. It remains deterministic and execution-free. [ADR 0023](decisions/0023-secret-handle-and-runtime-injection-proposal.md) proposes a private SecretHandle registry and a runtime-owned fixed-destination injector; no plaintext may cross the model, UI, event, log, or error boundary. The diagram below is the implemented `0.9.0` architecture, not a roadmap diagram.
 
 ```text
 CLI ────────────┐
@@ -19,13 +19,15 @@ External clients┘                              ├─ OpenAiChatCompletionsPro
                                                ├─ CompositionExecution (legacy v2 deterministic)
                                                ├─ ToolRequestLedger (public records, no executor)
                                                ├─ ProviderObservationRoute (transient normalization)
+                                               ├─ WorkRoutes (deterministic intake and reads)
                                                └─ TaskStore
-                                                    └── node:sqlite tasks + events + revisions + tool requests
+                                                    ├── node:sqlite tasks + events + revisions + tool requests
+                                                    └── SqliteWorkStore work_* tables (same DatabaseSync handle)
 ```
 
 ## Interface rules
 
-- HTTP/JSON is the management and task API. `docs/openapi.yaml` is the versioned source of truth.
+- HTTP/JSON is the management and task API. `docs/openapi.yaml` is the versioned source of truth. `POST /v1/work/triggers` parses its raw `application/json` body for its own route scope so `parseWorkTriggerRequest` can reject unknown fields; Fastify's default JSON body handling remains in force for all other routes.
 - Events have stable global sequence numbers and IDs so clients can poll from a cursor after reconnecting. `task.output_delta` events carry bounded answer-text chunks; composition events carry bounded node identity. SSE remains a later compatibility concern.
 - Magpie is a replaceable local model gateway. Its OpenAI Chat Completions endpoint, model catalog, and app-naming key are provider details behind the adapter; they do not become public Conchbase schemas.
 - `GET /v1/configuration`, revision reads, `POST /v1/configuration/validate`, and `POST /v1/configuration/apply` expose the versioned `schemaVersion: 1` and `schemaVersion: 2` document union. Configuration references are opaque data; no public route installs, enables, grants, loads, or executes a capability. See [ADR 0014](decisions/0014-versioned-configuration-api.md) and [ADR 0016](decisions/0016-composition-execution-and-public-schema.md).
@@ -52,7 +54,7 @@ ADR 0020 publishes runtime-local Agent resources with immutable opaque revision 
 ## State and configuration
 
 - `SqliteTaskStore` owns normalized task, `partialOutput`, event, configuration revision, tool request, and active-pointer rows in one private SQLite database. WAL and foreign keys are enabled; an exclusive SQLite lock rejects a second simultaneous owner with a normalized `DatabaseInstanceError`. This is a single-owner development boundary from [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md), not multi-process support or a production recovery matrix. Driver types and errors do not leave the store boundary.
-- Startup runs the additive Agent migration under one exclusive transaction and marks it with `PRAGMA user_version = 1`. The migration adds nullable task/event Agent identity columns and new Agent tables while preserving existing rows and active configuration state.
+- Startup runs the additive Agent and durable-work migrations under one exclusive transaction and marks them with `PRAGMA user_version = 2`. The migration adds nullable task/event Agent identity columns, new Agent tables, and eight `work_*` tables while preserving existing rows and active configuration state. `SqliteWorkStore` shares `SqliteTaskStore`'s `DatabaseSync` handle; it never opens a second owner.
 - `MagpieModelCatalog` reads the local model list without opening the runtime database, so `conchbase models` can run while the HTTP service owns tasks. Other task-state CLI commands take short-lived database ownership and must not overlap `conchbase serve`.
 - A content-addressed, immutable revision identifies the active configuration. Each task attempt pins its revision id. Portable profile files, secret resolution, and capability lifecycle schemas are not implemented.
 - The active configuration revision comes from durable `configuration_state`. Applying a document appends an immutable content-addressed revision if new; rollback changes only the pointer. Existing tasks keep their pinned id. v1 documents carry bounded opaque references; v2 documents also carry user-authored topology-neutral composition data. Neither version stores installation state, grants, or secret values.
