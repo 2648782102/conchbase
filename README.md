@@ -42,7 +42,7 @@ export CONCHBASE_MODEL='provider/model-id'
 npm run cli -- run 'Reply with exactly: ok'
 ```
 
-These environment variables describe the current Magpie compatibility adapter: `CONCHBASE_MAGPIE_APP_KEY` is optional and only names Conchbase in Magpie's usage record; it is not a provider credential. `CONCHBASE_MODEL` currently selects an id from the Magpie catalog. `CONCHBASE_MAGPIE_URL` defaults to `http://127.0.0.1:3425`; `CONCHBASE_DB` defaults to `.conchbase/runtime.sqlite` and is git-ignored. Future provider-neutral Agent references and discovery must not depend on these Magpie-specific variable names or catalog ids.
+These environment variables describe the current Magpie compatibility adapter: `CONCHBASE_MAGPIE_APP_KEY` is optional and only names Conchbase in Magpie's usage record; it is not a provider credential. `CONCHBASE_MODEL` currently selects an id from the Magpie catalog. `CONCHBASE_MAGPIE_URL` defaults to `http://127.0.0.1:3425`; `CONCHBASE_DB` defaults to `.conchbase/runtime.sqlite` and is git-ignored. Future provider-neutral Agent references and discovery must not depend on these Magpie-specific variable names or catalog ids; the published `GET /v1/model-catalog` and Agent model references already use `{ providerId, modelId }` identities.
 
 The HTTP API accepts the same operation:
 

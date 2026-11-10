@@ -57,13 +57,12 @@ This queue is for coding models continuing from the repository. It records bound
 
 ## Next bounded slices
 
-The first collection/editor and task-binding slice is closed by ADR 0021. Its deterministic live loopback evidence covers at least two Agents, cancellation/interruption, explicit retry, legacy and Agent task dispatch, configuration/version pins, streaming, composition, and CLI compatibility. Pagurus ADR 0007 now adds a read-only client inspection slice without changing this Runtime. Visual/manual UI validation, real-provider validation, and production-scale history querying remain separate future layers. Do not expand into tools or model-driven composition while continuing the client work.
+The first collection/editor and task-binding slice is closed by ADR 0021. Its deterministic live loopback evidence covers at least two Agents, cancellation/interruption, explicit retry, legacy and Agent task dispatch, configuration/version pins, streaming, composition, and CLI compatibility. Pagurus ADR 0007 adds a read-only client inspection slice without changing this Runtime, and its local Runtime screen has been validated manually and visually. Real-provider conformance, accessibility validation, and production-scale history querying remain separate future layers. Do not expand into tools or model-driven composition while continuing the client work.
 
-1. **Client validation follow-up.** Exercise Pagurus's task history and revision comparison visually and manually against a real local Runtime. Confirm mixed legacy/Agent records, pinned revision display, refresh/error states, and revision comparison without changing task, configuration, or Agent writes.
+1. **Interface validation.** Add separate real-provider conformance and accessibility fixtures. Keep these layers distinct from ADR 0021's deterministic HTTP acceptance and from the completed manual/visual ADR 0007 screen walkthrough.
 2. **History contract, if needed.** If task volume or live updates require more than the current complete list, first accept a Runtime API contract for ordering, retention, pagination, server-side filtering, cursor/reconnect semantics, and authorization. Then add a paired client ADR and implementation.
 3. **Additional provider adapter.** Add only after each adapter has a defined credential/settings owner, normalized error boundary, and deterministic contract fixtures. Magpie remains a compatibility path, not the product target.
 4. **Composition evolution.** Decide separately whether Agents may explicitly run a runtime-wide topology and what model-driven node context, delegation, concurrency, and permission semantics apply. Do not infer these from ADR 0016's deterministic executor.
-5. **Interface validation.** Add separate real-provider conformance and accessibility fixtures. Keep these layers distinct from ADR 0021's deterministic HTTP acceptance.
 
 ## Done in the deterministic paired-runtime acceptance slice
 
