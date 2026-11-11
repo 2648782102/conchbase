@@ -36,6 +36,7 @@ Prefer explicit types, local ownership, small vertical slices, and executable ch
 
 - `npm run check`: TypeScript validation for application and test files.
 - `npm test`: Node's built-in test runner with the `tsx` loader; covers startup configuration, provider parsing, task persistence and recovery, HTTP/OpenAPI contracts, v1/v2 configuration validation and history, deterministic composition execution and cancellation, platform migration/control/authorization/SecretHandle sentinel fixtures, internal deterministic runtime fixtures, and repository guardrails. Add new test files to the `test` script in `package.json`. Update `tests/repository-guardrails.test.ts` only alongside an accepted ADR or a documented development-boundary change.
+- `tests/provider-conformance.test.ts` is the executable credential-free provider-compatibility fixture accepted by ADR 0028. Keep it deterministic and loopback-only; it is validation evidence, not live provider conformance.
 - `npm run build`: clean output directory, then production compilation.
 - CI runs all three commands.
 - Use deterministic local data. Never use real credentials or personal runtime data as fixtures.

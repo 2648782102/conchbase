@@ -57,7 +57,7 @@ npm run cli -- events
 2. 读 [AI 交接说明](AI_HANDOFF.md)，再读 [机器可读项目状态](PROJECT_STATUS.json) 与 [目标模式接手说明](OBJECTIVE_MODE.zh-CN.md)，先区分已实现、验证证据与必须先立 ADR 的方向。
 3. 读 [开发约定](AI_DEVELOPMENT.md)、[任务队列](AI_TASK_QUEUE.md)，并以 `PROJECT_STATUS.json` 的 `aiEntry.requiredOrder` 为准。
 4. 读 [架构](ARCHITECTURE.md)、[API](API.md)、[OpenAPI 契约](openapi.yaml)、[技术栈](TECH_STACK.md)。
-5. 读 [验证计划](VALIDATION_PLAN.md)、[ADR 0025](decisions/0025-local-first-v1-platform.md) 与 [ADR 0026](decisions/0026-ai-handoff-readiness-development-boundary.md)。
+5. 读 [验证计划](VALIDATION_PLAN.md)、[ADR 0025](decisions/0025-local-first-v1-platform.md)、[ADR 0026](decisions/0026-ai-handoff-readiness-development-boundary.md) 与 [ADR 0028](decisions/0028-interface-validation-boundary.md)。
 6. 修改持久工作或 SecretHandle 状态前，读 `src/runtime/work-contract.ts`、`src/runtime/work-store.ts`、`src/runtime/platform-contract.ts` 和 `src/runtime/platform-store.ts`。
 
 每次改动后运行 `npm run check`、`npm test`、`npm run build`，并同步更新受影响的文档与 OpenAPI。不要静默扩展 `Task`、configuration、work 或 SecretHandle schema；外部能力必须先写新 ADR。

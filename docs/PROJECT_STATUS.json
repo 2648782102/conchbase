@@ -4,7 +4,7 @@
   "pairedRepository": "pagurus",
   "project": "Conchbase / 海螺",
   "release": "1.0.0",
-  "statusUpdatedAt": "2026-11-11",
+  "statusUpdatedAt": "2026-11-12",
   "objectiveMode": "target-mode",
   "developmentBoundaryAdr": "0026-ai-handoff-readiness-development-boundary.md",
   "publicContract": {
@@ -78,6 +78,12 @@
       "summary": "A completed 54-request local loopback E2E walkthrough is documented as validation evidence, not as an executable repository fixture.",
       "evidence": "docs/VALIDATION_PLAN.md",
       "executableFixture": false
+    },
+    {
+      "id": "provider-conformance-fixture",
+      "summary": "An executable credential-free local HTTP fixture covers catalog, non-streaming, streaming, observation, error, limit, and cancellation compatibility for the current adapter.",
+      "evidence": "tests/provider-conformance.test.ts",
+      "executableFixture": true
     }
   ],
   "blockedDirections": [
@@ -109,13 +115,6 @@
     }
   ],
   "nextBoundedSlices": [
-    {
-      "id": "interface-validation",
-      "summary": "Add separate real-provider conformance and automated accessibility fixtures without changing the public contract.",
-      "publicContractChange": false,
-      "requiresAcceptedAdr": false,
-      "status": "ready"
-    },
     {
       "id": "persistence-hardening",
       "summary": "After accepting a persistence test-boundary ADR, add supported-platform CI, WAL crash recovery, retention, and migration fixtures.",

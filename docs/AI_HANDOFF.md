@@ -42,12 +42,13 @@ The exact OpenAPI path set is forty-seven paths. The work contract is version 2 
 19. [ADR 0025](decisions/0025-local-first-v1-platform.md) — accepted final `1.0.0` local-first platform contract and implementation boundary.
 20. [ADR 0026](decisions/0026-ai-handoff-readiness-development-boundary.md) — accepted target-mode development boundary; no public API change.
 21. [ADR 0027](decisions/0027-optional-visual-overview.md) — accepted repository documentation boundary for one optional, non-authoritative human-facing illustration.
-22. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
-23. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
-24. `docs/TECH_STACK.md` — chosen and deferred technology.
-25. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` plus `0023` — wider intended sequencing and still-open contracts.
-26. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
-27. `src/runtime/work-contract.ts`, `src/runtime/work-store.ts`, `src/runtime/platform-contract.ts`, `src/runtime/platform-store.ts`, `src/http/routes/v1/platform.ts`, and `src/http/routes/v1/work.ts` — the current durable-work domain, persistence, and HTTP boundary.
+22. [ADR 0028](decisions/0028-interface-validation-boundary.md) — accepted executable interface-validation boundary; no public API contract changes.
+23. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
+24. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
+25. `docs/TECH_STACK.md` — chosen and deferred technology.
+26. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` plus `0023` — wider intended sequencing and still-open contracts.
+27. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
+28. `src/runtime/work-contract.ts`, `src/runtime/work-store.ts`, `src/runtime/platform-contract.ts`, `src/runtime/platform-store.ts`, `src/http/routes/v1/platform.ts`, and `src/http/routes/v1/work.ts` — the current durable-work domain, persistence, and HTTP boundary.
 
 ## Current repository facts
 
@@ -78,6 +79,7 @@ Implemented:
 - ADR 0021 adds deterministic live loopback paired-runtime acceptance. `tests/agent-paired-runtime.test.ts` starts a fake Magpie-compatible gateway and the real Fastify Runtime, maps Pagurus's relative `/v1/...` client fetches over HTTP, dynamically imports the published Pagurus clients, and verifies two independent Agents, revision pins, stale writes, configuration apply/rollback, archive/default/override, cancellation, restart interruption, retry, event replay, legacy task dispatch, deterministic v2 composition, streaming, and CLI compatibility. The test skips only when the optional nested Pagurus checkout is absent. It uses no real model credential, public-network call, or private database access from Pagurus.
 - Pagurus ADR 0007 adds read-only task history and Agent revision comparison on top of the existing `GET /v1/tasks` and Agent detail contracts. It does not require a Conchbase source change, new route, pagination/filter schema, SSE transport, event reconstruction, or Runtime write. Its local Runtime screen has been validated manually and visually with two Agents, two revisions, mixed Agent/legacy tasks, success and provider-error records, state/Agent filters, explicit refresh, offline refresh error and recovery, read-only revision comparison, and a 320px viewport.
 - GitHub Actions runs `npm run check`, `npm test`, and `npm run build`.
+- `tests/provider-conformance.test.ts` is an executable, credential-free local HTTP fixture for the current OpenAI Chat Completions-compatible adapter. It covers catalog, non-streaming, streaming, observation, error, limit, and cancellation shapes without a real provider process; see [ADR 0028](decisions/0028-interface-validation-boundary.md). Pagurus ADR 0014 adds paired accessibility and published-contract fixtures. They are validation evidence, not real-provider conformance or a real-browser accessibility audit.
 - ADR 0025 implements the final durable-work persistence and control slice; ADR 0023 remains a historical proposal. The `1.0.0` 47-path contract adds `authenticated-pairing`, `asynchronous-work-control`, `local-source-policy`, `capability-directory`, and `write-only-secret-handles` while preserving the phase-1 `Task` behavior, dependency baseline, default loopback binding with explicit authenticated opt-in, single-owner SQLite, one-turn Agent task loop, and no-real-tool-execution boundary.
 - `POST /v1/work/triggers` idempotently ingests bounded fake/manual Triggers and creates the historical immutable Mandate, open WorkItem, planned Assignment, pending Outbox entry, and observed DeliveryReceipt. Published control routes then start, stop, complete, recover, reconcile, and decide that Runtime-owned state. The Runtime calls no model, executes no host tool, sends no external write, and exposes no generic secret resolver.
 - `POST /v1/work/triggers` parses the `application/json` body as raw text for its own scope, then delegates exact JSON shape validation to `parseWorkTriggerRequest`. This keeps top-level and nested unknown fields from being silently removed by Fastify's JSON Schema compiler; malformed JSON and unsupported shape changes return `400` before persistence. Other routes keep their established body handling.
@@ -133,7 +135,7 @@ Before adding an endpoint, specify request/response schemas, error behavior, aut
 These are outside the accepted final local-first target; do not silently treat them as settled:
 
 - Additional provider adapters, provider-managed credentials, normalized provider failures, and provider capability discovery beyond the current compatibility implementation.
-- Automated real-provider conformance, accessibility validation, visual/manual UI validation, server-side history pagination/filtering, live transports, and production-scale history.
+- Automated live real-provider conformance, real-browser accessibility validation, visual/manual UI validation beyond the completed walkthrough, server-side history pagination/filtering, live transports, and production-scale history.
 - Agent-aware executable tool authorization, durable tool execution results, crash-safe external side effects, real executor isolation, MCP lifecycle, Skills/plugin installation/enabling, per-tool grants, and streaming tool-call accumulation.
 - Model-driven composition nodes, delegation, concurrency, per-node model selection, context passing, and general scheduling semantics.
 - Stable cross-process SecretHandle keys, OS-managed key custody, replayable encrypted-at-rest values, arbitrary fixed adapters, bound external destinations, revocation of in-flight resolutions, or per-use rate limits. ADR 0025 intentionally invalidates sealed values when the runtime restarts.
@@ -143,4 +145,4 @@ When an implementation depends on one of these, record options, consequences, an
 
 ## Next implementation sequence
 
-The final local-first `1.0.0` target is closed by ADR 0025. A coding model should first run `npm run check`, `npm test`, and `npm run build`, then read `docs/openapi.yaml`, `src/runtime/platform-contract.ts`, `src/runtime/platform-store.ts`, and the paired Pagurus ADR 0010. Any future work must start with a new accepted ADR for one of the external boundaries listed above; do not silently extend the current `Task`, configuration, work, or SecretHandle schemas.
+The final local-first `1.0.0` target is closed by ADR 0025. ADR 0028 closes the executable interface-validation slice; `docs/PROJECT_STATUS.json` records those fixtures as `validationEvidence` and leaves no `ready` bounded slice. A coding model should first run `npm run check`, `npm test`, and `npm run build`, then read `docs/openapi.yaml`, `src/runtime/platform-contract.ts`, `src/runtime/platform-store.ts`, and the paired Pagurus ADR 0014. Any future work must start with a new accepted ADR for one of the external boundaries listed above; do not silently extend the current `Task`, configuration, work, or SecretHandle schemas.

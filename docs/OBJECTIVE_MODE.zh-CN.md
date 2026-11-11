@@ -16,11 +16,9 @@
 
 ## 立刻能做什么
 
-在保持公开契约不变的前提下，当前可直接推进的一类有界工作是接口验证：
+[ADR 0028](decisions/0028-interface-validation-boundary.md) 已把可直接推进的接口验证切片闭合为可执行夹具：`tests/provider-conformance.test.ts` 使用临时本地 HTTP 服务覆盖当前 provider 兼容形态，不需要真实凭证；Pagurus [ADR 0014](../pagurus/docs/decisions/0014-interface-validation-boundary.md) 同步闭合自动化无障碍与已发布契约夹具。它们记录在两仓 `PROJECT_STATUS.json` 的 `validationEvidence` 中，不替代真实供应商一致性、真实浏览器无障碍审计或确定性 HTTP 验收。
 
-1. 接口验证：增加不依赖真实凭证的 provider 一致性夹具和自动化无障碍夹具；它不能替代已有的确定性 HTTP 验收。
-
-持久层验证在 `docs/PROJECT_STATUS.json` 中标为 `status: "proposal"` 且 `requiresAcceptedAdr: true`：必须先单独接受持久化测试边界 ADR，再增加受支持平台矩阵、WAL 崩溃恢复、保留与迁移夹具；不得把当前单进程 SQLite 所有权说成多进程支持。
+目前 `nextBoundedSlices` 中没有 `ready` 条目。持久层验证仍标为 `status: "proposal"` 且 `requiresAcceptedAdr: true`：必须先单独接受持久化测试边界 ADR，再增加受支持平台矩阵、WAL 崩溃恢复、保留与迁移夹具；不得把当前单进程 SQLite 所有权说成多进程支持。
 
 每项工作都要按 `docs/PROJECT_STATUS.json` 的 `aiEntry.requiredOrder` 阅读：先读 `AGENTS.md`、`docs/AI_HANDOFF.md`、机器可读状态和本文，再读 `docs/AI_DEVELOPMENT.md`、任务队列与英文契约文档。完成后运行 `npm run check`、`npm test`、`npm run build`，并同步更新受影响文档。
 
