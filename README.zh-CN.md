@@ -69,7 +69,7 @@ curl -X POST http://127.0.0.1:4318/v1/tasks \
 - Skill 只提供指令，不授予工具权限；第一阶段会拒绝模型发起的工具调用。
 - 公开的工具请求/审批决策只是持久台账状态，绝不是执行许可。临时的供应商观察值只是未受信任的规范化数据，也绝不是执行许可。
 
-架构、技术栈、路线图和验证计划见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/TECH_STACK.md](docs/TECH_STACK.md)、[docs/ROADMAP.md](docs/ROADMAP.md) 和 [docs/VALIDATION_PLAN.md](docs/VALIDATION_PLAN.md)。配套控制台：[Pagurus 寄居蟹](https://github.com/2648782102/pagurus)。English: [README.md](README.md).
+架构、技术栈、路线图和验证计划见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/TECH_STACK.md](docs/TECH_STACK.md)、[docs/ROADMAP.md](docs/ROADMAP.md) 和 [docs/VALIDATION_PLAN.md](docs/VALIDATION_PLAN.md)。配套控制台：[Pagurus 寄居蟹](https://github.com/2648782102/pagurus)。中文文档：[快速开始](docs/QUICK_START.zh-CN.md)、[v1.0.0 发布说明](docs/RELEASE_NOTES_1.0.0.zh-CN.md)。English: [README.md](README.md).
 
 ## 面向 AI 开发
 

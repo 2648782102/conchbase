@@ -2,6 +2,8 @@
 
 > **AI-first project:** Conchbase is developed primarily by AI coding agents. Optimize the repository for fast, accurate agent context loading, bounded changes, and deterministic validation; human handoff is not a product requirement. Keep implementation explicit, typed, and easy to inspect. Start with `AGENTS.md`, then follow this handoff.
 
+Chinese release and quick-start documents are available in [README.zh-CN.md](../README.zh-CN.md), [QUICK_START.zh-CN.md](QUICK_START.zh-CN.md), and [RELEASE_NOTES_1.0.0.zh-CN.md](RELEASE_NOTES_1.0.0.zh-CN.md). English repository documents, OpenAPI, and accepted ADRs remain the source of truth.
+
 This document is the starting packet for a coding model that has not seen the design conversation. It describes repository facts and accepted boundaries; roadmap items are not implemented features.
 
 ## Product definition

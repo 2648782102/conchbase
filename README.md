@@ -70,7 +70,7 @@ See [the API guide](docs/API.md) and [OpenAPI contract](docs/openapi.yaml) for A
 - A Skill supplies instructions, never tool permissions; model-requested tools are rejected in phase 1.
 - A public tool request/approval decision is durable ledger state, never execution permission. A transient provider observation is untrusted normalization data, never execution permission.
 
-See [architecture](docs/ARCHITECTURE.md), [technology baseline](docs/TECH_STACK.md), [roadmap](docs/ROADMAP.md), and [validation plan](docs/VALIDATION_PLAN.md). The companion console is [Pagurus](https://github.com/2648782102/pagurus). Chinese: [README.zh-CN.md](README.zh-CN.md).
+See [architecture](docs/ARCHITECTURE.md), [technology baseline](docs/TECH_STACK.md), [roadmap](docs/ROADMAP.md), and [validation plan](docs/VALIDATION_PLAN.md). The companion console is [Pagurus](https://github.com/2648782102/pagurus). Chinese: [README.zh-CN.md](README.zh-CN.md), [quick start](docs/QUICK_START.zh-CN.md), and [v1.0.0 release notes](docs/RELEASE_NOTES_1.0.0.zh-CN.md).
 
 ## AI-first development
 

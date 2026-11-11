@@ -290,6 +290,15 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('README.md'), /ADR 0021 adds an opt-in live loopback acceptance test/);
   assert.match(read('README.zh-CN.md'), /ADR 0021/);
   assert.match(read('README.zh-CN.md'), /真实 loopback HTTP 验收/);
+  assert.match(read('README.md'), /quick start/);
+  assert.match(read('README.md'), /v1\.0\.0 release notes/);
+  assert.match(read('README.zh-CN.md'), /快速开始/);
+  assert.match(read('README.zh-CN.md'), /v1\.0\.0 发布说明/);
+  assert.match(read('docs/AI_HANDOFF.md'), /Chinese release and quick-start documents/);
+  assert.match(read('docs/QUICK_START.zh-CN.md'), /AI-first 开发顺序/);
+  assert.match(read('docs/QUICK_START.zh-CN.md'), /契约事实源/);
+  assert.match(read('docs/RELEASE_NOTES_1.0.0.zh-CN.md'), /中文发布说明/);
+  assert.match(read('docs/RELEASE_NOTES_1.0.0.zh-CN.md'), /本 Release 同时附带上述中文文档资产/);
   const validationPlan = read('docs/VALIDATION_PLAN.md');
   assert.match(validationPlan, /ADR 0021's opt-in paired-runtime acceptance/);
   assert.match(validationPlan, /Real-provider conformance, visual\/manual UI validation/);
