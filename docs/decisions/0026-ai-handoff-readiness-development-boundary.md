@@ -33,7 +33,7 @@ Consequences: a small documentation and test slice; no runtime behavior changes.
 3. Each status file classifies records as `implemented`, `validation_evidence`, or `blocked_direction`. Only `implemented` records describe current behavior. `blocked_direction.requiresAcceptedAdr` is mandatory and must be true.
 4. `docs/AI_TASK_QUEUE.md` records that the local-first target is closed and that the next executable slices are interface validation and persistence hardening. Cross-process secrets, real external Sources, executable tools, additional provider adapters, history contracts, and composition evolution remain separate ADR-gated directions.
 5. Both repositories' repository guardrails parse their status JSON, assert the version, path count, frozen public-contract flag, implemented-versus-planned separation, and ADR gate, and check that the Chinese target-mode brief and entry documents link the packet.
-6. The Chinese release and quick-start documents remain reading entry points. English repository documents, `docs/openapi.yaml`, and accepted ADRs remain the source of truth.
+6. The Chinese quick-start remains a reading entry point. The `v1.0.0` release notes and attached Release assets remain an immutable publication snapshot and do not link post-release artifacts. English repository documents, `docs/openapi.yaml`, and accepted ADRs remain the source of truth.
 
 ## Executable boundary
 

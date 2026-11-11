@@ -523,13 +523,17 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
     'docs/AI_DEVELOPMENT.md',
     'docs/AI_TASK_QUEUE.md',
     'docs/QUICK_START.zh-CN.md',
-    'docs/RELEASE_NOTES_1.0.0.zh-CN.md',
   ]) {
     assert.match(read(file), /PROJECT_STATUS\.json/, `${file} must link the machine-readable status`);
     assert.match(read(file), /OBJECTIVE_MODE\.zh-CN\.md/, `${file} must link the Chinese objective brief`);
   }
   assert.match(read('docs/AI_TASK_QUEUE.md'), /Target-mode entry/);
   assert.match(read('README.md'), /accepted ADRs \[0010–0026\]/);
+  assert.doesNotMatch(
+    read('docs/RELEASE_NOTES_1.0.0.zh-CN.md'),
+    /OBJECTIVE_MODE\.zh-CN\.md|PROJECT_STATUS\.json|ADR 0026/,
+    'the v1.0.0 release notes must remain an immutable publication snapshot',
+  );
 });
 
 test('the public contract remains loopback-only and records accepted task routes', () => {
