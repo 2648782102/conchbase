@@ -15,6 +15,30 @@ interface PackageLock {
   readonly packages?: Record<string, unknown>;
 }
 
+interface ProjectStatus {
+  readonly schemaVersion: number;
+  readonly repository: string;
+  readonly release: string;
+  readonly objectiveMode: string;
+  readonly developmentBoundaryAdr: string;
+  readonly publicContract: {
+    readonly version: string;
+    readonly pathCount: number;
+    readonly frozen: boolean;
+  };
+  readonly implemented: readonly { readonly id: string }[];
+  readonly validationEvidence: readonly { readonly id: string; readonly executableFixture?: boolean }[];
+  readonly blockedDirections: readonly {
+    readonly id: string;
+    readonly requiresAcceptedAdr: boolean;
+  }[];
+  readonly nextBoundedSlices: readonly {
+    readonly id: string;
+    readonly publicContractChange: boolean;
+    readonly requiresAcceptedAdr: boolean;
+  }[];
+}
+
 const forbiddenPackages: readonly string[] = [
   'better-sqlite3',
   'sqlite3',
@@ -196,6 +220,33 @@ function assertDependencyBoundaries(
   }
 }
 
+function assertProjectStatus(source: string, label: string): void {
+  const status = JSON.parse(source) as ProjectStatus;
+  assert.equal(status.schemaVersion, 1, `${label} must use status schema version 1`);
+  assert.equal(status.repository, 'conchbase', `${label} must identify the runtime repository`);
+  assert.equal(status.release, '1.0.0', `${label} must record the current release`);
+  assert.equal(status.objectiveMode, 'target-mode', `${label} must record target mode`);
+  assert.equal(status.developmentBoundaryAdr, '0026-ai-handoff-readiness-development-boundary.md');
+  assert.equal(status.publicContract.version, '1.0.0');
+  assert.equal(status.publicContract.pathCount, 47);
+  assert.equal(status.publicContract.frozen, true);
+  assert.ok(status.implemented.some((record) => record.id === 'local-first-v1-platform'));
+  assert.equal(
+    status.validationEvidence.some((record) => record.id === 'local-first-e2e-walkthrough' && !record.executableFixture),
+    true,
+    `${label} must keep the completed walkthrough as non-executable validation evidence`,
+  );
+  assert.ok(status.blockedDirections.length >= 5, `${label} must record ADR-gated directions`);
+  for (const direction of status.blockedDirections) {
+    assert.equal(direction.requiresAcceptedAdr, true, `${direction.id} must require an accepted ADR`);
+  }
+  assert.ok(status.nextBoundedSlices.length > 0, `${label} must record executable next slices`);
+  for (const slice of status.nextBoundedSlices) {
+    assert.equal(slice.publicContractChange, false, `${slice.id} must not change the public contract`);
+    assert.equal(slice.requiresAcceptedAdr, false, `${slice.id} must be executable without a new ADR`);
+  }
+}
+
 test('AI-first entry documents describe the implemented real-model slice', () => {
   const agents = read('AGENTS.md');
   for (const phrase of [
@@ -208,6 +259,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
     "Do not let a UI read or write Conchbase's private files or database.",
     'Run `npm run check`, `npm test`, and `npm run build` after code changes.',
     'Keep `tests/repository-guardrails.test.ts` passing; update it only alongside an accepted ADR or a documented development-boundary change.',
+    'Read `docs/PROJECT_STATUS.json` before selecting a task; `blockedDirections` are not implemented behavior and require an accepted ADR.',
   ]) {
     assert.ok(agents.includes(phrase), `AGENTS.md must keep: ${phrase}`);
   }
@@ -286,7 +338,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('README.zh-CN.md'), /仍在最终本地优先目标之外/);
   assert.match(read('README.zh-CN.md'), /ADR 0018/);
   assert.match(read('README.zh-CN.md'), /ADR 0019/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0025\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0026\]/);
   assert.match(read('README.md'), /ADR 0021 adds an opt-in live loopback acceptance test/);
   assert.match(read('README.zh-CN.md'), /ADR 0021/);
   assert.match(read('README.zh-CN.md'), /真实 loopback HTTP 验收/);
@@ -441,6 +493,43 @@ test('decision records separate accepted phase-1 direction from proposals', () =
     read(`${decisionsDir}/0025-local-first-v1-platform.md`),
     /process-scoped AES-256-GCM key/,
   );
+  assert.match(
+    read(`${decisionsDir}/0026-ai-handoff-readiness-development-boundary.md`),
+    /^Status: \*\*accepted repository development boundary; no public API contract changes\*\*$/m,
+  );
+  assert.match(
+    read(`${decisionsDir}/0026-ai-handoff-readiness-development-boundary.md`),
+    /does not change `docs\/openapi\.yaml`/,
+  );
+});
+
+test('target-mode status and Chinese objective brief are machine-checkable entry artifacts', () => {
+  assertProjectStatus(read('docs/PROJECT_STATUS.json'), 'docs/PROJECT_STATUS.json');
+
+  const objective = read('docs/OBJECTIVE_MODE.zh-CN.md');
+  assert.match(objective, /最终目标状态/);
+  assert.match(objective, /立刻能做什么/);
+  assert.match(objective, /必须先立 ADR 才能做什么/);
+  assert.match(objective, /辩证取舍/);
+  assert.match(objective, /PROJECT_STATUS\.json/);
+  assert.match(objective, /ADR 0026/);
+  assert.match(objective, /不变量/);
+
+  for (const file of [
+    'AGENTS.md',
+    'README.md',
+    'README.zh-CN.md',
+    'docs/AI_HANDOFF.md',
+    'docs/AI_DEVELOPMENT.md',
+    'docs/AI_TASK_QUEUE.md',
+    'docs/QUICK_START.zh-CN.md',
+    'docs/RELEASE_NOTES_1.0.0.zh-CN.md',
+  ]) {
+    assert.match(read(file), /PROJECT_STATUS\.json/, `${file} must link the machine-readable status`);
+    assert.match(read(file), /OBJECTIVE_MODE\.zh-CN\.md/, `${file} must link the Chinese objective brief`);
+  }
+  assert.match(read('docs/AI_TASK_QUEUE.md'), /Target-mode entry/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0026\]/);
 });
 
 test('the public contract remains loopback-only and records accepted task routes', () => {
@@ -671,6 +760,24 @@ test('guardrail helpers reject representative boundary violations', () => {
     '  /v1/health:',
     '    post:',
   ].join('\n');
+  const invalidStatus = {
+    schemaVersion: 1,
+    repository: 'conchbase',
+    release: '1.0.0',
+    objectiveMode: 'target-mode',
+    developmentBoundaryAdr: '0026-ai-handoff-readiness-development-boundary.md',
+    publicContract: { version: '1.0.0', pathCount: 47, frozen: true },
+    implemented: [{ id: 'local-first-v1-platform' }, { id: 'stable-cross-process-secrets' }],
+    validationEvidence: [{ id: 'local-first-e2e-walkthrough', executableFixture: false }],
+    blockedDirections: [
+      { id: 'stable-cross-process-secrets', requiresAcceptedAdr: false },
+      { id: 'real-external-sources', requiresAcceptedAdr: true },
+      { id: 'executable-tools', requiresAcceptedAdr: true },
+      { id: 'production-remote-pairing', requiresAcceptedAdr: true },
+      { id: 'generated-clients', requiresAcceptedAdr: true },
+    ],
+    nextBoundedSlices: [{ id: 'validation', publicContractChange: false, requiresAcceptedAdr: false }],
+  };
 
   assert.throws(
     () => assertNoForbiddenImportIn(syntheticForbiddenImport, 'synthetic'),
@@ -691,6 +798,10 @@ test('guardrail helpers reject representative boundary violations', () => {
   assert.throws(
     () => assertRuntimeBoundary(syntheticRuntimeImport, 'synthetic'),
     /must stay independent of Fastify/,
+  );
+  assert.throws(
+    () => assertProjectStatus(JSON.stringify(invalidStatus), 'synthetic'),
+    /stable-cross-process-secrets must require an accepted ADR/,
   );
 
   const badDevManifest: PackageManifest = {

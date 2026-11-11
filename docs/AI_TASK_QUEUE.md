@@ -2,6 +2,14 @@
 
 This queue is for coding models continuing from the repository. It records bounded work and current repository facts. It is not a release plan and does not accept new public contracts.
 
+## Target-mode entry
+
+The final local-first `1.0.0` target is closed. Read the machine-readable [project status](PROJECT_STATUS.json) and the Chinese [objective-mode brief](OBJECTIVE_MODE.zh-CN.md) before selecting a task from the historical sections below. [ADR 0026](decisions/0026-ai-handoff-readiness-development-boundary.md) accepts these artifacts as a development boundary only; English repository documents, `docs/openapi.yaml`, and accepted ADRs remain the source of truth.
+
+Current state has three distinct record classes: `implemented`, `validationEvidence`, and `blockedDirections`. A completed walkthrough is validation evidence, not an executable fixture or an implemented feature. Every `blockedDirections` item has `requiresAcceptedAdr: true`; do not implement stable cross-process secrets, real external Sources, executable tools, production remote pairing, or generated clients by silently extending the frozen 47-path contract.
+
+The next executable, non-public-contract slices are separate interface validation (real-provider conformance and automated accessibility fixtures) and persistence hardening (supported-platform, WAL recovery, retention, and migration fixtures). ADR-gated product expansion remains listed below and must not be inferred from the exact order of this queue.
+
 ## Current state
 
 - [ADR 0010](decisions/0010-first-real-model-slice.md) accepts phase-1 direction: Conchbase owns the agent loop and uses Magpie as the first compatibility implementation for real-model calls; this is not the product's sole provider or future Agent model contract. Durable events plus explicit retry cover interruption. A process restart recognizes interrupted work; it does not continue an in-flight model request.

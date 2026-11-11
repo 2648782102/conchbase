@@ -69,11 +69,11 @@ curl -X POST http://127.0.0.1:4318/v1/tasks \
 - Skill 只提供指令，不授予工具权限；第一阶段会拒绝模型发起的工具调用。
 - 公开的工具请求/审批决策只是持久台账状态，绝不是执行许可。临时的供应商观察值只是未受信任的规范化数据，也绝不是执行许可。
 
-架构、技术栈、路线图和验证计划见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/TECH_STACK.md](docs/TECH_STACK.md)、[docs/ROADMAP.md](docs/ROADMAP.md) 和 [docs/VALIDATION_PLAN.md](docs/VALIDATION_PLAN.md)。配套控制台：[Pagurus 寄居蟹](https://github.com/2648782102/pagurus)。中文文档：[快速开始](docs/QUICK_START.zh-CN.md)、[v1.0.0 发布说明](docs/RELEASE_NOTES_1.0.0.zh-CN.md)。English: [README.md](README.md).
+架构、技术栈、路线图和验证计划见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/TECH_STACK.md](docs/TECH_STACK.md)、[docs/ROADMAP.md](docs/ROADMAP.md) 和 [docs/VALIDATION_PLAN.md](docs/VALIDATION_PLAN.md)。配套控制台：[Pagurus 寄居蟹](https://github.com/2648782102/pagurus)。中文文档：[快速开始](docs/QUICK_START.zh-CN.md)、[目标模式接手说明](docs/OBJECTIVE_MODE.zh-CN.md)、[v1.0.0 发布说明](docs/RELEASE_NOTES_1.0.0.zh-CN.md)。English: [README.md](README.md).
 
 ## 面向 AI 开发
 
-本项目主要由 AI 编码 Agent 开发，代码结构、说明和验证流程优先服务于 AI 快速理解、完成边界清楚的改动并确定性验证；不把后续由人类接手作为产品要求。先读根目录 [`AGENTS.md`](AGENTS.md)，再读 [AI 交接说明](docs/AI_HANDOFF.md)、[ADR 0010](docs/decisions/0010-first-real-model-slice.md)、[ADR 0011](docs/decisions/0011-phase-one-database-instance-ownership.md)、[ADR 0012](docs/decisions/0012-streaming-output-progress.md)、[ADR 0013](docs/decisions/0013-bounded-tool-capability-kernel.md)、[ADR 0014](docs/decisions/0014-versioned-configuration-api.md)、[ADR 0015](docs/decisions/0015-composition-identity-kernel.md)、[ADR 0016](docs/decisions/0016-composition-execution-and-public-schema.md)、[ADR 0017](docs/decisions/0017-public-tool-request-approval-ledger.md)、[ADR 0018](docs/decisions/0018-provider-tool-call-parsing-boundary.md)、[ADR 0019](docs/decisions/0019-explicit-provider-tool-call-observation-boundary.md)、[ADR 0020](docs/decisions/0020-multi-agent-and-provider-neutral-model-contract.md)、[ADR 0021](docs/decisions/0021-cross-repository-paired-runtime-acceptance.md)、[开发约定](docs/AI_DEVELOPMENT.md) 和 [任务队列](docs/AI_TASK_QUEUE.md)。
+本项目主要由 AI 编码 Agent 开发，代码结构、说明和验证流程优先服务于 AI 快速理解、完成边界清楚的改动并确定性验证；不把后续由人类接手作为产品要求。先读根目录 [`AGENTS.md`](AGENTS.md)，再读 [AI 交接说明](docs/AI_HANDOFF.md)、[机器可读项目状态](docs/PROJECT_STATUS.json)、[目标模式接手说明](docs/OBJECTIVE_MODE.zh-CN.md)、已接受 ADR、[开发约定](docs/AI_DEVELOPMENT.md) 和 [任务队列](docs/AI_TASK_QUEUE.md)。
 
 实现下一产品切片前必须读 [ADR 0025](docs/decisions/0025-local-first-v1-platform.md) 与 `docs/AI_HANDOFF.md`；最终本地优先闭环已经实现。新增真实 Source、外部写入、工具执行、跨进程密钥托管或稳定密钥源，都需要新的已接受 ADR。
 

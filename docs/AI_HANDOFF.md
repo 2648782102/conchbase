@@ -2,7 +2,7 @@
 
 > **AI-first project:** Conchbase is developed primarily by AI coding agents. Optimize the repository for fast, accurate agent context loading, bounded changes, and deterministic validation; human handoff is not a product requirement. Keep implementation explicit, typed, and easy to inspect. Start with `AGENTS.md`, then follow this handoff.
 
-Chinese release and quick-start documents are available in [README.zh-CN.md](../README.zh-CN.md), [QUICK_START.zh-CN.md](QUICK_START.zh-CN.md), and [RELEASE_NOTES_1.0.0.zh-CN.md](RELEASE_NOTES_1.0.0.zh-CN.md). English repository documents, OpenAPI, and accepted ADRs remain the source of truth.
+Chinese release and quick-start documents are available in [README.zh-CN.md](../README.zh-CN.md), [QUICK_START.zh-CN.md](QUICK_START.zh-CN.md), and [RELEASE_NOTES_1.0.0.zh-CN.md](RELEASE_NOTES_1.0.0.zh-CN.md). For target mode, read the machine-readable [project status](PROJECT_STATUS.json) and the Chinese [objective-mode brief](OBJECTIVE_MODE.zh-CN.md) immediately after this handoff; they separate implemented behavior, validation evidence, and ADR-gated directions. English repository documents, OpenAPI, and accepted ADRs remain the source of truth.
 
 This document is the starting packet for a coding model that has not seen the design conversation. It describes repository facts and accepted boundaries; roadmap items are not implemented features.
 
@@ -23,6 +23,7 @@ The exact OpenAPI path set is forty-seven paths. The work contract is version 2 
 
 1. `AGENTS.md` — mandatory coding constraints and AI-first development rule.
 2. This handoff, then `docs/AI_DEVELOPMENT.md`.
+3. `docs/PROJECT_STATUS.json` and `docs/OBJECTIVE_MODE.zh-CN.md` — current target-mode state and bounded-slice index. Read these before selecting a task.
 3. [ADR 0010](decisions/0010-first-real-model-slice.md) — accepted phase-1 direction, trade-offs, and explicit non-goals.
 4. [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md) — accepted phase-1 single-instance persistence boundary.
 5. [ADR 0012](decisions/0012-streaming-output-progress.md) — accepted streaming progress contract and non-goals.

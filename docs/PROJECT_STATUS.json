@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "repository": "conchbase",
+  "pairedRepository": "pagurus",
+  "project": "Conchbase / 海螺",
+  "release": "1.0.0",
+  "statusUpdatedAt": "2026-11-11",
+  "objectiveMode": "target-mode",
+  "developmentBoundaryAdr": "0026-ai-handoff-readiness-development-boundary.md",
+  "publicContract": {
+    "openApi": "docs/openapi.yaml",
+    "version": "1.0.0",
+    "pathCount": 47,
+    "frozen": true,
+    "workContractVersion": 2,
+    "databaseUserVersion": 3,
+    "sourceOfTruth": [
+      "docs/openapi.yaml",
+      "docs/API.md",
+      "docs/decisions/"
+    ]
+  },
+  "aiEntry": {
+    "requiredOrder": [
+      "AGENTS.md",
+      "docs/AI_HANDOFF.md",
+      "docs/PROJECT_STATUS.json",
+      "docs/OBJECTIVE_MODE.zh-CN.md",
+      "docs/AI_DEVELOPMENT.md",
+      "docs/AI_TASK_QUEUE.md"
+    ],
+    "chineseReadingEntry": [
+      "README.zh-CN.md",
+      "docs/QUICK_START.zh-CN.md",
+      "docs/RELEASE_NOTES_1.0.0.zh-CN.md"
+    ],
+    "humanHandoffIsProductRequirement": false
+  },
+  "implemented": [
+    {
+      "id": "runtime-authority",
+      "summary": "Conchbase owns the agent loop, Agent identities/revisions, task state, durable work, permissions, and private SQLite state.",
+      "evidence": "docs/decisions/0001-runtime-as-execution-authority.md"
+    },
+    {
+      "id": "local-first-v1-platform",
+      "summary": "The exact 47-path local-first 1.0.0 platform is implemented, including authentication metadata, work control, recovery, one local Source, capability records, and process-scoped write-only SecretHandles.",
+      "evidence": "docs/decisions/0025-local-first-v1-platform.md"
+    },
+    {
+      "id": "ai-first-development",
+      "summary": "Architecture, documentation, and validation are optimized for AI coding agents; human handoff is not a product requirement.",
+      "evidence": "AGENTS.md"
+    },
+    {
+      "id": "paired-client",
+      "summary": "Pagurus implements the paired 1.0.0 control client through published Runtime routes and capability gates.",
+      "evidence": "https://github.com/2648782102/pagurus/blob/main/docs/decisions/0010-final-local-first-client.md"
+    }
+  ],
+  "validationEvidence": [
+    {
+      "id": "three-command-ci",
+      "summary": "Both repositories run npm run check, npm test, and npm run build in CI.",
+      "commands": [
+        "npm run check",
+        "npm test",
+        "npm run build"
+      ]
+    },
+    {
+      "id": "paired-runtime-acceptance",
+      "summary": "An executable opt-in live loopback test covers two Agents, pinned revisions, configuration history, legacy tasks, cancellation, interruption, retry, and event replay.",
+      "evidence": "tests/agent-paired-runtime.test.ts"
+    },
+    {
+      "id": "local-first-e2e-walkthrough",
+      "summary": "A completed 54-request local loopback E2E walkthrough is documented as validation evidence, not as an executable repository fixture.",
+      "evidence": "docs/VALIDATION_PLAN.md",
+      "executableFixture": false
+    }
+  ],
+  "blockedDirections": [
+    {
+      "id": "stable-cross-process-secrets",
+      "summary": "OS-managed key custody, replayable encrypted-at-rest values, and production revocation.",
+      "requiresAcceptedAdr": true,
+      "requiresPairedClientAdr": true
+    },
+    {
+      "id": "real-external-sources",
+      "summary": "External Sources, real Outbox writes, external side effects, and crash-safe reconciliation.",
+      "requiresAcceptedAdr": true
+    },
+    {
+      "id": "executable-tools",
+      "summary": "Real tool authorization, executor isolation, MCP lifecycle, Skill/plugin loading, and crash-safe side effects.",
+      "requiresAcceptedAdr": true
+    },
+    {
+      "id": "production-remote-pairing",
+      "summary": "Production remote pairing UX, deployment validation, hardened token lifecycle, and cloud deployment.",
+      "requiresAcceptedAdr": true
+    },
+    {
+      "id": "generated-clients",
+      "summary": "Generated client types built from a separately accepted stable schema contract.",
+      "requiresAcceptedAdr": true
+    }
+  ],
+  "nextBoundedSlices": [
+    {
+      "id": "interface-validation",
+      "summary": "Add separate real-provider conformance and automated accessibility fixtures without changing the public contract.",
+      "publicContractChange": false,
+      "requiresAcceptedAdr": false
+    },
+    {
+      "id": "persistence-hardening",
+      "summary": "Add supported-platform CI, WAL crash recovery, retention, and migration fixtures after accepting the persistence test boundary.",
+      "publicContractChange": false,
+      "requiresAcceptedAdr": false
+    }
+  ],
+  "invariants": [
+    "Never expose SecretHandle plaintext to a model, client, event, log, error, configuration document, or generic resolver.",
+    "Never execute a tool outside the runtime policy and approval path.",
+    "Keep default binding loopback-only; non-loopback binding requires explicit approved pairing/authentication.",
+    "Do not let a UI read or write Conchbase private files or database.",
+    "Do not hardcode a canonical Agent topology; user-authored composition remains topology-neutral.",
+    "Distinguish implemented behavior from roadmap and validation evidence."
+  ]
+}

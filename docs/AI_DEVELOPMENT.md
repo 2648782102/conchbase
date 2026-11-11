@@ -8,7 +8,7 @@ Prefer explicit types, local ownership, small vertical slices, and executable ch
 
 ## Change loop
 
-1. Read `AGENTS.md`, this guide, and the owning architecture/API document. Treat the current repository state as authoritative.
+1. Read `AGENTS.md`, `docs/AI_HANDOFF.md`, `docs/PROJECT_STATUS.json`, `docs/OBJECTIVE_MODE.zh-CN.md`, this guide, and the owning architecture/API document. Treat the current repository state as authoritative. Do not select a `blockedDirections` item without an accepted ADR.
 2. Inspect `git status` and the files in the affected slice before editing. Preserve unrelated user changes.
 3. Make the smallest end-to-end change that satisfies the task. Update OpenAPI and adjacent docs whenever current API behavior changes.
 4. Run `npm run check`, `npm test`, and `npm run build`. Do not claim behavior that is only planned.

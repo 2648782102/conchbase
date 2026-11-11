@@ -2,7 +2,7 @@
 
 This project is built primarily by AI coding agents. Optimize architecture, documentation, and validation for agents to understand, change, and verify bounded tasks quickly. Human handoff is not a product requirement. Keep code explicit and legible; this principle is not permission for opaque code or speculative abstraction.
 
-Read `docs/AI_HANDOFF.md` first, then `docs/AI_DEVELOPMENT.md` and the linked architecture, API, and technology documents. Treat the Git repository as the source of truth; do not rely on context from another chat.
+Read `docs/AI_HANDOFF.md` first, then `docs/PROJECT_STATUS.json`, `docs/OBJECTIVE_MODE.zh-CN.md`, `docs/AI_DEVELOPMENT.md`, and the linked architecture, API, and technology documents. Treat the Git repository as the source of truth; do not rely on context from another chat.
 
 ## Product invariants
 
@@ -25,6 +25,7 @@ Read `docs/AI_HANDOFF.md` first, then `docs/AI_DEVELOPMENT.md` and the linked ar
 - Do not introduce real credentials, user data, external service calls, or machine-specific paths.
 - Before changing an unresolved decision in `docs/AI_HANDOFF.md`, surface the trade-off and record the decision.
 - Keep `tests/repository-guardrails.test.ts` passing; update it only alongside an accepted ADR or a documented development-boundary change.
+- Read `docs/PROJECT_STATUS.json` before selecting a task; `blockedDirections` are not implemented behavior and require an accepted ADR.
 - Read `src/runtime/work-contract.ts` and `src/runtime/work-store.ts` before changing durable-work state; do not add a canonical topology, secret resolver, external write, or second SQLite owner.
 - Run `npm run check`, `npm test`, and `npm run build` after code changes. CI runs all three commands.
 
