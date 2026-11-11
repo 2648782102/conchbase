@@ -59,7 +59,7 @@ ADR 0025 implements asynchronous control, restart reconciliation, a deterministi
 - Publish a TypeScript client from the stable API contract.
 - Add SSE or an ACP compatibility adapter where client support is useful.
 - Add supported-platform storage CI, migrations, WAL crash recovery, event retention, and multi-process ownership checks.
-- Add pairing and authenticated remote access before enabling network binding.
+- Keep ADR 0025's explicit authenticated non-loopback opt-in; add production remote pairing UX, deployment validation, and hardened token lifecycle only through a separate accepted ADR.
 
 ## Later
 

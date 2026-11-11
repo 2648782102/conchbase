@@ -86,7 +86,7 @@ The first collection/editor and task-binding slice is closed by ADR 0021. ADR 00
 - **Persistence hardening.** Add supported OS/architecture/Node CI coverage, migrations, WAL crash recovery, retention, and multi-process ownership before calling the storage layer production-ready.
 - **Magpie compatibility.** Keep the existing adapter working and covered by regression fixtures while defining the provider-neutral adapter contract. Do not make upstream Magpie Agents-page integration a prerequisite for Agent management through Conchbase.
 - **Authoritative client reads.** Replace direct CLI database reads with a documented Runtime API path after API parity and authentication direction are accepted. Keep the single-owner lock until that contract exists.
-- **SSE compatibility and remote access.** Accept cursor, retention, and reconnect semantics before SSE; design authentication and pairing before remote binding.
+- **SSE compatibility and production remote UX.** Accept cursor, retention, and reconnect semantics before SSE; production remote pairing UX, deployment validation, and hardened token lifecycle require a separate accepted ADR. ADR 0025 already implements authenticated non-loopback opt-in over pairing/token metadata.
 
 ## Blocked until direction
 
@@ -95,7 +95,7 @@ The first collection/editor and task-binding slice is closed by ADR 0021. ADR 00
 - Model-driven tool execution, public tool execution routes, real host tools, MCP servers, Skills granting tools, arbitrary plugin loading, crash-safe side effects, real executor isolation, and streaming tool-call accumulation.
 - Model-driven composition nodes, delegation, concurrency, general scheduling, role registries, cyclic coordination, and automatic continuation of in-flight model or tool work after a crash.
 - Running task-state CLI commands concurrently with `conchbase serve`, or treating SQLite exclusive locking as multi-process support.
-- MCP process lifecycle, per-tool grants, arbitrary plugin loading, remote binding, authentication/pairing, and desktop packaging.
+- MCP process lifecycle, per-tool grants, arbitrary plugin loading, production remote pairing UX, hardened token lifecycle, desktop packaging, and cloud deployment.
 - Pagurus composition forms that present one topology as the only supported shape, or that add a visual builder before its own accepted ADR.
 
 Do not weaken or delete the repository guardrails to bypass this queue. Update them only in the same slice as an accepted ADR or a documented development-boundary change.

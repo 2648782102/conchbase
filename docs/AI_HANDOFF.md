@@ -100,7 +100,7 @@ Do not describe these external layers as implemented. Do not describe the phase-
 - ADR 0022 keeps Sessions and Tasks as implementation details of durable work, but does not reinterpret the current `Task` resource. A future accepted contract must define compatibility and migration.
 - ADR 0023 forbids plaintext secret values and generic model/tool value resolvers. A handle may be used only through a runtime-owned adapter with pinned authorization, an exact operation, and a bound destination.
 - The public composition section is topology-neutral user-authored data. The runtime must not hardcode an agent topology, layer count, role name, or coordination pattern. Link labels are opaque data. The deterministic topological order is a bounded execution fixture rule, not a concurrency, delegation, or authority contract.
-- Bind to loopback only until a reviewed authentication and pairing design exists. The local loopback API is a development boundary, not an authenticated remote deployment design.
+- Default binding remains loopback-only. ADR 0025 implements reviewed pairing/token metadata and an explicit authenticated non-loopback opt-in with an approved bearer-token digest. This is a local-first development boundary, not a production remote pairing UX or deployment design.
 - Do not load arbitrary plugins in-process before isolation and grants are designed.
 
 ## Current API contract
