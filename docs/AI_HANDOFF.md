@@ -41,12 +41,13 @@ The exact OpenAPI path set is forty-seven paths. The work contract is version 2 
 18. [ADR 0024](decisions/0024-durable-work-domain-and-public-api.md) — accepted historical `0.9.0` durable-work slice.
 19. [ADR 0025](decisions/0025-local-first-v1-platform.md) — accepted final `1.0.0` local-first platform contract and implementation boundary.
 20. [ADR 0026](decisions/0026-ai-handoff-readiness-development-boundary.md) — accepted target-mode development boundary; no public API change.
-21. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
-22. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
-23. `docs/TECH_STACK.md` — chosen and deferred technology.
-24. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` plus `0023` — wider intended sequencing and still-open contracts.
-25. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
-26. `src/runtime/work-contract.ts`, `src/runtime/work-store.ts`, `src/runtime/platform-contract.ts`, `src/runtime/platform-store.ts`, `src/http/routes/v1/platform.ts`, and `src/http/routes/v1/work.ts` — the current durable-work domain, persistence, and HTTP boundary.
+21. [ADR 0027](decisions/0027-optional-visual-overview.md) — accepted repository documentation boundary for one optional, non-authoritative human-facing illustration.
+22. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
+23. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
+24. `docs/TECH_STACK.md` — chosen and deferred technology.
+25. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` plus `0023` — wider intended sequencing and still-open contracts.
+26. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
+27. `src/runtime/work-contract.ts`, `src/runtime/work-store.ts`, `src/runtime/platform-contract.ts`, `src/runtime/platform-store.ts`, `src/http/routes/v1/platform.ts`, and `src/http/routes/v1/work.ts` — the current durable-work domain, persistence, and HTTP boundary.
 
 ## Current repository facts
 

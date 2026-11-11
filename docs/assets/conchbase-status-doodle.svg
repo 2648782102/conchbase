@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 980" role="img" aria-labelledby="title desc">
+  <title id="title">Conchbase / Pagurus 当前状态手绘概览</title>
+  <desc id="desc">可选的人类阅读图，展示两仓架构、AI 接手顺序、状态门禁与下一步路线；不是公开 API、配置 schema、ADR 或项目状态的事实源。</desc>
+  <defs>
+    <marker id="arrow" orient="auto" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="8" refY="5">
+      <path d="M1 1L8 5L1 9" fill="none" stroke="#334155" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      .ink { fill: none; stroke: #334155; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      .thin { fill: none; stroke: #94a3b8; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+      .face { fill: #ffffff; stroke: #334155; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      .soft { fill: #eef2ff; stroke: #6366f1; stroke-width: 2; stroke-linejoin: round; }
+      .client { fill: #ecfeff; stroke: #0891b2; stroke-width: 2; stroke-linejoin: round; }
+      .ready { fill: #ecfdf5; stroke: #059669; stroke-width: 2; stroke-linejoin: round; }
+      .proposal { fill: #fffbeb; stroke: #d97706; stroke-width: 2; stroke-linejoin: round; }
+      .blocked { fill: #fef2f2; stroke: #dc2626; stroke-width: 2; stroke-linejoin: round; }
+      .note { fill: #f8fafc; stroke: #94a3b8; stroke-width: 1.5; stroke-linejoin: round; }
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; fill: #0f172a; font-size: 16px; font-weight: 400; }
+      .title { font-size: 22px; font-weight: 600; }
+      .section { font-size: 18px; font-weight: 600; }
+      .strong { font-weight: 600; }
+      .muted { fill: #64748b; font-size: 14px; }
+      .small { font-size: 13px; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+    </style>
+  </defs>
+
+  <rect x="24" y="24" width="1152" height="932" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+  <text x="60" y="70" class="title">Conchbase / Pagurus 当前状态手绘概览</text>
+  <text x="60" y="98" class="muted">可选的人类阅读图，非契约事实源；英文文档、OpenAPI、已接受 ADR 与机器状态索引才是事实源。</text>
+
+  <rect x="60" y="126" width="1080" height="46" rx="12" class="note"/>
+  <text x="80" y="155" class="strong">正式版已发布 · target-mode · frozen Runtime API · 默认 loopback</text>
+  <text x="842" y="155" class="muted">main 后续仅文档与 guardrails</text>
+
+  <text x="60" y="212" class="section">A · 两仓闭环，Runtime 是执行权威</text>
+  <g transform="translate(0 228)">
+    <path d="M74 98 C68 46 122 18 188 26 C254 34 294 78 284 132 C274 186 226 220 170 210 C114 200 80 150 74 98 Z" class="soft"/>
+    <path d="M166 100 C182 70 224 70 234 100 C244 130 214 150 190 138 C168 126 164 94 188 84 C210 74 234 90 232 112 C230 130 210 138 196 128" class="ink"/>
+    <path d="M94 160 Q140 172 184 164 T268 158" class="thin"/>
+    <text x="180" y="248" text-anchor="middle" class="strong">Conchbase 海螺</text>
+    <text x="180" y="274" text-anchor="middle" class="muted">Agent loop · identity · SQLite · permissions</text>
+
+    <rect x="402" y="60" width="220" height="112" rx="18" class="face"/>
+    <text x="512" y="96" text-anchor="middle" class="strong">frozen</text>
+    <text x="512" y="124" text-anchor="middle">Runtime API</text>
+    <text x="512" y="150" text-anchor="middle" class="muted small">versioned · loopback</text>
+
+    <ellipse cx="812" cy="116" rx="76" ry="50" class="client"/>
+    <path d="M752 98 Q728 80 720 100 Q716 116 736 120 M872 98 Q896 80 904 100 Q908 116 888 120" class="ink"/>
+    <path d="M776 152 L762 176 M800 160 L794 184 M824 160 L830 184 M848 152 L862 176" class="ink"/>
+    <circle cx="790" cy="108" r="6" class="face"/>
+    <circle cx="834" cy="108" r="6" class="face"/>
+    <path d="M784 136 Q812 148 840 136" class="thin"/>
+    <text x="812" y="248" text-anchor="middle" class="strong">Pagurus 寄居蟹</text>
+    <text x="812" y="274" text-anchor="middle" class="muted">typed clients · capability gate · no private DB</text>
+
+    <path d="M858 92 C800 74 680 74 620 98" class="ink" marker-end="url(#arrow)"/>
+    <path d="M404 98 C350 82 306 92 282 102" class="ink" marker-end="url(#arrow)"/>
+    <path d="M512 172 C510 208 510 224 510 240" class="ink" marker-end="url(#arrow)"/>
+    <rect x="376" y="242" width="268" height="52" rx="14" class="note"/>
+    <text x="510" y="274" text-anchor="middle" class="muted">CLI · IDE · 第三方界面也是合法客户端</text>
+
+    <rect x="940" y="70" width="168" height="194" rx="14" class="note"/>
+    <text x="958" y="100" class="strong">安全边界</text>
+    <text x="958" y="126" class="muted small">write-only SecretHandle</text>
+    <text x="958" y="150" class="muted small">digest-only receipts</text>
+    <text x="958" y="174" class="muted small">no generic resolver</text>
+    <text x="958" y="198" class="muted small">no tool execution</text>
+    <text x="958" y="222" class="muted small">no plaintext to UI</text>
+  </g>
+
+  <text x="60" y="520" class="section">B · AI 接手：先看机器状态，再看门禁</text>
+  <g transform="translate(0 536)">
+    <rect x="60" y="18" width="170" height="66" rx="14" class="face"/>
+    <text x="145" y="44" text-anchor="middle" class="strong">AGENTS.md</text>
+    <text x="145" y="68" text-anchor="middle" class="muted small">产品不变量</text>
+    <rect x="270" y="18" width="190" height="66" rx="14" class="face"/>
+    <text x="365" y="44" text-anchor="middle" class="strong">AI_HANDOFF.md</text>
+    <text x="365" y="68" text-anchor="middle" class="muted small">展开阅读顺序</text>
+    <rect x="500" y="18" width="230" height="66" rx="14" class="ready"/>
+    <text x="615" y="40" text-anchor="middle" class="strong">机器状态索引</text>
+    <text x="615" y="62" text-anchor="middle" class="strong">中文目标说明</text>
+    <text x="615" y="78" text-anchor="middle" class="muted small">状态索引定义阅读顺序</text>
+    <rect x="770" y="18" width="190" height="66" rx="14" class="face"/>
+    <text x="865" y="44" text-anchor="middle" class="strong">AI_DEVELOPMENT.md</text>
+    <text x="865" y="68" text-anchor="middle" class="muted small">改动闭环</text>
+    <rect x="1000" y="18" width="140" height="66" rx="14" class="face"/>
+    <text x="1070" y="44" text-anchor="middle" class="strong">TASK_QUEUE</text>
+    <text x="1070" y="68" text-anchor="middle" class="muted small">选 bounded slice</text>
+    <path d="M230 51 H270 M460 51 H500 M730 51 H770 M960 51 H1000" class="ink" marker-end="url(#arrow)"/>
+
+    <rect x="60" y="116" width="240" height="96" rx="14" class="ready"/>
+    <text x="80" y="146" class="strong">implemented</text>
+    <text x="80" y="174" class="muted">已实现行为 ✓ 直接读</text>
+    <text x="80" y="198" class="muted small">不把 roadmap 写成事实</text>
+
+    <rect x="320" y="116" width="250" height="96" rx="14" class="client"/>
+    <text x="340" y="146" class="strong">validationEvidence</text>
+    <text x="340" y="174" class="muted">验证证据，不是新功能</text>
+    <text x="340" y="198" class="muted small">walkthrough ≠ executable fixture</text>
+
+    <rect x="590" y="116" width="250" height="96" rx="14" class="blocked"/>
+    <text x="610" y="146" class="strong">blockedDirections</text>
+    <text x="610" y="174" class="muted">必须先接受 ADR ✕</text>
+    <text x="610" y="198" class="muted small">不可从历史队列自行挑做</text>
+
+    <rect x="860" y="116" width="140" height="96" rx="14" class="ready"/>
+    <text x="930" y="146" text-anchor="middle" class="strong">ready</text>
+    <text x="930" y="174" text-anchor="middle" class="muted">可直接执行 ✓</text>
+    <text x="930" y="198" text-anchor="middle" class="muted small">无需新 ADR</text>
+
+    <rect x="1020" y="116" width="120" height="96" rx="14" class="proposal"/>
+    <text x="1080" y="146" text-anchor="middle" class="strong">proposal</text>
+    <text x="1080" y="174" text-anchor="middle" class="muted">先立 ADR ⚠</text>
+    <text x="1080" y="198" text-anchor="middle" class="muted small">具名门禁</text>
+  </g>
+
+  <text x="60" y="760" class="section">C · 下一步：三条路，门禁很清楚</text>
+  <g transform="translate(0 776)">
+    <rect x="60" y="12" width="326" height="142" rx="16" class="ready"/>
+    <text x="80" y="42" class="strong">READY · 可直接做</text>
+    <text x="80" y="68" class="muted small">Conchbase · interface-validation</text>
+    <text x="80" y="92" class="muted small">Pagurus · accessibility fixtures</text>
+    <text x="80" y="116" class="muted small">Pagurus · contract fixtures</text>
+    <text x="80" y="140" class="mono">publicContractChange:false</text>
+
+    <rect x="406" y="12" width="326" height="142" rx="16" class="proposal"/>
+    <text x="426" y="42" class="strong">PROPOSAL · 先立 ADR</text>
+    <text x="426" y="68" class="muted small">persistence-hardening</text>
+    <path d="M430 82 h28 v24 h-28 z M437 82 v-8 a7 7 0 0 1 14 0 v8" class="ink"/>
+    <text x="468" y="98" class="muted small">persistence-test-boundary</text>
+    <text x="426" y="122" class="muted small">platform / WAL / retention / migration</text>
+    <text x="426" y="140" class="mono">requiresAcceptedAdr:true</text>
+
+    <rect x="752" y="12" width="388" height="142" rx="16" class="blocked"/>
+    <text x="772" y="42" class="strong">BLOCKED · 暂不碰</text>
+    <text x="772" y="68" class="muted small">stable secrets · external Sources · executable tools</text>
+    <text x="772" y="92" class="muted small">remote pairing · generated clients · approval UI</text>
+    <text x="772" y="116" class="muted small">tool approval UI · visual composition editor</text>
+    <text x="772" y="140" class="mono">blockedDirections → accepted ADR first</text>
+  </g>
+
+  <text x="60" y="946" class="muted">图只帮助人类快速看懂；不要用它替代 AGENTS.md、机器状态索引、OpenAPI、ADR 或 guardrails。已发布说明与资产保持不可变。</text>
+</svg>

@@ -277,6 +277,24 @@ function assertSequentialHandoffReadOrder(source: string, label: string): void {
   );
 }
 
+function assertStaticVisualOverview(source: string, label: string): void {
+  assert.match(source, /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/, `${label} must be a standalone SVG`);
+  const sourceWithoutNamespace = source.replace(/xmlns="http:\/\/www\.w3\.org\/2000\/svg"/, '');
+  assert.match(source, /role="img"/, `${label} must expose an accessible image role`);
+  assert.match(source, /aria-labelledby="title desc"/, `${label} must include accessible text`);
+  assert.doesNotMatch(source, /<script\b/i, `${label} must not contain scripts`);
+  assert.doesNotMatch(source, /<foreignObject\b/i, `${label} must not contain HTML fragments`);
+  assert.doesNotMatch(sourceWithoutNamespace, /https?:\/\//i, `${label} must not make external references`);
+  assert.doesNotMatch(source, /\bfetch\b|XMLHttpRequest|WebSocket/i, `${label} must not call external services`);
+  assert.doesNotMatch(source, /PROJECT_STATUS\.json|OBJECTIVE_MODE\.zh-CN\.md|aiEntry\.requiredOrder/, `${label} must not enter the AI reading packet`);
+  const visibleText = [...source.matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/g)]
+    .map((match) => match[1])
+    .join('\n');
+  assert.doesNotMatch(visibleText, /\d/, `${label} must not hardcode numeric status claims in visible text`);
+  assert.doesNotMatch(visibleText, /\b(?:113|80|112|79)\b/, `${label} must not hardcode validation counts`);
+  assert.match(source, /非契约事实源|not a contract source of truth/, `${label} must label itself as non-authoritative`);
+}
+
 test('AI-first entry documents describe the implemented real-model slice', () => {
   const agents = read('AGENTS.md');
   for (const phrase of [
@@ -368,7 +386,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('README.zh-CN.md'), /仍在最终本地优先目标之外/);
   assert.match(read('README.zh-CN.md'), /ADR 0018/);
   assert.match(read('README.zh-CN.md'), /ADR 0019/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0026\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0027\]/);
   assert.match(read('README.md'), /ADR 0021 adds an opt-in live loopback acceptance test/);
   assert.match(read('README.zh-CN.md'), /ADR 0021/);
   assert.match(read('README.zh-CN.md'), /真实 loopback HTTP 验收/);
@@ -531,6 +549,10 @@ test('decision records separate accepted phase-1 direction from proposals', () =
     read(`${decisionsDir}/0026-ai-handoff-readiness-development-boundary.md`),
     /does not change `docs\/openapi\.yaml`/,
   );
+  assert.match(
+    read(`${decisionsDir}/0027-optional-visual-overview.md`),
+    /^Status: \*\*accepted repository documentation boundary; no public API contract changes\*\*$/m,
+  );
 });
 
 test('target-mode status and Chinese objective brief are machine-checkable entry artifacts', () => {
@@ -559,7 +581,7 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
     assert.match(read(file), /OBJECTIVE_MODE\.zh-CN\.md/, `${file} must link the Chinese objective brief`);
   }
   assert.match(read('docs/AI_TASK_QUEUE.md'), /Target-mode entry/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0026\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0027\]/);
   assert.match(read('docs/decisions/0026-ai-handoff-readiness-development-boundary.md'), /validationEvidence/);
   assert.match(read('docs/decisions/0026-ai-handoff-readiness-development-boundary.md'), /blockedDirections/);
   assert.match(read('docs/AI_TASK_QUEUE.md'), /status: "proposal"/);
@@ -576,6 +598,28 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
     read('docs/decisions/0026-ai-handoff-readiness-development-boundary.md'),
     /aiEntry\.requiredOrder/,
   );
+  assertStaticVisualOverview(
+    read('docs/assets/conchbase-status-doodle.svg'),
+    'docs/assets/conchbase-status-doodle.svg',
+  );
+  const visualOverview = read('docs/VISUAL_OVERVIEW.zh-CN.md');
+  assert.match(visualOverview, /不是契约事实源/);
+  assert.match(visualOverview, /不参与 guardrail 校验/);
+  assert.doesNotMatch(visualOverview, /aiEntry\.requiredOrder/);
+  assert.match(read('README.md'), /optional \[visual overview\]\(docs\/VISUAL_OVERVIEW\.zh-CN\.md\)/);
+  assert.match(read('README.md'), /not a contract source of truth/);
+  assert.match(read('README.zh-CN.md'), /可选的\[视觉概览\]\(docs\/VISUAL_OVERVIEW\.zh-CN\.md\)/);
+  assert.match(read('README.zh-CN.md'), /不是契约事实源/);
+  for (const file of [
+    'docs/AI_HANDOFF.md',
+    'docs/AI_DEVELOPMENT.md',
+    'docs/AI_TASK_QUEUE.md',
+    'docs/OBJECTIVE_MODE.zh-CN.md',
+    'docs/QUICK_START.zh-CN.md',
+    'docs/RELEASE_NOTES_1.0.0.zh-CN.md',
+  ]) {
+    assert.doesNotMatch(read(file), /VISUAL_OVERVIEW|conchbase-status-doodle\.svg/, `${file} must keep the visual out of the AI reading packet`);
+  }
   assert.doesNotMatch(
     read('docs/RELEASE_NOTES_1.0.0.zh-CN.md'),
     /OBJECTIVE_MODE\.zh-CN\.md|PROJECT_STATUS\.json|ADR 0026/,
