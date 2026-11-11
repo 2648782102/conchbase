@@ -26,6 +26,9 @@ interface ProjectStatus {
     readonly pathCount: number;
     readonly frozen: boolean;
   };
+  readonly aiEntry: {
+    readonly requiredOrder: readonly string[];
+  };
   readonly implemented: readonly { readonly id: string }[];
   readonly validationEvidence: readonly { readonly id: string; readonly executableFixture?: boolean }[];
   readonly blockedDirections: readonly {
@@ -36,6 +39,8 @@ interface ProjectStatus {
     readonly id: string;
     readonly publicContractChange: boolean;
     readonly requiresAcceptedAdr: boolean;
+    readonly status: 'ready' | 'proposal';
+    readonly requiredAdr?: string;
   }[];
 }
 
@@ -230,6 +235,14 @@ function assertProjectStatus(source: string, label: string): void {
   assert.equal(status.publicContract.version, '1.0.0');
   assert.equal(status.publicContract.pathCount, 47);
   assert.equal(status.publicContract.frozen, true);
+  assert.deepEqual(status.aiEntry.requiredOrder, [
+    'AGENTS.md',
+    'docs/AI_HANDOFF.md',
+    'docs/PROJECT_STATUS.json',
+    'docs/OBJECTIVE_MODE.zh-CN.md',
+    'docs/AI_DEVELOPMENT.md',
+    'docs/AI_TASK_QUEUE.md',
+  ], `${label} must record the canonical AI reading order`);
   assert.ok(status.implemented.some((record) => record.id === 'local-first-v1-platform'));
   assert.equal(
     status.validationEvidence.some((record) => record.id === 'local-first-e2e-walkthrough' && !record.executableFixture),
@@ -243,8 +256,25 @@ function assertProjectStatus(source: string, label: string): void {
   assert.ok(status.nextBoundedSlices.length > 0, `${label} must record executable next slices`);
   for (const slice of status.nextBoundedSlices) {
     assert.equal(slice.publicContractChange, false, `${slice.id} must not change the public contract`);
-    assert.equal(slice.requiresAcceptedAdr, false, `${slice.id} must be executable without a new ADR`);
+    if (slice.status === 'ready') {
+      assert.equal(slice.requiresAcceptedAdr, false, `${slice.id} must be executable without a new ADR`);
+      assert.equal(slice.requiredAdr, undefined, `${slice.id} must not name a required ADR`);
+    } else {
+      assert.equal(slice.requiresAcceptedAdr, true, `${slice.id} must require its accepted ADR`);
+      assert.ok(slice.requiredAdr, `${slice.id} must name its required ADR`);
+    }
   }
+}
+
+function assertSequentialHandoffReadOrder(source: string, label: string): void {
+  const section = source.split('## Read in this order')[1]?.split('\n## ')[0];
+  assert.ok(section, `${label} must contain a numbered reading order`);
+  const numbers = [...section.matchAll(/^(\d+)\. /gm)].map((match) => Number(match[1]));
+  assert.deepEqual(
+    numbers,
+    numbers.map((_value, index) => index + 1),
+    `${label} must number its reading order sequentially without duplicates`,
+  );
 }
 
 test('AI-first entry documents describe the implemented real-model slice', () => {
@@ -505,6 +535,7 @@ test('decision records separate accepted phase-1 direction from proposals', () =
 
 test('target-mode status and Chinese objective brief are machine-checkable entry artifacts', () => {
   assertProjectStatus(read('docs/PROJECT_STATUS.json'), 'docs/PROJECT_STATUS.json');
+  assertSequentialHandoffReadOrder(read('docs/AI_HANDOFF.md'), 'docs/AI_HANDOFF.md');
 
   const objective = read('docs/OBJECTIVE_MODE.zh-CN.md');
   assert.match(objective, /最终目标状态/);
@@ -529,6 +560,22 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
   }
   assert.match(read('docs/AI_TASK_QUEUE.md'), /Target-mode entry/);
   assert.match(read('README.md'), /accepted ADRs \[0010–0026\]/);
+  assert.match(read('docs/decisions/0026-ai-handoff-readiness-development-boundary.md'), /validationEvidence/);
+  assert.match(read('docs/decisions/0026-ai-handoff-readiness-development-boundary.md'), /blockedDirections/);
+  assert.match(read('docs/AI_TASK_QUEUE.md'), /status: "proposal"/);
+  for (const file of [
+    'docs/AI_HANDOFF.md',
+    'docs/OBJECTIVE_MODE.zh-CN.md',
+    'docs/QUICK_START.zh-CN.md',
+    'README.md',
+    'README.zh-CN.md',
+  ]) {
+    assert.match(read(file), /aiEntry\.requiredOrder/, `${file} must name the canonical AI reading order`);
+  }
+  assert.match(
+    read('docs/decisions/0026-ai-handoff-readiness-development-boundary.md'),
+    /aiEntry\.requiredOrder/,
+  );
   assert.doesNotMatch(
     read('docs/RELEASE_NOTES_1.0.0.zh-CN.md'),
     /OBJECTIVE_MODE\.zh-CN\.md|PROJECT_STATUS\.json|ADR 0026/,
@@ -764,24 +811,80 @@ test('guardrail helpers reject representative boundary violations', () => {
     '  /v1/health:',
     '    post:',
   ].join('\n');
-  const invalidStatus = {
+  const baseStatus = {
     schemaVersion: 1,
     repository: 'conchbase',
     release: '1.0.0',
     objectiveMode: 'target-mode',
     developmentBoundaryAdr: '0026-ai-handoff-readiness-development-boundary.md',
     publicContract: { version: '1.0.0', pathCount: 47, frozen: true },
+    aiEntry: {
+      requiredOrder: [
+        'AGENTS.md',
+        'docs/AI_HANDOFF.md',
+        'docs/PROJECT_STATUS.json',
+        'docs/OBJECTIVE_MODE.zh-CN.md',
+        'docs/AI_DEVELOPMENT.md',
+        'docs/AI_TASK_QUEUE.md',
+      ],
+    },
     implemented: [{ id: 'local-first-v1-platform' }, { id: 'stable-cross-process-secrets' }],
     validationEvidence: [{ id: 'local-first-e2e-walkthrough', executableFixture: false }],
     blockedDirections: [
-      { id: 'stable-cross-process-secrets', requiresAcceptedAdr: false },
+      { id: 'stable-cross-process-secrets', requiresAcceptedAdr: true },
       { id: 'real-external-sources', requiresAcceptedAdr: true },
       { id: 'executable-tools', requiresAcceptedAdr: true },
       { id: 'production-remote-pairing', requiresAcceptedAdr: true },
       { id: 'generated-clients', requiresAcceptedAdr: true },
     ],
-    nextBoundedSlices: [{ id: 'validation', publicContractChange: false, requiresAcceptedAdr: false }],
+    nextBoundedSlices: [{
+      id: 'validation',
+      publicContractChange: false,
+      requiresAcceptedAdr: false,
+      status: 'ready',
+    }],
   };
+  const statusWithSlice = (slice: Record<string, unknown>) => ({
+    ...baseStatus,
+    nextBoundedSlices: [slice],
+  });
+  const invalidReadingOrder = {
+    ...baseStatus,
+    aiEntry: { requiredOrder: ['AGENTS.md', 'docs/AI_DEVELOPMENT.md'] },
+  };
+  const invalidBlockedStatus = {
+    ...baseStatus,
+    blockedDirections: [
+      { id: 'stable-cross-process-secrets', requiresAcceptedAdr: false },
+      ...baseStatus.blockedDirections.slice(1),
+    ],
+  };
+  const invalidSliceStatus = statusWithSlice({
+    id: 'validation',
+    publicContractChange: false,
+    requiresAcceptedAdr: true,
+    status: 'ready',
+  });
+  const invalidProposalStatus = statusWithSlice({
+    id: 'validation',
+    publicContractChange: false,
+    requiresAcceptedAdr: false,
+    status: 'proposal',
+    requiredAdr: 'persistence-test-boundary',
+  });
+  const invalidProposalMissingAdr = statusWithSlice({
+    id: 'validation',
+    publicContractChange: false,
+    requiresAcceptedAdr: true,
+    status: 'proposal',
+  });
+  const invalidReadyWithAdr = statusWithSlice({
+    id: 'validation',
+    publicContractChange: false,
+    requiresAcceptedAdr: false,
+    status: 'ready',
+    requiredAdr: 'persistence-test-boundary',
+  });
 
   assert.throws(
     () => assertNoForbiddenImportIn(syntheticForbiddenImport, 'synthetic'),
@@ -804,8 +907,32 @@ test('guardrail helpers reject representative boundary violations', () => {
     /must stay independent of Fastify/,
   );
   assert.throws(
-    () => assertProjectStatus(JSON.stringify(invalidStatus), 'synthetic'),
+    () => assertProjectStatus(JSON.stringify(invalidBlockedStatus), 'synthetic'),
     /stable-cross-process-secrets must require an accepted ADR/,
+  );
+  assert.throws(
+    () => assertProjectStatus(JSON.stringify(invalidReadingOrder), 'synthetic'),
+    /must record the canonical AI reading order/,
+  );
+  assert.throws(
+    () => assertProjectStatus(JSON.stringify(invalidSliceStatus), 'synthetic'),
+    /validation must be executable without a new ADR/,
+  );
+  assert.throws(
+    () => assertProjectStatus(JSON.stringify(invalidProposalStatus), 'synthetic'),
+    /validation must require its accepted ADR/,
+  );
+  assert.throws(
+    () => assertProjectStatus(JSON.stringify(invalidProposalMissingAdr), 'synthetic'),
+    /validation must name its required ADR/,
+  );
+  assert.throws(
+    () => assertProjectStatus(JSON.stringify(invalidReadyWithAdr), 'synthetic'),
+    /validation must not name a required ADR/,
+  );
+  assert.throws(
+    () => assertSequentialHandoffReadOrder('## Read in this order\n\n1. A\n1. B\n', 'synthetic'),
+    /must number its reading order sequentially/,
   );
 
   const badDevManifest: PackageManifest = {

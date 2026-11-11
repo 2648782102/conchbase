@@ -2,7 +2,7 @@
 
 > **AI-first project:** Conchbase is developed primarily by AI coding agents. Optimize the repository for fast, accurate agent context loading, bounded changes, and deterministic validation; human handoff is not a product requirement. Keep implementation explicit, typed, and easy to inspect. Start with `AGENTS.md`, then follow this handoff.
 
-Chinese release and quick-start documents are available in [README.zh-CN.md](../README.zh-CN.md), [QUICK_START.zh-CN.md](QUICK_START.zh-CN.md), and [RELEASE_NOTES_1.0.0.zh-CN.md](RELEASE_NOTES_1.0.0.zh-CN.md). For target mode, read the machine-readable [project status](PROJECT_STATUS.json) and the Chinese [objective-mode brief](OBJECTIVE_MODE.zh-CN.md) immediately after this handoff; they separate implemented behavior, validation evidence, and ADR-gated directions. English repository documents, OpenAPI, and accepted ADRs remain the source of truth.
+Chinese release and quick-start documents are available in [README.zh-CN.md](../README.zh-CN.md), [QUICK_START.zh-CN.md](QUICK_START.zh-CN.md), and [RELEASE_NOTES_1.0.0.zh-CN.md](RELEASE_NOTES_1.0.0.zh-CN.md). For target mode, read the machine-readable [project status](PROJECT_STATUS.json) and the Chinese [objective-mode brief](OBJECTIVE_MODE.zh-CN.md) immediately after this handoff; they separate implemented behavior, validation evidence, and ADR-gated directions. `PROJECT_STATUS.json`'s `aiEntry.requiredOrder` is the canonical AI reading order; this numbered list expands it. English repository documents, OpenAPI, and accepted ADRs remain the source of truth.
 
 This document is the starting packet for a coding model that has not seen the design conversation. It describes repository facts and accepted boundaries; roadmap items are not implemented features.
 
@@ -22,30 +22,31 @@ The exact OpenAPI path set is forty-seven paths. The work contract is version 2 
 ## Read in this order
 
 1. `AGENTS.md` — mandatory coding constraints and AI-first development rule.
-2. This handoff, then `docs/AI_DEVELOPMENT.md`.
-3. `docs/PROJECT_STATUS.json` and `docs/OBJECTIVE_MODE.zh-CN.md` — current target-mode state and bounded-slice index. Read these before selecting a task.
-3. [ADR 0010](decisions/0010-first-real-model-slice.md) — accepted phase-1 direction, trade-offs, and explicit non-goals.
-4. [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md) — accepted phase-1 single-instance persistence boundary.
-5. [ADR 0012](decisions/0012-streaming-output-progress.md) — accepted streaming progress contract and non-goals.
-6. [ADR 0013](decisions/0013-bounded-tool-capability-kernel.md) — accepted internal tool capability kernel; no public tool execution.
-7. [ADR 0014](decisions/0014-versioned-configuration-api.md) — accepted `0.4.0` `schemaVersion: 1` configuration document.
-8. [ADR 0015](decisions/0015-composition-identity-kernel.md) — accepted internal topology-neutral composition identity and sequencing.
-9. [ADR 0016](decisions/0016-composition-execution-and-public-schema.md) — accepted `0.5.0` v1/v2 configuration union, deterministic composition execution, node events, and cancellation.
-10. [ADR 0017](decisions/0017-public-tool-request-approval-ledger.md) — accepted `0.6.0` public tool request/approval ledger; durable audit, no tool execution.
-11. [ADR 0018](decisions/0018-provider-tool-call-parsing-boundary.md) — accepted internal provider tool-call parser; no execution and no public API change.
-12. [ADR 0019](decisions/0019-explicit-provider-tool-call-observation-boundary.md) — accepted `0.7.0` explicit provider observation boundary; transient normalization, no auto-ledger, no execution.
-13. [ADR 0020](decisions/0020-multi-agent-and-provider-neutral-model-contract.md) — accepted Agent resource, provider-neutral catalog, task binding, and additive migration.
-14. [ADR 0021](decisions/0021-cross-repository-paired-runtime-acceptance.md) — accepted deterministic live loopback acceptance boundary; no public API contract change.
-15. [ADR 0022](decisions/0022-persistent-work-runtime-direction.md) — accepted durable, event-driven work direction; no public API change.
-16. [ADR 0023](decisions/0023-secret-handle-and-runtime-injection-proposal.md) — proposed write-only SecretHandle and runtime-mediated use boundary.
-17. [ADR 0024](decisions/0024-durable-work-domain-and-public-api.md) — accepted historical `0.9.0` durable-work slice.
-18. [ADR 0025](decisions/0025-local-first-v1-platform.md) — accepted final `1.0.0` local-first platform contract and implementation boundary.
-19. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
-20. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
-21. `docs/TECH_STACK.md` — chosen and deferred technology.
-22. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` plus `0023` — wider intended sequencing and still-open contracts.
-23. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
-24. `src/runtime/work-contract.ts`, `src/runtime/work-store.ts`, `src/runtime/platform-contract.ts`, `src/runtime/platform-store.ts`, `src/http/routes/v1/platform.ts`, and `src/http/routes/v1/work.ts` — the current durable-work domain, persistence, and HTTP boundary.
+2. This handoff, then `docs/PROJECT_STATUS.json` and `docs/OBJECTIVE_MODE.zh-CN.md` — current target-mode state and bounded-slice index. Read these before selecting a task.
+3. `docs/AI_DEVELOPMENT.md` — the change loop and runtime code boundaries.
+4. [ADR 0010](decisions/0010-first-real-model-slice.md) — accepted phase-1 direction, trade-offs, and explicit non-goals.
+5. [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md) — accepted phase-1 single-instance persistence boundary.
+6. [ADR 0012](decisions/0012-streaming-output-progress.md) — accepted streaming progress contract and non-goals.
+7. [ADR 0013](decisions/0013-bounded-tool-capability-kernel.md) — accepted internal tool capability kernel; no public tool execution.
+8. [ADR 0014](decisions/0014-versioned-configuration-api.md) — accepted `0.4.0` `schemaVersion: 1` configuration document.
+9. [ADR 0015](decisions/0015-composition-identity-kernel.md) — accepted internal topology-neutral composition identity and sequencing.
+10. [ADR 0016](decisions/0016-composition-execution-and-public-schema.md) — accepted `0.5.0` v1/v2 configuration union, deterministic composition execution, node events, and cancellation.
+11. [ADR 0017](decisions/0017-public-tool-request-approval-ledger.md) — accepted `0.6.0` public tool request/approval ledger; durable audit, no tool execution.
+12. [ADR 0018](decisions/0018-provider-tool-call-parsing-boundary.md) — accepted internal provider tool-call parser; no execution and no public API change.
+13. [ADR 0019](decisions/0019-explicit-provider-tool-call-observation-boundary.md) — accepted `0.7.0` explicit provider observation boundary; transient normalization, no auto-ledger, no execution.
+14. [ADR 0020](decisions/0020-multi-agent-and-provider-neutral-model-contract.md) — accepted Agent resource, provider-neutral catalog, task binding, and additive migration.
+15. [ADR 0021](decisions/0021-cross-repository-paired-runtime-acceptance.md) — accepted deterministic live loopback acceptance boundary; no public API contract change.
+16. [ADR 0022](decisions/0022-persistent-work-runtime-direction.md) — accepted durable, event-driven work direction; no public API change.
+17. [ADR 0023](decisions/0023-secret-handle-and-runtime-injection-proposal.md) — proposed write-only SecretHandle and runtime-mediated use boundary.
+18. [ADR 0024](decisions/0024-durable-work-domain-and-public-api.md) — accepted historical `0.9.0` durable-work slice.
+19. [ADR 0025](decisions/0025-local-first-v1-platform.md) — accepted final `1.0.0` local-first platform contract and implementation boundary.
+20. [ADR 0026](decisions/0026-ai-handoff-readiness-development-boundary.md) — accepted target-mode development boundary; no public API change.
+21. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
+22. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
+23. `docs/TECH_STACK.md` — chosen and deferred technology.
+24. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` plus `0023` — wider intended sequencing and still-open contracts.
+25. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
+26. `src/runtime/work-contract.ts`, `src/runtime/work-store.ts`, `src/runtime/platform-contract.ts`, `src/runtime/platform-store.ts`, `src/http/routes/v1/platform.ts`, and `src/http/routes/v1/work.ts` — the current durable-work domain, persistence, and HTTP boundary.
 
 ## Current repository facts
 

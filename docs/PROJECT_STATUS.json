@@ -113,13 +113,16 @@
       "id": "interface-validation",
       "summary": "Add separate real-provider conformance and automated accessibility fixtures without changing the public contract.",
       "publicContractChange": false,
-      "requiresAcceptedAdr": false
+      "requiresAcceptedAdr": false,
+      "status": "ready"
     },
     {
       "id": "persistence-hardening",
-      "summary": "Add supported-platform CI, WAL crash recovery, retention, and migration fixtures after accepting the persistence test boundary.",
+      "summary": "After accepting a persistence test-boundary ADR, add supported-platform CI, WAL crash recovery, retention, and migration fixtures.",
       "publicContractChange": false,
-      "requiresAcceptedAdr": false
+      "requiresAcceptedAdr": true,
+      "requiredAdr": "persistence-test-boundary",
+      "status": "proposal"
     }
   ],
   "invariants": [

@@ -16,12 +16,13 @@
 
 ## 立刻能做什么
 
-在保持公开契约不变的前提下，可以独立推进两类有界工作：
+在保持公开契约不变的前提下，当前可直接推进的一类有界工作是接口验证：
 
 1. 接口验证：增加不依赖真实凭证的 provider 一致性夹具和自动化无障碍夹具；它不能替代已有的确定性 HTTP 验收。
-2. 持久层验证：增加受支持平台矩阵、WAL 崩溃恢复、保留与迁移夹具；不把当前单进程 SQLite 所有权说成多进程支持。
 
-每项工作都要先读 `AGENTS.md`、本文、`docs/PROJECT_STATUS.json`，再按 `docs/AI_HANDOFF.md` 的阅读顺序进入英文契约文档。完成后运行 `npm run check`、`npm test`、`npm run build`，并同步更新受影响文档。
+持久层验证在 `docs/PROJECT_STATUS.json` 中标为 `status: "proposal"` 且 `requiresAcceptedAdr: true`：必须先单独接受持久化测试边界 ADR，再增加受支持平台矩阵、WAL 崩溃恢复、保留与迁移夹具；不得把当前单进程 SQLite 所有权说成多进程支持。
+
+每项工作都要按 `docs/PROJECT_STATUS.json` 的 `aiEntry.requiredOrder` 阅读：先读 `AGENTS.md`、`docs/AI_HANDOFF.md`、机器可读状态和本文，再读 `docs/AI_DEVELOPMENT.md`、任务队列与英文契约文档。完成后运行 `npm run check`、`npm test`、`npm run build`，并同步更新受影响文档。
 
 ## 必须先立 ADR 才能做什么
 
