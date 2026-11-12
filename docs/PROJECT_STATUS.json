@@ -84,6 +84,12 @@
       "summary": "An executable credential-free local HTTP fixture covers catalog, non-streaming, streaming, observation, error, limit, and cancellation compatibility for the current adapter.",
       "evidence": "tests/provider-conformance.test.ts",
       "executableFixture": true
+    },
+    {
+      "id": "persistence-conformance-fixture",
+      "summary": "An executable portable-path fixture covers committed task/event recovery after abrupt process exit, additive migration preservation, one-owner rejection, and reopen after close.",
+      "evidence": "tests/persistence-conformance.test.ts",
+      "executableFixture": true
     }
   ],
   "blockedDirections": [
@@ -114,16 +120,7 @@
       "requiresAcceptedAdr": true
     }
   ],
-  "nextBoundedSlices": [
-    {
-      "id": "persistence-hardening",
-      "summary": "After accepting a persistence test-boundary ADR, add supported-platform CI, WAL crash recovery, retention, and migration fixtures.",
-      "publicContractChange": false,
-      "requiresAcceptedAdr": true,
-      "requiredAdr": "persistence-test-boundary",
-      "status": "proposal"
-    }
-  ],
+  "nextBoundedSlices": [],
   "invariants": [
     "Never expose SecretHandle plaintext to a model, client, event, log, error, configuration document, or generic resolver.",
     "Never execute a tool outside the runtime policy and approval path.",

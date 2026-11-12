@@ -73,7 +73,7 @@ curl -X POST http://127.0.0.1:4318/v1/tasks \
 
 ## 面向 AI 开发
 
-本项目主要由 AI 编码 Agent 开发，代码结构、说明和验证流程优先服务于 AI 快速理解、完成边界清楚的改动并确定性验证；不把后续由人类接手作为产品要求。先读根目录 [`AGENTS.md`](AGENTS.md)，并以 [`docs/PROJECT_STATUS.json`](docs/PROJECT_STATUS.json) 的 `aiEntry.requiredOrder` 为阅读顺序：[AI 交接说明](docs/AI_HANDOFF.md)、[机器可读项目状态](docs/PROJECT_STATUS.json)、[目标模式接手说明](docs/OBJECTIVE_MODE.zh-CN.md)、[开发约定](docs/AI_DEVELOPMENT.md) 和 [任务队列](docs/AI_TASK_QUEUE.md)。随后读已接受 ADR 及链接的架构/API 文档。[ADR 0028](docs/decisions/0028-interface-validation-boundary.md) 已闭合可执行接口验证切片；当前状态 JSON 将 provider 夹具记录为验证证据，没有 `ready` 有界任务。
+本项目主要由 AI 编码 Agent 开发，代码结构、说明和验证流程优先服务于 AI 快速理解、完成边界清楚的改动并确定性验证；不把后续由人类接手作为产品要求。先读根目录 [`AGENTS.md`](AGENTS.md)，并以 [`docs/PROJECT_STATUS.json`](docs/PROJECT_STATUS.json) 的 `aiEntry.requiredOrder` 为阅读顺序：[AI 交接说明](docs/AI_HANDOFF.md)、[机器可读项目状态](docs/PROJECT_STATUS.json)、[目标模式接手说明](docs/OBJECTIVE_MODE.zh-CN.md)、[开发约定](docs/AI_DEVELOPMENT.md) 和 [任务队列](docs/AI_TASK_QUEUE.md)。随后读已接受 ADR 及链接的架构/API 文档。[ADR 0028](docs/decisions/0028-interface-validation-boundary.md) 已闭合可执行接口验证切片，[ADR 0029](docs/decisions/0029-persistence-test-boundary.md) 已闭合持久化测试边界；当前状态 JSON 将两者记录为验证证据，没有有界任务。
 
 实现下一产品切片前必须读 [ADR 0025](docs/decisions/0025-local-first-v1-platform.md) 与 `docs/AI_HANDOFF.md`；最终本地优先闭环已经实现。新增真实 Source、外部写入、工具执行、跨进程密钥托管或稳定密钥源，都需要新的已接受 ADR。
 

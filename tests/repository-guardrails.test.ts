@@ -256,11 +256,17 @@ function assertProjectStatus(source: string, label: string): void {
     true,
     `${label} must record the executable provider-compatibility fixture`,
   );
+  assert.equal(
+    status.validationEvidence.some(
+      (record) => record.id === 'persistence-conformance-fixture' && record.executableFixture === true,
+    ),
+    true,
+    `${label} must record the executable persistence fixture`,
+  );
   assert.ok(status.blockedDirections.length >= 5, `${label} must record ADR-gated directions`);
   for (const direction of status.blockedDirections) {
     assert.equal(direction.requiresAcceptedAdr, true, `${direction.id} must require an accepted ADR`);
   }
-  assert.ok(status.nextBoundedSlices.length > 0, `${label} must record executable next slices`);
   for (const slice of status.nextBoundedSlices) {
     assert.equal(slice.publicContractChange, false, `${slice.id} must not change the public contract`);
     if (slice.status === 'ready') {
@@ -393,7 +399,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('README.zh-CN.md'), /仍在最终本地优先目标之外/);
   assert.match(read('README.zh-CN.md'), /ADR 0018/);
   assert.match(read('README.zh-CN.md'), /ADR 0019/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0028\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0029\]/);
   assert.match(read('README.md'), /ADR 0021 adds an opt-in live loopback acceptance test/);
   assert.match(read('README.zh-CN.md'), /ADR 0021/);
   assert.match(read('README.zh-CN.md'), /真实 loopback HTTP 验收/);
@@ -446,7 +452,9 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('tests/task-api.test.ts'), /emptyJsonBody\.statusCode, 400/);
   assert.match(read('package.json'), /tests\/agent-paired-runtime\.test\.ts/);
   assert.match(read('package.json'), /tests\/provider-conformance\.test\.ts/);
+  assert.match(read('package.json'), /tests\/persistence-conformance\.test\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /tests\/provider-conformance\.test\.ts/);
+  assert.match(read('docs/AI_DEVELOPMENT.md'), /tests\/persistence-conformance\.test\.ts/);
   assert.match(read('docs/AI_HANDOFF.md'), /ADRs `0002`–`0008` plus `0023`[\s\S]*ADR 0028/s);
   const pairedTest = read('tests/agent-paired-runtime.test.ts');
   assert.match(pairedTest, /nested Pagurus checkout is not present/);
@@ -575,15 +583,23 @@ test('decision records separate accepted phase-1 direction from proposals', () =
     read(`${decisionsDir}/0028-interface-validation-boundary.md`),
     /\.\.\/\.\.\/pagurus\/docs\/decisions\/0014-interface-validation-boundary\.md/,
   );
+  assert.match(
+    read(`${decisionsDir}/0029-persistence-test-boundary.md`),
+    /^Status: \*\*accepted repository development boundary; no public API contract changes\*\*$/m,
+  );
+  assert.match(
+    read(`${decisionsDir}/0029-persistence-test-boundary.md`),
+    /tests\/persistence-conformance\.test\.ts/,
+  );
 });
 
 test('target-mode status and Chinese objective brief are machine-checkable entry artifacts', () => {
   assertProjectStatus(read('docs/PROJECT_STATUS.json'), 'docs/PROJECT_STATUS.json');
   const currentStatus = JSON.parse(read('docs/PROJECT_STATUS.json')) as ProjectStatus;
   assert.equal(
-    currentStatus.nextBoundedSlices.some((slice) => slice.status === 'ready'),
-    false,
-    'docs/PROJECT_STATUS.json must not leave a ready validation slice after ADR 0028',
+    currentStatus.nextBoundedSlices.length,
+    0,
+    'docs/PROJECT_STATUS.json must leave no bounded slice after ADR 0029',
   );
   assertSequentialHandoffReadOrder(read('docs/AI_HANDOFF.md'), 'docs/AI_HANDOFF.md');
 
@@ -609,11 +625,16 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
     assert.match(read(file), /OBJECTIVE_MODE\.zh-CN\.md/, `${file} must link the Chinese objective brief`);
   }
   assert.match(read('docs/AI_TASK_QUEUE.md'), /Target-mode entry/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0028\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0029\]/);
   assert.match(read('docs/decisions/0026-ai-handoff-readiness-development-boundary.md'), /validationEvidence/);
   assert.match(read('docs/decisions/0026-ai-handoff-readiness-development-boundary.md'), /blockedDirections/);
-  assert.match(read('docs/AI_TASK_QUEUE.md'), /status: "proposal"/);
   assert.match(read('docs/AI_TASK_QUEUE.md'), /ADR 0028 and Pagurus ADR 0014/);
+  assert.match(read('docs/AI_TASK_QUEUE.md'), /ADR 0029/);
+  assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /ADR 0029/);
+  assert.match(read('README.zh-CN.md'), /ADR 0029/);
+  assert.match(read('docs/QUICK_START.zh-CN.md'), /ADR 0029/);
+  assert.match(read('docs/VALIDATION_PLAN.md'), /tests\/persistence-conformance\.test\.ts/);
+  assert.match(read('docs/AI_HANDOFF.md'), /tests\/persistence-conformance\.test\.ts/);
   assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /ADR 0028/);
   assert.match(read('README.zh-CN.md'), /ADR 0028/);
   assert.match(read('docs/QUICK_START.zh-CN.md'), /ADR 0028/);
@@ -910,6 +931,7 @@ test('guardrail helpers reject representative boundary violations', () => {
     validationEvidence: [
       { id: 'local-first-e2e-walkthrough', executableFixture: false },
       { id: 'provider-conformance-fixture', executableFixture: true },
+      { id: 'persistence-conformance-fixture', executableFixture: true },
     ],
     blockedDirections: [
       { id: 'stable-cross-process-secrets', requiresAcceptedAdr: true },

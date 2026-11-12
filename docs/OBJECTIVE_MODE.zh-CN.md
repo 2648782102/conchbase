@@ -16,9 +16,9 @@
 
 ## 立刻能做什么
 
-[ADR 0028](decisions/0028-interface-validation-boundary.md) 已把可直接推进的接口验证切片闭合为可执行夹具：`tests/provider-conformance.test.ts` 使用临时本地 HTTP 服务覆盖当前 provider 兼容形态，不需要真实凭证；Pagurus [ADR 0014](../pagurus/docs/decisions/0014-interface-validation-boundary.md) 同步闭合自动化无障碍与已发布契约夹具。它们记录在两仓 `PROJECT_STATUS.json` 的 `validationEvidence` 中，不替代真实供应商一致性、真实浏览器无障碍审计或确定性 HTTP 验收。
+[ADR 0028](decisions/0028-interface-validation-boundary.md) 已把可直接推进的接口验证切片闭合为可执行夹具：`tests/provider-conformance.test.ts` 使用临时本地 HTTP 服务覆盖当前 provider 兼容形态，不需要真实凭证；Pagurus [ADR 0014](../pagurus/docs/decisions/0014-interface-validation-boundary.md) 同步闭合自动化无障碍与已发布契约夹具。[ADR 0029](decisions/0029-persistence-test-boundary.md) 进一步把持久化测试边界闭合为可执行夹具：`tests/persistence-conformance.test.ts` 覆盖异常退出后的已提交 WAL 状态、增量迁移保留、单实例拒绝与正常重开。它们记录在 `PROJECT_STATUS.json` 的 `validationEvidence` 中，不替代真实供应商一致性、真实浏览器无障碍审计、生产持久化矩阵或多进程支持。
 
-目前 `nextBoundedSlices` 中没有 `ready` 条目。持久层验证仍标为 `status: "proposal"` 且 `requiresAcceptedAdr: true`：必须先单独接受持久化测试边界 ADR，再增加受支持平台矩阵、WAL 崩溃恢复、保留与迁移夹具；不得把当前单进程 SQLite 所有权说成多进程支持。
+目前 `nextBoundedSlices` 中没有条目。持久化测试边界已由 ADR 0029 接受并完成；生产平台矩阵、任意崩溃点恢复、事件保留、多进程写入协议和归一化驱动错误仍属于独立的 ADR 门控方向，不得把当前单进程 SQLite 所有权说成多进程支持。
 
 每项工作都要按 `docs/PROJECT_STATUS.json` 的 `aiEntry.requiredOrder` 阅读：先读 `AGENTS.md`、`docs/AI_HANDOFF.md`、机器可读状态和本文，再读 `docs/AI_DEVELOPMENT.md`、任务队列与英文契约文档。完成后运行 `npm run check`、`npm test`、`npm run build`，并同步更新受影响文档。
 
