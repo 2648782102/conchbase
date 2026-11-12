@@ -82,6 +82,11 @@
       "id": "organization-execution-planner",
       "summary": "A pure internal planner enforces bounded launches, attention priority, structured relays, and work-control command boundaries without executing work, calling a model, or changing the public API.",
       "evidence": "src/runtime/organization-execution.ts"
+    },
+    {
+      "id": "dynamic-agent-projection",
+      "summary": "A pure internal projection converts an accepted create_agent action into a deterministic digest-only proposal without creating an Agent revision, granting capability, or changing the public API.",
+      "evidence": "src/runtime/organization-agent-projection.ts"
     }
   ],
   "validationEvidence": [
@@ -139,6 +144,12 @@
       "id": "organization-execution-fixture",
       "summary": "An executable fixture covers bounded concurrent launches, attention priority, structured relay order, work-control vocabulary, bounded values, and unchanged 47-path OpenAPI.",
       "evidence": "tests/organization-execution.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "dynamic-agent-projection-fixture",
+      "summary": "An executable fixture covers deterministic digest-only proposals, rejection of secret-like and non-organization actions, and absence of public routes or store writes.",
+      "evidence": "tests/organization-agent-projection.test.ts",
       "executableFixture": true
     }
   ],
