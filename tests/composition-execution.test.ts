@@ -157,6 +157,8 @@ class CancelOnFirstNodeStore implements TaskStore {
 
   get platform() { return this.inner.platform; }
 
+  get organization() { return this.inner.organization; }
+
   createTask(input: TaskCreateInput): TaskSnapshot {
     return this.inner.createTask(input);
   }

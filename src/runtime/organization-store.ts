@@ -17,7 +17,7 @@ export interface OrganizationStore {
   events(limit?: number): readonly OrganizationEvent[];
 }
 
-function parseLimit(value: number | undefined): number {
+export function parseOrganizationLimit(value: number | undefined): number {
   if (value === undefined) return 100;
   if (!Number.isInteger(value) || value < 1 || value > 1000) {
     throw new OrganizationValidationError('Event limit must be an integer from 1 to 1000.');
@@ -54,7 +54,7 @@ export class InMemoryOrganizationStore implements OrganizationStore {
 
   events(limit?: number): readonly OrganizationEvent[] {
     const events = this.get().events;
-    const bounded = parseLimit(limit);
+    const bounded = parseOrganizationLimit(limit);
     return Object.freeze(events.slice(-bounded));
   }
 }

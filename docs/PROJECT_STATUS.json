@@ -14,6 +14,7 @@
     "frozen": true,
     "workContractVersion": 2,
     "databaseUserVersion": 3,
+    "currentPrivateDatabaseUserVersion": 4,
     "sourceOfTruth": [
       "docs/openapi.yaml",
       "docs/API.md",
@@ -71,6 +72,11 @@
       "id": "organization-store",
       "summary": "An internal in-memory organization store holds one primary snapshot, applies validated actions, and exposes bounded event reads without becoming a persistence owner or public API.",
       "evidence": "src/runtime/organization-store.ts"
+    },
+    {
+      "id": "organization-persistence",
+      "summary": "An internal SQLite organization store shares Conchbase's single database owner, migrates private schema to user_version 4, persists validated bounded actions, and replays one coherent snapshot after restart without public API changes.",
+      "evidence": "src/runtime/organization-store.sqlite.ts"
     }
   ],
   "validationEvidence": [
@@ -116,6 +122,12 @@
       "id": "organization-store-fixture",
       "summary": "An executable fixture covers one organization snapshot, sequential action application, initialization, and bounded event reads.",
       "evidence": "tests/organization-store.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "organization-persistence-fixture",
+      "summary": "An executable fixture covers private schema migration from user_version 3 to 4, action replay after reopen, stale sequence rejection, single-owner rejection, bounded persisted actions, and unchanged 47-path OpenAPI.",
+      "evidence": "tests/organization-persistence.test.ts",
       "executableFixture": true
     }
   ],

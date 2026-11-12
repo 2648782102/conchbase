@@ -340,8 +340,10 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-contract\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-store\.ts/);
+  assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-store\.sqlite\.ts/);
   assert.match(read('tests/organization-contract.test.ts'), /organization kernel/);
   assert.match(read('tests/organization-store.test.ts'), /organization store/);
+  assert.match(read('tests/organization-persistence.test.ts'), /organization actions migrate/);
   assert.match(handoff, /Plaintext handle values are never returned/);
   assert.match(handoff, /process-scoped AES-256-GCM sealed value/);
   assert.match(handoff, /deterministic live loopback paired-runtime acceptance/);
@@ -605,6 +607,7 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
   assert.equal(currentStatus.nextBoundedSlices.length, 0);
   assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-domain-kernel'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-store'));
+  assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-persistence'));
   assert.ok(
     currentStatus.validationEvidence.some(
       (record) => record.id === 'organization-domain-fixture' && record.executableFixture === true,
@@ -613,6 +616,11 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
   assert.ok(
     currentStatus.validationEvidence.some(
       (record) => record.id === 'organization-store-fixture' && record.executableFixture === true,
+    ),
+  );
+  assert.ok(
+    currentStatus.validationEvidence.some(
+      (record) => record.id === 'organization-persistence-fixture' && record.executableFixture === true,
     ),
   );
   assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /完整组织运行时/);
@@ -798,7 +806,7 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
   const workRouteSource = read('src/http/routes/v1/work.ts');
   assert.doesNotMatch(workRouteSource, /fetch\(|exec|spawn|writeFile|readFile/i);
   assert.doesNotMatch(workRouteSource, /Router|Worker|three-layer|layered|hierarchy/i);
-  assert.match(read('src/runtime/task-store.ts'), /PRAGMA user_version = 3/);
+  assert.match(read('src/runtime/task-store.ts'), /PRAGMA user_version = 4/);
   const ledgerSource = read('src/runtime/tool-request.ts');
   assert.doesNotMatch(ledgerSource, /ToolCapabilityKernel|tool-capability/);
   assert.doesNotMatch(ledgerSource, /tool\.executed|tool\.replayed|tool\.denied|tool\.failed/);
