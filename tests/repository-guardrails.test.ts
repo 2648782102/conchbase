@@ -366,7 +366,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /ADR 0021/);
   assert.match(handoff, /ADR 0022/);
   assert.match(handoff, /ADR 0023/);
-  assert.match(handoff, /ADRs 0030–0039/);
+  assert.match(handoff, /ADRs 0030–0040/);
   assert.match(handoff, /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-contract\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-store\.ts/);
@@ -374,12 +374,14 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-execution\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-agent-projection\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-coordinator\.ts/);
+  assert.match(read('docs/AI_DEVELOPMENT.md'), /boss-mode-service\.ts/);
   assert.match(read('tests/organization-contract.test.ts'), /organization kernel/);
   assert.match(read('tests/organization-store.test.ts'), /organization store/);
   assert.match(read('tests/organization-persistence.test.ts'), /organization actions migrate/);
   assert.match(read('tests/organization-execution.test.ts'), /organization execution planner/);
   assert.match(read('tests/organization-agent-projection.test.ts'), /dynamic agent projection/);
   assert.match(read('tests/organization-coordinator.test.ts'), /coordinator applies one action/);
+  assert.match(read('tests/boss-mode-service.test.ts'), /boss mode creates a real Agent revision/);
   assert.match(handoff, /Plaintext handle values are never returned/);
   assert.match(handoff, /process-scoped AES-256-GCM sealed value/);
   assert.match(handoff, /deterministic live loopback paired-runtime acceptance/);
@@ -648,6 +650,9 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
   assert.ok(currentStatus.implemented.some((record) => record.id === 'dynamic-agent-projection'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-coordinator'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-public-api'));
+  assert.ok(currentStatus.implemented.some((record) => record.id === 'boss-mode-execution-bridge'));
+  assert.ok(currentStatus.implemented.some((record) => record.id === 'dynamic-agent-revisions'));
+  assert.ok(currentStatus.implemented.some((record) => record.id === 'concurrent-project-work'));
   assert.ok(
     currentStatus.validationEvidence.some(
       (record) => record.id === 'organization-domain-fixture' && record.executableFixture === true,
@@ -681,6 +686,11 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
   assert.ok(
     currentStatus.validationEvidence.some(
       (record) => record.id === 'organization-api-fixture' && record.executableFixture === true,
+    ),
+  );
+  assert.ok(
+    currentStatus.validationEvidence.some(
+      (record) => record.id === 'boss-mode-execution-fixture' && record.executableFixture === true,
     ),
   );
   assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /完整组织运行时/);

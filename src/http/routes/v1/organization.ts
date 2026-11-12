@@ -19,14 +19,10 @@ import {
 } from '../../../runtime/organization-contract-http.js';
 import { ORGANIZATION_PUBLIC_CONTRACT_VERSION } from '../../../runtime/organization-public-contract.js';
 import type { OrganizationStore } from '../../../runtime/organization-store.js';
+import type { BossModeService } from '../../../runtime/boss-mode-service.js';
 
 function unavailable(reply: { code(status: number): { send(payload: unknown): unknown } }) {
   return reply.code(503).send({ error: 'Organization Runtime is not configured.' });
-}
-
-function publishedSnapshot(snapshot: OrganizationSnapshot) {
-  const { events: _events, ...published } = snapshot;
-  return published;
 }
 
 function eventResponse(event: OrganizationEvent) {
@@ -81,16 +77,10 @@ function errorResponse(reply: { code(status: number): { send(payload: unknown): 
   });
 }
 
-const sharedEnvelopeSchema = {
-  type: 'object',
-  additionalProperties: false,
-  properties: { version: { type: 'string' } },
-  required: ['version'],
-} as const;
-
 export function registerOrganizationRoutes(
   app: FastifyInstance,
   organizationStore: OrganizationStore | undefined,
+  bossMode?: BossModeService,
 ): void {
   void app.register(async (scope) => {
     scope.removeContentTypeParser('application/json');
@@ -98,12 +88,10 @@ export function registerOrganizationRoutes(
       done(null, body);
     });
 
-    scope.get('/v1/organization/session', {
-      schema: { response: { 200: sharedEnvelopeSchema } },
-    }, async (_request, reply) => {
+    scope.get('/v1/organization/session', async (_request, reply) => {
       if (!organizationStore) return unavailable(reply);
       return reply.send({
-        ...publishedSnapshot(organizationStore.get()),
+        ...organizationStore.get(),
         version: ORGANIZATION_PUBLIC_CONTRACT_VERSION,
       });
     });
@@ -116,6 +104,18 @@ export function registerOrganizationRoutes(
       if (!organizationStore) return unavailable(reply);
       try {
         const input = typeof request.body === 'string' ? JSON.parse(request.body) : request.body;
+        if (bossMode && isRecord(input) && isRecord(input.intent) && 'text' in input.intent) {
+          const submitted = await bossMode.submit({
+            text: input.intent.text,
+            idempotencyKey: input.intent.idempotencyKey,
+          });
+          return reply.code(202).send({
+            version: ORGANIZATION_PUBLIC_CONTRACT_VERSION,
+            intentId: submitted.intentId,
+            state: 'accepted',
+            expectedSequence: submitted.expectedSequence,
+          });
+        }
         const parsed = parseOrganizationActionSubmission(input);
         const submission = isRecord(input) && isRecord(input.intent)
           ? parseOrganizationIntentSubmission(input.intent)

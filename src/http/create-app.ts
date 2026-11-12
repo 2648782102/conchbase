@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import type { RuntimeConfig } from '../config/runtime-config.js';
 import type { TaskService } from '../runtime/task-service.js';
+import { BossModeService } from '../runtime/boss-mode-service.js';
 import { installAuthHook } from './auth.js';
 import { registerConfigurationRoutes } from './routes/v1/configuration.js';
 import { registerEventRoutes } from './routes/v1/events.js';
@@ -18,6 +19,7 @@ import { registerWorkRoutes } from './routes/v1/work.js';
 export interface CreateAppOptions {
   logger?: boolean;
   taskService?: TaskService;
+  bossModeService?: BossModeService;
   config?: RuntimeConfig;
 }
 
@@ -25,7 +27,9 @@ export function createApp(options: CreateAppOptions = {}) {
   const app = Fastify({ logger: options.logger ?? true });
   const workStore = options.taskService?.store?.work;
   const platform = options.taskService?.store?.platform;
-  const organization = options.taskService?.store?.organization;
+  const organization = options.bossModeService?.organizationStore ?? options.taskService?.store?.organization;
+  const bossMode = options.bossModeService
+    ?? (options.taskService && organization ? new BossModeService(organization, options.taskService) : undefined);
   const loopback = options.config?.host === undefined
     || ['127.0.0.1', '::1', 'localhost'].includes(options.config.host);
 
@@ -46,7 +50,7 @@ export function createApp(options: CreateAppOptions = {}) {
   registerToolRequestRoutes(app, options.taskService);
   registerWorkRoutes(app, workStore);
   registerPlatformRoutes(app, platform);
-  registerOrganizationRoutes(app, organization);
+  registerOrganizationRoutes(app, organization, bossMode);
 
   return app;
 }

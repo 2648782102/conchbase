@@ -107,6 +107,21 @@
       "id": "organization-public-api",
       "summary": "An additive 1.1.0 organization API exposes 18 published-state paths with intent idempotency, attention answer/withdraw versions, bounded event cursors, and no drafts, transcripts, plaintext, private files, or locally computed authority.",
       "evidence": "src/http/routes/v1/organization.ts"
+    },
+    {
+      "id": "boss-mode-execution-bridge",
+      "summary": "A Runtime-owned Boss-mode bridge parses untrusted structured intent output, commits validated actions, creates real Agent revisions through TaskService, binds durable WorkItems, and returns ordered structured relays.",
+      "evidence": "src/runtime/boss-mode-service.ts"
+    },
+    {
+      "id": "dynamic-agent-revisions",
+      "summary": "Dynamic worker proposals are bridged through the existing Agent profile boundary into immutable, model-validated Agent revisions; digests never become instructions and proposals never grant authority.",
+      "evidence": "src/runtime/boss-mode-service.ts"
+    },
+    {
+      "id": "concurrent-project-work",
+      "summary": "Authorized organization workers bind to accepted durable WorkItems and bounded work controls through the existing execution substrate.",
+      "evidence": "src/runtime/organization-coordinator.ts"
     }
   ],
   "validationEvidence": [
@@ -182,6 +197,12 @@
       "id": "organization-api-fixture",
       "summary": "An executable fixture covers exact 65 OpenAPI paths, runtime discovery, 202 intents, idempotent replay/conflict, attention answer/withdraw and stale versions, event cursors and bounds, and no plaintext/private-state leakage.",
       "evidence": "tests/organization-api.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "boss-mode-execution-fixture",
+      "summary": "Executable fixtures cover structured intent parsing, dynamic Agent revision creation, durable WorkItem binding, idempotent primary-conversation HTTP entry, and no plaintext/private-state leakage.",
+      "evidence": "tests/boss-mode-service.test.ts",
       "executableFixture": true
     }
   ],
