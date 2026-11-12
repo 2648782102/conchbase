@@ -3,8 +3,10 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { loadRuntimeConfig } from './config/runtime-config.js';
 import { createApp } from './http/create-app.js';
+import { BossModeService } from './runtime/boss-mode-service.js';
 import { MagpieModelCatalog } from './runtime/model-catalog.js';
 import { createTaskService } from './runtime/task-service.js';
+import { createOpenAiCompatibleOrganizationIntentParser } from './runtime/organization-intent-parser.js';
 
 function usage(): string {
   return `Conchbase 1.0.0
@@ -12,6 +14,8 @@ function usage(): string {
 Usage:
   conchbase serve                 Start the local Runtime API
   conchbase run <prompt>          Run one model task directly and print its result
+  conchbase boss <prompt>         Submit one primary-conversation Boss-mode intent
+  conchbase organization          Print the published organization snapshot
   conchbase models               List models from the local Magpie gateway
   conchbase tasks                List persisted tasks
   conchbase task <id>            Show one task
@@ -24,6 +28,7 @@ Configuration:
   CONCHBASE_MAGPIE_URL           Local Magpie gateway (default http://127.0.0.1:3425)
   CONCHBASE_MAGPIE_APP_KEY       Optional app-naming key (magpie-<app-id>)
   CONCHBASE_MODEL                Model id; run and models do not require it
+  CONCHBASE_ORGANIZATION_INTENT_MODEL   Optional structured model for Boss-mode intents
   CONCHBASE_DB                   Runtime SQLite path (default .conchbase/runtime.sqlite)
   CONCHBASE_ALLOW_AUTHENTICATED_REMOTE_BINDING=1   Enable reviewed non-loopback binding
   CONCHBASE_AUTH_TOKEN_DIGEST    sha256 digest of an approved bearer token
@@ -35,6 +40,20 @@ function requireModel(config: ReturnType<typeof loadRuntimeConfig>): string {
     throw new Error('Set CONCHBASE_MODEL to a model id from `conchbase models`.');
   }
   return config.defaultModel;
+}
+
+function createBossModeService(
+  service: ReturnType<typeof createTaskService>,
+  config: ReturnType<typeof loadRuntimeConfig>,
+): BossModeService {
+  const parser = config.organizationIntentModel
+    ? createOpenAiCompatibleOrganizationIntentParser({
+      baseUrl: config.magpieBaseUrl,
+      model: config.organizationIntentModel,
+      ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
+    })
+    : undefined;
+  return new BossModeService(service.store.organization, service, parser ? { parser } : {});
 }
 
 async function main(argv: readonly string[]): Promise<void> {
@@ -52,7 +71,8 @@ async function main(argv: readonly string[]): Promise<void> {
       ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
       defaultModel: config.defaultModel,
     });
-    const app = createApp({ taskService: service, config });
+    const bossMode = createBossModeService(service, config);
+    const app = createApp({ taskService: service, config, bossModeService: bossMode });
     try {
       await app.listen({ host: config.host, port: config.port });
     } catch (cause) {
@@ -83,6 +103,21 @@ async function main(argv: readonly string[]): Promise<void> {
   process.once('SIGTERM', () => controller.abort());
 
   try {
+    if (command === 'boss') {
+      const text = args.join(' ').trim();
+      if (!text) throw new Error('Boss-mode intent must not be empty.');
+      const bossMode = createBossModeService(service, config);
+      const result = await bossMode.submit({
+        text,
+        idempotencyKey: `cli-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      });
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      return;
+    }
+    if (command === 'organization') {
+      process.stdout.write(`${JSON.stringify(service.store.organization.get(), null, 2)}\n`);
+      return;
+    }
     if (command === 'run') {
       const prompt = args.join(' ').trim();
       const model = requireModel(config);
