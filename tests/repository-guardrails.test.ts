@@ -654,6 +654,8 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
   assert.ok(currentStatus.implemented.some((record) => record.id === 'boss-mode-real-model-adapter'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'dynamic-agent-revisions'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'concurrent-project-work'));
+  assert.ok(currentStatus.implemented.some((record) => record.id === 'structured-reporting'));
+  assert.ok(currentStatus.implemented.some((record) => record.id === 'archive-offboard-resume'));
   assert.ok(
     currentStatus.validationEvidence.some(
       (record) => record.id === 'organization-domain-fixture' && record.executableFixture === true,
@@ -697,6 +699,11 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
   assert.ok(
     currentStatus.validationEvidence.some(
       (record) => record.id === 'organization-intent-parser-fixture' && record.executableFixture === true,
+    ),
+  );
+  assert.ok(
+    currentStatus.validationEvidence.some(
+      (record) => record.id === 'boss-mode-http-fixture' && record.executableFixture === true,
     ),
   );
   assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /完整组织运行时/);

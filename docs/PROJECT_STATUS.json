@@ -127,6 +127,16 @@
       "id": "concurrent-project-work",
       "summary": "Authorized organization workers bind to accepted durable WorkItems and bounded work controls through the existing execution substrate.",
       "evidence": "src/runtime/organization-coordinator.ts"
+    },
+    {
+      "id": "structured-reporting",
+      "summary": "Structured reports, attention requests, blocked/failed facts, and completion events are validated organization facts and enter primary relays in deterministic order.",
+      "evidence": "src/runtime/organization-execution.ts"
+    },
+    {
+      "id": "archive-offboard-resume",
+      "summary": "Project quiet/archive/offboard/resume transitions preserve events, revoke active authority, and require revalidation before resumed projects accept new work.",
+      "evidence": "src/runtime/organization-contract.ts"
     }
   ],
   "validationEvidence": [
@@ -211,6 +221,12 @@
       "executableFixture": true
     },
     {
+      "id": "boss-mode-http-fixture",
+      "summary": "An executable HTTP fixture proves a primary-conversation intent creates published project/worker state and replays idempotently through the additive 1.1.0 API.",
+      "evidence": "tests/boss-mode-http.test.ts",
+      "executableFixture": true
+    },
+    {
       "id": "organization-intent-parser-fixture",
       "summary": "An executable fixture covers deterministic parsing, an OpenAI-compatible structured adapter, out-of-schema action rejection, and secret-like relay rejection.",
       "evidence": "tests/organization-intent-parser.test.ts",
@@ -243,13 +259,6 @@
       "id": "generated-clients",
       "summary": "Generated client types built from a separately accepted stable schema contract.",
       "requiresAcceptedAdr": true
-    },
-    {
-      "id": "organization-runtime",
-      "summary": "Complete single-entry Organization Runtime with dynamic worker revisions, bounded delegation, concurrent work, structured reporting, and archive/offboard/resume.",
-      "requiresAcceptedAdr": true,
-      "requiredAdr": "docs/decisions/0030-organization-runtime-direction.md",
-      "target": "docs/ORGANIZATION_RUNTIME_TARGET.zh-CN.md"
     }
   ],
   "nextBoundedSlices": [],
