@@ -41,10 +41,13 @@ curl http://127.0.0.1:4318/v1/health
 export CONCHBASE_MAGPIE_APP_KEY=magpie-conchbase
 npm run cli -- models
 export CONCHBASE_MODEL='provider/model-id'
+export CONCHBASE_ORGANIZATION_INTENT_MODEL='用于结构化组织意图解析的模型 id'
 npm run cli -- run '只回复：ok'
 ```
 
 这些环境变量描述当前 Magpie 兼容适配器：`CONCHBASE_MAGPIE_APP_KEY` 可选，只用于让 Conchbase 的请求在 Magpie 使用记录中显示自己的名字，不是供应商密钥；`CONCHBASE_MODEL` 当前使用用户 Magpie 模型目录中的 id；`CONCHBASE_MAGPIE_URL` 默认 `http://127.0.0.1:3425`；`CONCHBASE_DB` 默认 `.conchbase/runtime.sqlite`，已被 Git 忽略。未来供应商中立的 Agent 引用与模型发现，不应依赖这些 Magpie 专属变量名或目录 id。
+
+`CONCHBASE_ORGANIZATION_INTENT_MODEL` 用于开启老板主会话的真实结构化模型解析；未设置时使用确定性离线解析器。两种模式下模型和解析器输出都只是不可信提案：每个组织动作都会由 Conchbase 重新解析、校验和授权后才能提交。
 
 HTTP API 提供同样的操作：
 

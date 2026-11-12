@@ -114,6 +114,11 @@
       "evidence": "src/runtime/boss-mode-service.ts"
     },
     {
+      "id": "boss-mode-real-model-adapter",
+      "summary": "CONCHBASE_ORGANIZATION_INTENT_MODEL enables an optional OpenAI-compatible structured parser for the primary conversation while preserving authoritative action validation and offline deterministic fallback.",
+      "evidence": "src/runtime/organization-intent-parser.ts"
+    },
+    {
       "id": "dynamic-agent-revisions",
       "summary": "Dynamic worker proposals are bridged through the existing Agent profile boundary into immutable, model-validated Agent revisions; digests never become instructions and proposals never grant authority.",
       "evidence": "src/runtime/boss-mode-service.ts"
@@ -203,6 +208,12 @@
       "id": "boss-mode-execution-fixture",
       "summary": "Executable fixtures cover structured intent parsing, dynamic Agent revision creation, durable WorkItem binding, idempotent primary-conversation HTTP entry, and no plaintext/private-state leakage.",
       "evidence": "tests/boss-mode-service.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "organization-intent-parser-fixture",
+      "summary": "An executable fixture covers deterministic parsing, an OpenAI-compatible structured adapter, out-of-schema action rejection, and secret-like relay rejection.",
+      "evidence": "tests/organization-intent-parser.test.ts",
       "executableFixture": true
     }
   ],

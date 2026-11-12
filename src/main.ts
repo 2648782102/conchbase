@@ -4,6 +4,8 @@ import path from 'node:path';
 import { loadRuntimeConfig } from './config/runtime-config.js';
 import { createApp } from './http/create-app.js';
 import { createTaskService } from './runtime/task-service.js';
+import { BossModeService } from './runtime/boss-mode-service.js';
+import { createOpenAiCompatibleOrganizationIntentParser } from './runtime/organization-intent-parser.js';
 
 const config = loadRuntimeConfig();
 mkdirSync(path.dirname(config.databasePath), { recursive: true });
@@ -12,6 +14,16 @@ const taskService = createTaskService(config.databasePath, {
   ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
   defaultModel: config.defaultModel,
 });
-const app = createApp({ taskService, config });
+let servingApp = createApp({ taskService, config });
 
-await app.listen(config);
+if (config.organizationIntentModel) {
+  const parser = createOpenAiCompatibleOrganizationIntentParser({
+    baseUrl: config.magpieBaseUrl,
+    model: config.organizationIntentModel,
+    ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
+  });
+  const bossMode = new BossModeService(taskService.store.organization, taskService, { parser });
+  servingApp = createApp({ taskService, config, bossModeService: bossMode });
+}
+
+await servingApp.listen(config);

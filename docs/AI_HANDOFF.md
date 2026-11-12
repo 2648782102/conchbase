@@ -135,6 +135,7 @@ Before adding an endpoint, specify request/response schemas, error behavior, aut
 - Runtime host and port: `CONCHBASE_HOST` (loopback only) and `CONCHBASE_PORT`, defaults `127.0.0.1:4318`.
 - Current Magpie adapter gateway: `CONCHBASE_MAGPIE_URL`, default `http://127.0.0.1:3425`; optional `CONCHBASE_MAGPIE_APP_KEY` must match `magpie-<app-id>` and names calls in Magpie. These are compatibility-adapter settings, not Agent schema fields.
 - Current legacy model id: `CONCHBASE_MODEL`; use `conchbase models` to select an id from the Magpie catalog. Future Agent model references must use the provider-neutral contract, and no Magpie catalog id may be treated as a globally meaningful model identity.
+- Boss-mode intent parser model: `CONCHBASE_ORGANIZATION_INTENT_MODEL`. When set, the Runtime uses the OpenAI-compatible structured adapter to parse primary-conversation intents; when unset, the deterministic offline parser remains active. Model output is always reparsed through the organization kernel and never grants authority directly.
 - Runtime database: `CONCHBASE_DB`, default `.conchbase/runtime.sqlite` (git-ignored). Do not put credentials, personal prompts, or user runtime data in the repository.
 - Repository: <https://github.com/2648782102/conchbase>. Companion UI: <https://github.com/2648782102/pagurus>.
 

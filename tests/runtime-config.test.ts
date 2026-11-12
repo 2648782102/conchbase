@@ -26,6 +26,7 @@ test('accepts configured loopback host and decimal port', () => {
     },
   );
   assert.equal(loadRuntimeConfig({ CONCHBASE_HOST: 'localhost' }).host, 'localhost');
+  assert.equal(loadRuntimeConfig({}).organizationIntentModel, undefined);
 });
 
 test('rejects non-loopback hosts', () => {
@@ -51,10 +52,12 @@ test('accepts configured local provider and database values', () => {
     CONCHBASE_MAGPIE_URL: 'http://localhost:3425/',
     CONCHBASE_MAGPIE_APP_KEY: 'magpie-conchbase',
     CONCHBASE_MODEL: 'fixture/model',
+    CONCHBASE_ORGANIZATION_INTENT_MODEL: 'fixture/organization-parser',
   });
   assert.equal(config.databasePath, '/tmp/conchbase-test.sqlite');
   assert.equal(config.magpieAppKey, 'magpie-conchbase');
   assert.equal(config.defaultModel, 'fixture/model');
+  assert.equal(config.organizationIntentModel, 'fixture/organization-parser');
 });
 
 test('rejects non-loopback provider URLs and malformed app keys', () => {
