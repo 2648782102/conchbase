@@ -66,6 +66,11 @@
       "id": "organization-domain-kernel",
       "summary": "A pure internal organization kernel validates structured actions, state transitions, bounded delegation, structured reports, attention decisions, and archive/offboard/resume events without public API or persistence changes.",
       "evidence": "src/runtime/organization-contract.ts"
+    },
+    {
+      "id": "organization-store",
+      "summary": "An internal in-memory organization store holds one primary snapshot, applies validated actions, and exposes bounded event reads without becoming a persistence owner or public API.",
+      "evidence": "src/runtime/organization-store.ts"
     }
   ],
   "validationEvidence": [
@@ -105,6 +110,12 @@
       "id": "organization-domain-fixture",
       "summary": "An executable pure fixture covers project/worker/report/attention state machines, bounded delegation, archive/offboard/resume, secret-like rejection, and bounded events.",
       "evidence": "tests/organization-contract.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "organization-store-fixture",
+      "summary": "An executable fixture covers one organization snapshot, sequential action application, initialization, and bounded event reads.",
+      "evidence": "tests/organization-store.test.ts",
       "executableFixture": true
     }
   ],
