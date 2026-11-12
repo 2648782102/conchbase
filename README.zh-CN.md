@@ -69,13 +69,13 @@ curl -X POST http://127.0.0.1:4318/v1/tasks \
 - Skill 只提供指令，不授予工具权限；第一阶段会拒绝模型发起的工具调用。
 - 公开的工具请求/审批决策只是持久台账状态，绝不是执行许可。临时的供应商观察值只是未受信任的规范化数据，也绝不是执行许可。
 
-架构、技术栈、路线图和验证计划见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/TECH_STACK.md](docs/TECH_STACK.md)、[docs/ROADMAP.md](docs/ROADMAP.md) 和 [docs/VALIDATION_PLAN.md](docs/VALIDATION_PLAN.md)。配套控制台：[Pagurus 寄居蟹](https://github.com/2648782102/pagurus)。中文文档：[快速开始](docs/QUICK_START.zh-CN.md)、[目标模式接手说明](docs/OBJECTIVE_MODE.zh-CN.md)、[v1.0.0 发布说明](docs/RELEASE_NOTES_1.0.0.zh-CN.md)。另有可选的[视觉概览](docs/VISUAL_OVERVIEW.zh-CN.md)，仅供人类快速理解，不是契约事实源。English: [README.md](README.md).
+架构、技术栈、路线图、验证计划和[完整组织运行时目标](docs/ORGANIZATION_RUNTIME_TARGET.zh-CN.md)见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/TECH_STACK.md](docs/TECH_STACK.md)、[docs/ROADMAP.md](docs/ROADMAP.md) 和 [docs/VALIDATION_PLAN.md](docs/VALIDATION_PLAN.md)。配套控制台：[Pagurus 寄居蟹](https://github.com/2648782102/pagurus)。中文文档：[快速开始](docs/QUICK_START.zh-CN.md)、[目标模式接手说明](docs/OBJECTIVE_MODE.zh-CN.md)、[v1.0.0 发布说明](docs/RELEASE_NOTES_1.0.0.zh-CN.md)。另有可选的[视觉概览](docs/VISUAL_OVERVIEW.zh-CN.md)，仅供人类快速理解，不是契约事实源。English: [README.md](README.md).
 
 ## 面向 AI 开发
 
-本项目主要由 AI 编码 Agent 开发，代码结构、说明和验证流程优先服务于 AI 快速理解、完成边界清楚的改动并确定性验证；不把后续由人类接手作为产品要求。先读根目录 [`AGENTS.md`](AGENTS.md)，并以 [`docs/PROJECT_STATUS.json`](docs/PROJECT_STATUS.json) 的 `aiEntry.requiredOrder` 为阅读顺序：[AI 交接说明](docs/AI_HANDOFF.md)、[机器可读项目状态](docs/PROJECT_STATUS.json)、[目标模式接手说明](docs/OBJECTIVE_MODE.zh-CN.md)、[开发约定](docs/AI_DEVELOPMENT.md) 和 [任务队列](docs/AI_TASK_QUEUE.md)。随后读已接受 ADR 及链接的架构/API 文档。[ADR 0028](docs/decisions/0028-interface-validation-boundary.md) 已闭合可执行接口验证切片，[ADR 0029](docs/decisions/0029-persistence-test-boundary.md) 已闭合持久化测试边界；当前状态 JSON 将两者记录为验证证据，没有有界任务。
+本项目主要由 AI 编码 Agent 开发，代码结构、说明和验证流程优先服务于 AI 快速理解、完成边界清楚的改动并确定性验证；不把后续由人类接手作为产品要求。先读根目录 [`AGENTS.md`](AGENTS.md)，并以 [`docs/PROJECT_STATUS.json`](docs/PROJECT_STATUS.json) 的 `aiEntry.requiredOrder` 为阅读顺序：[AI 交接说明](docs/AI_HANDOFF.md)、[机器可读项目状态](docs/PROJECT_STATUS.json)、[目标模式接手说明](docs/OBJECTIVE_MODE.zh-CN.md)、[开发约定](docs/AI_DEVELOPMENT.md) 和 [任务队列](docs/AI_TASK_QUEUE.md)。随后读已接受 ADR、[完整组织运行时目标](docs/ORGANIZATION_RUNTIME_TARGET.zh-CN.md)及链接的架构/API 文档。[ADR 0028](docs/decisions/0028-interface-validation-boundary.md) 已闭合可执行接口验证切片，[ADR 0029](docs/decisions/0029-persistence-test-boundary.md) 已闭合持久化测试边界；[ADR 0030–0034](docs/decisions/) 接受完整组织运行时目标与契约门，但尚未实现。当前状态 JSON 记录验证证据与 ADR 门控的组织提案。
 
-实现下一产品切片前必须读 [ADR 0025](docs/decisions/0025-local-first-v1-platform.md) 与 `docs/AI_HANDOFF.md`；最终本地优先闭环已经实现。新增真实 Source、外部写入、工具执行、跨进程密钥托管或稳定密钥源，都需要新的已接受 ADR。
+实现下一产品切片前必须读 [ADR 0025](docs/decisions/0025-local-first-v1-platform.md)、[ADR 0030](docs/decisions/0030-organization-runtime-direction.md) 与 `docs/AI_HANDOFF.md`；最终本地优先闭环已经实现，并成为组织运行时的执行底座。推进组织能力时必须按 [完整目标规格](docs/ORGANIZATION_RUNTIME_TARGET.zh-CN.md) 和 ADR 0031–0034 的契约门执行。新增真实 Source、外部写入、工具执行、跨进程密钥托管或稳定密钥源，都需要新的已接受 ADR。
 
 代码改动后运行 `npm run check`、`npm test` 和 `npm run build`。
 

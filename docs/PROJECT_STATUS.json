@@ -4,7 +4,7 @@
   "pairedRepository": "pagurus",
   "project": "Conchbase / 海螺",
   "release": "1.0.0",
-  "statusUpdatedAt": "2026-11-12",
+  "statusUpdatedAt": "2026-11-13",
   "objectiveMode": "target-mode",
   "developmentBoundaryAdr": "0026-ai-handoff-readiness-development-boundary.md",
   "publicContract": {
@@ -56,6 +56,11 @@
       "id": "paired-client",
       "summary": "Pagurus implements the paired 1.0.0 control client through published Runtime routes and capability gates.",
       "evidence": "https://github.com/2648782102/pagurus/blob/main/docs/decisions/0010-final-local-first-client.md"
+    },
+    {
+      "id": "organization-runtime-direction",
+      "summary": "The long-range Organization Runtime target and its domain, delegation, concurrency/reporting, and public-contract boundaries are accepted as ADR-gated direction, not implemented behavior.",
+      "evidence": "docs/ORGANIZATION_RUNTIME_TARGET.zh-CN.md"
     }
   ],
   "validationEvidence": [
@@ -118,9 +123,25 @@
       "id": "generated-clients",
       "summary": "Generated client types built from a separately accepted stable schema contract.",
       "requiresAcceptedAdr": true
+    },
+    {
+      "id": "organization-runtime",
+      "summary": "Complete single-entry Organization Runtime with dynamic worker revisions, bounded delegation, concurrent work, structured reporting, and archive/offboard/resume.",
+      "requiresAcceptedAdr": true,
+      "requiredAdr": "docs/decisions/0030-organization-runtime-direction.md",
+      "target": "docs/ORGANIZATION_RUNTIME_TARGET.zh-CN.md"
     }
   ],
-  "nextBoundedSlices": [],
+  "nextBoundedSlices": [
+    {
+      "id": "organization-domain-contract",
+      "summary": "Define organization objects, state machines, event payload boundaries, and unique writer via a dedicated ADR.",
+      "status": "proposal",
+      "requiresAcceptedAdr": true,
+      "requiredAdr": "docs/decisions/0031-organization-domain-and-state-machine.md",
+      "publicContractChange": false
+    }
+  ],
   "invariants": [
     "Never expose SecretHandle plaintext to a model, client, event, log, error, configuration document, or generic resolver.",
     "Never execute a tool outside the runtime policy and approval path.",

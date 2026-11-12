@@ -336,6 +336,8 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /ADR 0021/);
   assert.match(handoff, /ADR 0022/);
   assert.match(handoff, /ADR 0023/);
+  assert.match(handoff, /ADRs 0030–0034/);
+  assert.match(handoff, /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
   assert.match(handoff, /Plaintext handle values are never returned/);
   assert.match(handoff, /process-scoped AES-256-GCM sealed value/);
   assert.match(handoff, /deterministic live loopback paired-runtime acceptance/);
@@ -399,7 +401,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('README.zh-CN.md'), /仍在最终本地优先目标之外/);
   assert.match(read('README.zh-CN.md'), /ADR 0018/);
   assert.match(read('README.zh-CN.md'), /ADR 0019/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0029\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0034\]/);
   assert.match(read('README.md'), /ADR 0021 adds an opt-in live loopback acceptance test/);
   assert.match(read('README.zh-CN.md'), /ADR 0021/);
   assert.match(read('README.zh-CN.md'), /真实 loopback HTTP 验收/);
@@ -598,9 +600,15 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
   const currentStatus = JSON.parse(read('docs/PROJECT_STATUS.json')) as ProjectStatus;
   assert.equal(
     currentStatus.nextBoundedSlices.length,
-    0,
-    'docs/PROJECT_STATUS.json must leave no bounded slice after ADR 0029',
+    1,
+    'docs/PROJECT_STATUS.json must carry the ADR-gated organization domain proposal',
   );
+  assert.equal(currentStatus.nextBoundedSlices[0]?.status, 'proposal');
+  assert.equal(currentStatus.nextBoundedSlices[0]?.requiresAcceptedAdr, true);
+  assert.equal(currentStatus.nextBoundedSlices[0]?.publicContractChange, false);
+  assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /完整组织运行时/);
+  assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
+  assert.match(read('docs/AI_TASK_QUEUE.md'), /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
   assertSequentialHandoffReadOrder(read('docs/AI_HANDOFF.md'), 'docs/AI_HANDOFF.md');
 
   const objective = read('docs/OBJECTIVE_MODE.zh-CN.md');
@@ -625,7 +633,10 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
     assert.match(read(file), /OBJECTIVE_MODE\.zh-CN\.md/, `${file} must link the Chinese objective brief`);
   }
   assert.match(read('docs/AI_TASK_QUEUE.md'), /Target-mode entry/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0029\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0034\]/);
+  assert.match(read('README.md'), /Organization Runtime target/);
+  assert.match(read('README.zh-CN.md'), /完整组织运行时目标/);
+  assert.match(read('docs/QUICK_START.zh-CN.md'), /ADR 0030–0034/);
   assert.match(read('docs/decisions/0026-ai-handoff-readiness-development-boundary.md'), /validationEvidence/);
   assert.match(read('docs/decisions/0026-ai-handoff-readiness-development-boundary.md'), /blockedDirections/);
   assert.match(read('docs/AI_TASK_QUEUE.md'), /ADR 0028 and Pagurus ADR 0014/);

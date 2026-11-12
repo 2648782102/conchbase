@@ -4,7 +4,7 @@
 
 Chinese release and quick-start documents are available in [README.zh-CN.md](../README.zh-CN.md), [QUICK_START.zh-CN.md](QUICK_START.zh-CN.md), and [RELEASE_NOTES_1.0.0.zh-CN.md](RELEASE_NOTES_1.0.0.zh-CN.md). For target mode, read the machine-readable [project status](PROJECT_STATUS.json) and the Chinese [objective-mode brief](OBJECTIVE_MODE.zh-CN.md) immediately after this handoff; they separate implemented behavior, validation evidence, and ADR-gated directions. `PROJECT_STATUS.json`'s `aiEntry.requiredOrder` is the canonical AI reading order; this numbered list expands it. English repository documents, OpenAPI, and accepted ADRs remain the source of truth.
 
-This document is the starting packet for a coding model that has not seen the design conversation. It describes repository facts and accepted boundaries; roadmap items are not implemented features.
+This document is the starting packet for a coding model that has not seen the design conversation. It describes repository facts and accepted boundaries; roadmap items are not implemented features. The longer product target is the complete Organization Runtime described in [ORGANIZATION_RUNTIME_TARGET.zh-CN.md](ORGANIZATION_RUNTIME_TARGET.zh-CN.md); ADRs 0030–0034 accept its direction and gates but do not make it implemented behavior.
 
 ## Product definition
 
@@ -47,9 +47,10 @@ The exact OpenAPI path set is forty-seven paths. The work contract is version 2 
 24. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
 25. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
 26. `docs/TECH_STACK.md` — chosen and deferred technology.
-27. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` plus `0023` — wider intended sequencing and still-open contracts.
-28. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
-29. `src/runtime/work-contract.ts`, `src/runtime/work-store.ts`, `src/runtime/platform-contract.ts`, `src/runtime/platform-store.ts`, `src/http/routes/v1/platform.ts`, and `src/http/routes/v1/work.ts` — the current durable-work domain, persistence, and HTTP boundary.
+27. [Organization Runtime target](ORGANIZATION_RUNTIME_TARGET.zh-CN.md) and ADRs `0030`–`0034` — the long-range product target, domain, delegation, concurrency/reporting/archive, and public-contract gates.
+28. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` plus `0023` — wider intended sequencing and still-open contracts.
+29. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
+30. `src/runtime/work-contract.ts`, `src/runtime/work-store.ts`, `src/runtime/platform-contract.ts`, `src/runtime/platform-store.ts`, `src/http/routes/v1/platform.ts`, and `src/http/routes/v1/work.ts` — the current durable-work domain, persistence, and HTTP boundary.
 
 ## Current repository facts
 
@@ -147,4 +148,4 @@ When an implementation depends on one of these, record options, consequences, an
 
 ## Next implementation sequence
 
-The final local-first `1.0.0` target is closed by ADR 0025. ADR 0028 closes the executable interface-validation slice and ADR 0029 closes the persistence test-boundary slice; `docs/PROJECT_STATUS.json` records those fixtures as `validationEvidence` and leaves no `ready` bounded slice. A coding model should first run `npm run check`, `npm test`, and `npm run build`, then read `docs/openapi.yaml`, `src/runtime/platform-contract.ts`, `src/runtime/platform-store.ts`, and the paired Pagurus ADR 0014. Any future work must start with a new accepted ADR for one of the external boundaries listed above; do not silently extend the current `Task`, configuration, work, or SecretHandle schemas.
+The final local-first `1.0.0` target is closed by ADR 0025 and now serves as the execution substrate for the longer Organization Runtime target. ADR 0028 closes the executable interface-validation slice and ADR 0029 closes the persistence test-boundary slice; `docs/PROJECT_STATUS.json` records those fixtures as `validationEvidence` and leaves no `ready` bounded slice. The next proposal is the ADR 0031 organization domain contract; it is not directly executable until the status marks it ready. A coding model should first run `npm run check`, `npm test`, and `npm run build`, then read the organization target, `docs/openapi.yaml`, `src/runtime/platform-contract.ts`, `src/runtime/platform-store.ts`, and the paired Pagurus ADRs 0015–0016. Any organization work must start from ADRs 0030–0034 and a new accepted implementation contract for the relevant boundary; do not silently extend the current `Task`, configuration, work, or SecretHandle schemas.
