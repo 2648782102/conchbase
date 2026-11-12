@@ -336,14 +336,16 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /ADR 0021/);
   assert.match(handoff, /ADR 0022/);
   assert.match(handoff, /ADR 0023/);
-  assert.match(handoff, /ADRs 0030–0034/);
+  assert.match(handoff, /ADRs 0030–0036/);
   assert.match(handoff, /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-contract\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-store\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-store\.sqlite\.ts/);
+  assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-execution\.ts/);
   assert.match(read('tests/organization-contract.test.ts'), /organization kernel/);
   assert.match(read('tests/organization-store.test.ts'), /organization store/);
   assert.match(read('tests/organization-persistence.test.ts'), /organization actions migrate/);
+  assert.match(read('tests/organization-execution.test.ts'), /organization execution planner/);
   assert.match(handoff, /Plaintext handle values are never returned/);
   assert.match(handoff, /process-scoped AES-256-GCM sealed value/);
   assert.match(handoff, /deterministic live loopback paired-runtime acceptance/);
@@ -608,6 +610,7 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
   assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-domain-kernel'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-store'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-persistence'));
+  assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-execution-planner'));
   assert.ok(
     currentStatus.validationEvidence.some(
       (record) => record.id === 'organization-domain-fixture' && record.executableFixture === true,
@@ -621,6 +624,11 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
   assert.ok(
     currentStatus.validationEvidence.some(
       (record) => record.id === 'organization-persistence-fixture' && record.executableFixture === true,
+    ),
+  );
+  assert.ok(
+    currentStatus.validationEvidence.some(
+      (record) => record.id === 'organization-execution-fixture' && record.executableFixture === true,
     ),
   );
   assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /完整组织运行时/);

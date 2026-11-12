@@ -77,6 +77,11 @@
       "id": "organization-persistence",
       "summary": "An internal SQLite organization store shares Conchbase's single database owner, migrates private schema to user_version 4, persists validated bounded actions, and replays one coherent snapshot after restart without public API changes.",
       "evidence": "src/runtime/organization-store.sqlite.ts"
+    },
+    {
+      "id": "organization-execution-planner",
+      "summary": "A pure internal planner enforces bounded launches, attention priority, structured relays, and work-control command boundaries without executing work, calling a model, or changing the public API.",
+      "evidence": "src/runtime/organization-execution.ts"
     }
   ],
   "validationEvidence": [
@@ -128,6 +133,12 @@
       "id": "organization-persistence-fixture",
       "summary": "An executable fixture covers private schema migration from user_version 3 to 4, action replay after reopen, stale sequence rejection, single-owner rejection, bounded persisted actions, and unchanged 47-path OpenAPI.",
       "evidence": "tests/organization-persistence.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "organization-execution-fixture",
+      "summary": "An executable fixture covers bounded concurrent launches, attention priority, structured relay order, work-control vocabulary, bounded values, and unchanged 47-path OpenAPI.",
+      "evidence": "tests/organization-execution.test.ts",
       "executableFixture": true
     }
   ],
