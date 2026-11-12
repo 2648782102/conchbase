@@ -338,6 +338,8 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /ADR 0023/);
   assert.match(handoff, /ADRs 0030–0034/);
   assert.match(handoff, /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
+  assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-contract\.ts/);
+  assert.match(read('tests/organization-contract.test.ts'), /organization kernel/);
   assert.match(handoff, /Plaintext handle values are never returned/);
   assert.match(handoff, /process-scoped AES-256-GCM sealed value/);
   assert.match(handoff, /deterministic live loopback paired-runtime acceptance/);
@@ -598,14 +600,13 @@ test('decision records separate accepted phase-1 direction from proposals', () =
 test('target-mode status and Chinese objective brief are machine-checkable entry artifacts', () => {
   assertProjectStatus(read('docs/PROJECT_STATUS.json'), 'docs/PROJECT_STATUS.json');
   const currentStatus = JSON.parse(read('docs/PROJECT_STATUS.json')) as ProjectStatus;
-  assert.equal(
-    currentStatus.nextBoundedSlices.length,
-    1,
-    'docs/PROJECT_STATUS.json must carry the ADR-gated organization domain proposal',
+  assert.equal(currentStatus.nextBoundedSlices.length, 0);
+  assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-domain-kernel'));
+  assert.ok(
+    currentStatus.validationEvidence.some(
+      (record) => record.id === 'organization-domain-fixture' && record.executableFixture === true,
+    ),
   );
-  assert.equal(currentStatus.nextBoundedSlices[0]?.status, 'proposal');
-  assert.equal(currentStatus.nextBoundedSlices[0]?.requiresAcceptedAdr, true);
-  assert.equal(currentStatus.nextBoundedSlices[0]?.publicContractChange, false);
   assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /完整组织运行时/);
   assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
   assert.match(read('docs/AI_TASK_QUEUE.md'), /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);

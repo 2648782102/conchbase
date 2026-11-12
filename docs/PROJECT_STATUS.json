@@ -61,6 +61,11 @@
       "id": "organization-runtime-direction",
       "summary": "The long-range Organization Runtime target and its domain, delegation, concurrency/reporting, and public-contract boundaries are accepted as ADR-gated direction, not implemented behavior.",
       "evidence": "docs/ORGANIZATION_RUNTIME_TARGET.zh-CN.md"
+    },
+    {
+      "id": "organization-domain-kernel",
+      "summary": "A pure internal organization kernel validates structured actions, state transitions, bounded delegation, structured reports, attention decisions, and archive/offboard/resume events without public API or persistence changes.",
+      "evidence": "src/runtime/organization-contract.ts"
     }
   ],
   "validationEvidence": [
@@ -94,6 +99,12 @@
       "id": "persistence-conformance-fixture",
       "summary": "An executable portable-path fixture covers committed task/event recovery after abrupt process exit, additive migration preservation, one-owner rejection, and reopen after close.",
       "evidence": "tests/persistence-conformance.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "organization-domain-fixture",
+      "summary": "An executable pure fixture covers project/worker/report/attention state machines, bounded delegation, archive/offboard/resume, secret-like rejection, and bounded events.",
+      "evidence": "tests/organization-contract.test.ts",
       "executableFixture": true
     }
   ],
@@ -132,16 +143,7 @@
       "target": "docs/ORGANIZATION_RUNTIME_TARGET.zh-CN.md"
     }
   ],
-  "nextBoundedSlices": [
-    {
-      "id": "organization-domain-contract",
-      "summary": "Define organization objects, state machines, event payload boundaries, and unique writer via a dedicated ADR.",
-      "status": "proposal",
-      "requiresAcceptedAdr": true,
-      "requiredAdr": "docs/decisions/0031-organization-domain-and-state-machine.md",
-      "publicContractChange": false
-    }
-  ],
+  "nextBoundedSlices": [],
   "invariants": [
     "Never expose SecretHandle plaintext to a model, client, event, log, error, configuration document, or generic resolver.",
     "Never execute a tool outside the runtime policy and approval path.",
