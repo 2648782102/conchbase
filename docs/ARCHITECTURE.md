@@ -8,6 +8,8 @@ User-defined agent composition is topology-neutral. A layered multi-role setup i
 
 [ADR 0022](decisions/0022-persistent-work-runtime-direction.md) accepts the direction of durable, event-driven, topology-neutral work. [ADR 0024](decisions/0024-durable-work-domain-and-public-api.md) is the historical first contract above the unchanged phase-1 `Task` resource. [ADR 0025](decisions/0025-local-first-v1-platform.md) completes the implemented `1.0.0` architecture: pure domain validation, `SqliteWorkStore` and `SqlitePlatformStore` behind one database owner, 47 published paths, work contract v2, authenticated pairing, durable control and restart recovery, one local Source, capability records, and process-scoped write-only SecretHandles with a runtime-owned fixed adapter. No plaintext crosses the model, UI, event, log, error, or generic resolver boundary. The diagram below is the current architecture, not a roadmap diagram.
 
+ADRs 0030–0039 extend that substrate toward the Organization Runtime. The internal organization kernel, SQLite action replay, execution planner, digest-only dynamic-Agent projection, coordinator seam, and additive `1.1.0` public API are implemented. The API remains a published-state boundary: it accepts bounded intents and Attention decisions but does not expose drafts, transcripts, private files, plaintext, or locally computed authority. Real model intent parsing, Agent revision creation, work dispatch from HTTP, and the paired Pagurus console remain separate gated slices.
+
 ```text
 CLI ────────────┐
 Pagurus ────────┼── versioned Runtime API ── Conchbase TaskService
@@ -20,6 +22,9 @@ External clients┘                              ├─ OpenAiChatCompletionsPro
                                                ├─ ToolRequestLedger (public records, no executor)
                                                ├─ ProviderObservationRoute (transient normalization)
                                                ├─ WorkRoutes (deterministic intake and reads)
+                                               ├─ OrganizationKernel / SqliteOrganizationStore
+                                               ├─ OrganizationCoordinator (injected controls only)
+                                               ├─ OrganizationRoutes (additive 1.1.0 published facts)
                                                └─ TaskStore
                                                     ├── node:sqlite tasks + events + revisions + tool requests
                                                     └── SqliteWorkStore work_* tables (same DatabaseSync handle)

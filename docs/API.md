@@ -62,6 +62,24 @@ The service listens on `127.0.0.1:4318` by default. The machine-readable source 
 | `POST /v1/secret-handles/{handleId}/status` | Set `active` or `disabled`. |
 | `POST /v1/secret-handles/{handleId}/use` | Invoke the runtime-owned fixed adapter with pinned identities; returns a digest-only `injected`/`denied` receipt. |
 | `GET /v1/secret-handles/use-receipts` | List digest-only use receipts. |
+| `GET /v1/organization/session` | Read published primary session facts; `1.1.0` additive organization contract, no raw transcript or private state. |
+| `POST /v1/organization/session/intents` | Submit one bounded natural-language intent with an idempotency key; `202`, exact replay, or `409` for a conflicting body. |
+| `GET /v1/organization/projects` | List published projects. |
+| `GET /v1/organization/projects/{projectId}` | Read one published project; `404` when absent. |
+| `GET /v1/organization/projects/{projectId}/threads` | Read ordered published project facts, not a second user conversation. |
+| `GET /v1/organization/agents/proposals` | List digest-only dynamic-Agent audit proposals. |
+| `GET /v1/organization/agents/proposals/{proposalId}` | Read one digest-only proposal. |
+| `GET /v1/organization/delegations` | List published delegation authority records. |
+| `GET /v1/organization/delegations/{delegationId}` | Read one published delegation. |
+| `GET /v1/organization/work-items` | List organization views of durable work items. |
+| `GET /v1/organization/work-items/{workItemId}` | Read one organization work-item view. |
+| `GET /v1/organization/reports` | List structured organization reports. |
+| `GET /v1/organization/reports/{reportId}` | Read one structured report. |
+| `GET /v1/organization/attention` | List AttentionRequests with published `expectedVersion`. |
+| `GET /v1/organization/attention/{attentionId}` | Read one AttentionRequest. |
+| `POST /v1/organization/attention/{attentionId}/answer` | Answer an open request using its published `expectedVersion`; stale versions return `409`. |
+| `POST /v1/organization/attention/{attentionId}/withdraw` | Withdraw an open request using its published `expectedVersion`; stale versions return `409`. |
+| `GET /v1/organization/events?after=<eventId>&limit=<n>` | Read immutable organization events in strict ascending sequence, default limit `100`, maximum `1000`; unknown cursors return `400`. |
 
 An Agent profile is a versioned resource with bounded name, instructions, and `{ providerId, modelId }` default model reference. It contains no credential, provider URL, permission, or tool grant. The first Agent becomes default; there is no implicit default selection for task creation. Profile edits and history apply use `expectedRevisionId`; rollback appends a revision. Archiving is soft and irreversible in the current API, preserves history, and prevents new tasks. Existing tasks, including retries, stay bound to their pinned revision.
 
@@ -90,5 +108,6 @@ Durable work documents are deterministic, topology-neutral state from [ADR 0024]
 - Configuration document routes do not install, enable, grant, resolve secrets, load code, or execute tools.
 - Tool request and approval routes do not execute tools, transition task state, load code, resolve secrets, or grant capabilities.
 - Work and platform routes do not call a model, execute a host tool, perform an external write, expose a generic secret resolver, read a private file from a client, define a canonical topology, or reinterpret the phase-1 `Task` resource. A submitted SecretHandle value is sealed with a process-scoped key and is exposed only to one runtime-owned fixed adapter; restart invalidates old sealed values.
+- The additive `1.1.0` organization contract publishes only Runtime-owned facts. Intents are bounded, idempotent text submissions; the current Runtime maps them to a deterministic `open_project` action and does not yet run a model-based natural-language parser, create real Agent revisions, or start work. Clients cannot submit lifecycle commands, inspect drafts or raw transcripts, compute authority locally, or read private files/database state.
 
 > Final local-first target: Conchbase `1.0.0` and ADR 0025 close the exact 47-path platform contract. Write-only SecretHandle values are sealed at rest with a process-scoped AES-256-GCM key, exposed only to one runtime-owned fixed adapter, and never returned, logged, or sent to a model, client, event, or UI. Restart invalidates previously sealed values; cross-process key sources, real external adapters, executors, Sources, external writes, and tools require separate ADRs.

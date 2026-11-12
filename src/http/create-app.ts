@@ -6,6 +6,7 @@ import { registerConfigurationRoutes } from './routes/v1/configuration.js';
 import { registerEventRoutes } from './routes/v1/events.js';
 import { registerHealthRoute } from './routes/v1/health.js';
 import { registerModelRoutes } from './routes/v1/models.js';
+import { registerOrganizationRoutes } from './routes/v1/organization.js';
 import { registerPlatformRoutes } from './routes/v1/platform.js';
 import { registerProviderObservationRoutes } from './routes/v1/provider-observations.js';
 import { registerRuntimeRoute } from './routes/v1/runtime.js';
@@ -24,6 +25,7 @@ export function createApp(options: CreateAppOptions = {}) {
   const app = Fastify({ logger: options.logger ?? true });
   const workStore = options.taskService?.store?.work;
   const platform = options.taskService?.store?.platform;
+  const organization = options.taskService?.store?.organization;
   const loopback = options.config?.host === undefined
     || ['127.0.0.1', '::1', 'localhost'].includes(options.config.host);
 
@@ -35,7 +37,7 @@ export function createApp(options: CreateAppOptions = {}) {
 
   registerHealthRoute(app);
   registerAgentRoutes(app, options.taskService);
-  registerRuntimeRoute(app, Boolean(options.taskService));
+  registerRuntimeRoute(app, Boolean(options.taskService), Boolean(organization));
   registerConfigurationRoutes(app, options.taskService);
   registerEventRoutes(app, options.taskService);
   registerModelRoutes(app, options.taskService);
@@ -44,6 +46,7 @@ export function createApp(options: CreateAppOptions = {}) {
   registerToolRequestRoutes(app, options.taskService);
   registerWorkRoutes(app, workStore);
   registerPlatformRoutes(app, platform);
+  registerOrganizationRoutes(app, organization);
 
   return app;
 }

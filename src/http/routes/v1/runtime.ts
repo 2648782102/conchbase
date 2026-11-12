@@ -1,10 +1,18 @@
 import type { FastifyInstance } from 'fastify';
 
-export function registerRuntimeRoute(app: FastifyInstance, tasksEnabled = false): void {
+export function registerRuntimeRoute(
+  app: FastifyInstance,
+  tasksEnabled = false,
+  organizationEnabled = false,
+): void {
   app.get('/v1/runtime', async () => ({
     name: 'Conchbase',
     version: '1.0.0',
     state: 'ready',
+    ...(organizationEnabled ? {
+      organizationContract: '1.1.0',
+      organizationPaths: 18,
+    } : {}),
     capabilities: tasksEnabled
       ? [
         'tasks',

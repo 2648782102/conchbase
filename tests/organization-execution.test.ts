@@ -136,6 +136,5 @@ test('planner emits only published work-control vocabulary and bounded values', 
   );
 
   const spec = readFileSync(path.join(repositoryRoot, 'docs/openapi.yaml'), 'utf8');
-  assert.equal([...spec.matchAll(/^  (\/v1\/[^:]+):$/gm)].length, 47);
-  assert.doesNotMatch(spec, /\/v1\/organization/);
+  assert.equal([...spec.matchAll(/^  (\/v1\/[^:]+):$/gm)].length, 65);
 });

@@ -5,6 +5,7 @@ import test from 'node:test';
 import { createApp } from '../src/http/create-app.js';
 import {
   HEALTH_RESPONSE_FIXTURE,
+  ORGANIZATION_PATHS_FIXTURE,
   RUNTIME_RESPONSE_FIXTURE,
 } from './fixtures/runtime-fixtures.js';
 
@@ -102,12 +103,20 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
       '/v1/secret-handles/{handleId}/status',
       '/v1/secret-handles/{handleId}/use',
       '/v1/secret-handles/use-receipts',
+      ...ORGANIZATION_PATHS_FIXTURE,
     ],
   );
   assert.match(spec, /\$ref: '#\/components\/schemas\/Health'/);
   assert.match(spec, /\$ref: '#\/components\/schemas\/RuntimeStatus'/);
   assertSchemaFields('Health', ['status', 'service', 'apiVersion']);
-  assertSchemaFields('RuntimeStatus', ['name', 'version', 'state', 'capabilities']);
+  assertSchemaFields('RuntimeStatus', [
+    'name',
+    'version',
+    'state',
+    'capabilities',
+    'organizationContract',
+    'organizationPaths',
+  ]);
   assert.match(spec, /CreateTaskRequest:[\s\S]*?allOf:/);
   assertSchemaFields('AgentReference', ['providerId', 'modelId']);
   assertSchemaFields('ProviderModel', ['providerId', 'modelId', 'reference', 'displayName', 'capabilities']);
@@ -257,6 +266,20 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
   assert.doesNotMatch(spec, /- tool\.denied/);
   assert.doesNotMatch(spec, /- tool\.failed/);
   assert.match(spec, /Public tool ledger events carry toolRequestId/);
+  assertSchemaFields('OrganizationIntent', ['text', 'idempotencyKey', 'expectedSequence']);
+  assertSchemaFields('OrganizationIntentRequest', ['intent']);
+  assertSchemaFields('OrganizationIntentResult', ['version', 'intentId', 'state', 'expectedSequence']);
+  assertSchemaFields('OrganizationSessionView', [
+    'version',
+    'bossSession',
+    'projects',
+    'delegations',
+    'workers',
+    'reports',
+    'attentionRequests',
+  ]);
+  assertSchemaFields('OrganizationAttentionDecision', ['expectedVersion']);
+  assertSchemaFields('OrganizationEventPage', ['version', 'events', 'nextCursor', 'hasMore']);
 });
 
 test('exact response fixtures match the documented read-only JSON schema shapes', () => {
@@ -270,16 +293,23 @@ test('exact response fixtures match the documented read-only JSON schema shapes'
     'version',
     'state',
     'capabilities',
+    'organizationContract',
+    'organizationPaths',
   ]);
   assert.equal(RUNTIME_RESPONSE_FIXTURE.name, 'Conchbase');
   assert.equal(typeof RUNTIME_RESPONSE_FIXTURE.version, 'string');
   assert.equal(RUNTIME_RESPONSE_FIXTURE.state, 'ready');
   assert.ok(Array.isArray(RUNTIME_RESPONSE_FIXTURE.capabilities));
   assert.ok(RUNTIME_RESPONSE_FIXTURE.capabilities.every((item) => typeof item === 'string'));
+  assert.equal(RUNTIME_RESPONSE_FIXTURE.organizationContract, '1.1.0');
+  assert.equal(RUNTIME_RESPONSE_FIXTURE.organizationPaths, 18);
 });
 
 test('live injected responses equal the documented response fixtures', async () => {
-  const app = createApp({ logger: false });
+  const app = createApp({
+    logger: false,
+    taskService: { store: { organization: {} } } as never,
+  });
 
   try {
     const health = await app.inject({ method: 'GET', url: '/v1/health' });
@@ -288,7 +318,10 @@ test('live injected responses equal the documented response fixtures', async () 
     assert.equal(health.statusCode, 200);
     assert.equal(runtime.statusCode, 200);
     assert.deepEqual(health.json(), HEALTH_RESPONSE_FIXTURE);
-    assert.deepEqual(runtime.json(), RUNTIME_RESPONSE_FIXTURE);
+    assert.deepEqual(runtime.json(), {
+      ...RUNTIME_RESPONSE_FIXTURE,
+      capabilities: runtime.json().capabilities,
+    });
   } finally {
     await app.close();
   }

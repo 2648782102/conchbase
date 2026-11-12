@@ -14,7 +14,30 @@ interface RuntimeResponseFixture {
   readonly version: string;
   readonly state: 'ready';
   readonly capabilities: readonly string[];
+  readonly organizationContract: '1.1.0';
+  readonly organizationPaths: 18;
 }
+
+export const ORGANIZATION_PATHS_FIXTURE = Object.freeze([
+  '/v1/organization/session',
+  '/v1/organization/session/intents',
+  '/v1/organization/projects',
+  '/v1/organization/projects/{projectId}',
+  '/v1/organization/projects/{projectId}/threads',
+  '/v1/organization/agents/proposals',
+  '/v1/organization/agents/proposals/{proposalId}',
+  '/v1/organization/delegations',
+  '/v1/organization/delegations/{delegationId}',
+  '/v1/organization/work-items',
+  '/v1/organization/work-items/{workItemId}',
+  '/v1/organization/reports',
+  '/v1/organization/reports/{reportId}',
+  '/v1/organization/attention',
+  '/v1/organization/attention/{attentionId}',
+  '/v1/organization/attention/{attentionId}/answer',
+  '/v1/organization/attention/{attentionId}/withdraw',
+  '/v1/organization/events',
+] as const);
 
 export const HEALTH_RESPONSE_FIXTURE: HealthResponseFixture = Object.freeze({
   status: 'ok',
@@ -27,6 +50,8 @@ export const RUNTIME_RESPONSE_FIXTURE: RuntimeResponseFixture = Object.freeze({
   version: '1.0.0',
   state: 'ready',
   capabilities: Object.freeze([] as string[]),
+  organizationContract: '1.1.0',
+  organizationPaths: 18,
 });
 
 export const READ_ONLY_TOOL_CALL: ModelTurn = Object.freeze({

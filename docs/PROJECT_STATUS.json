@@ -12,6 +12,11 @@
     "version": "1.0.0",
     "pathCount": 47,
     "frozen": true,
+    "additive": {
+      "version": "1.1.0",
+      "pathCount": 18,
+      "frozen": true
+    },
     "workContractVersion": 2,
     "databaseUserVersion": 3,
     "currentPrivateDatabaseUserVersion": 4,
@@ -60,8 +65,13 @@
     },
     {
       "id": "organization-runtime-direction",
-      "summary": "The long-range Organization Runtime target and its domain, delegation, concurrency/reporting, and public-contract boundaries are accepted as ADR-gated direction, not implemented behavior.",
+      "summary": "The long-range Organization Runtime target and internal boundaries are ADR-gated direction; the additive 1.1.0 Runtime API is implemented, but the complete runtime and paired console are not.",
       "evidence": "docs/ORGANIZATION_RUNTIME_TARGET.zh-CN.md"
+    },
+    {
+      "id": "organization-public-contract-direction",
+      "summary": "ADR 0038 fixes and the Runtime now implements the additive 1.1.0 organization API shape, exact 18-path set, authority boundary, idempotency, event cursor, and paired Pagurus gate; the Pagurus typed client remains a separate slice.",
+      "evidence": "docs/decisions/0038-organization-public-contract.md"
     },
     {
       "id": "organization-domain-kernel",
@@ -87,6 +97,16 @@
       "id": "dynamic-agent-projection",
       "summary": "A pure internal projection converts an accepted create_agent action into a deterministic digest-only proposal without creating an Agent revision, granting capability, or changing the public API.",
       "evidence": "src/runtime/organization-agent-projection.ts"
+    },
+    {
+      "id": "organization-coordinator",
+      "summary": "An internal Runtime-service coordinator commits organization actions, derives execution plans, and dispatches only injected published work controls without HTTP routes, model calls, tool calls, or Agent revision writes.",
+      "evidence": "src/runtime/organization-coordinator.ts"
+    },
+    {
+      "id": "organization-public-api",
+      "summary": "An additive 1.1.0 organization API exposes 18 published-state paths with intent idempotency, attention answer/withdraw versions, bounded event cursors, and no drafts, transcripts, plaintext, private files, or locally computed authority.",
+      "evidence": "src/http/routes/v1/organization.ts"
     }
   ],
   "validationEvidence": [
@@ -150,6 +170,18 @@
       "id": "dynamic-agent-projection-fixture",
       "summary": "An executable fixture covers deterministic digest-only proposals, rejection of secret-like and non-organization actions, and absence of public routes or store writes.",
       "evidence": "tests/organization-agent-projection.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "organization-coordinator-fixture",
+      "summary": "An executable fixture covers action commit, stale rejection, injected work-control dispatch, callback failure recovery, and absence of HTTP/Agent/model/tool/public-route dependencies.",
+      "evidence": "tests/organization-coordinator.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "organization-api-fixture",
+      "summary": "An executable fixture covers exact 65 OpenAPI paths, runtime discovery, 202 intents, idempotent replay/conflict, attention answer/withdraw and stale versions, event cursors and bounds, and no plaintext/private-state leakage.",
+      "evidence": "tests/organization-api.test.ts",
       "executableFixture": true
     }
   ],

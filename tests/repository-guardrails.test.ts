@@ -25,6 +25,11 @@ interface ProjectStatus {
     readonly version: string;
     readonly pathCount: number;
     readonly frozen: boolean;
+    readonly additive?: {
+      readonly version: string;
+      readonly pathCount: number;
+      readonly frozen: boolean;
+    };
   };
   readonly aiEntry: {
     readonly requiredOrder: readonly string[];
@@ -109,7 +114,27 @@ const acceptedPaths = [
   '/v1/secret-handles/{handleId}/status',
   '/v1/secret-handles/{handleId}/use',
   '/v1/secret-handles/use-receipts',
+  '/v1/organization/session',
+  '/v1/organization/session/intents',
+  '/v1/organization/projects',
+  '/v1/organization/projects/{projectId}',
+  '/v1/organization/projects/{projectId}/threads',
+  '/v1/organization/agents/proposals',
+  '/v1/organization/agents/proposals/{proposalId}',
+  '/v1/organization/delegations',
+  '/v1/organization/delegations/{delegationId}',
+  '/v1/organization/work-items',
+  '/v1/organization/work-items/{workItemId}',
+  '/v1/organization/reports',
+  '/v1/organization/reports/{reportId}',
+  '/v1/organization/attention',
+  '/v1/organization/attention/{attentionId}',
+  '/v1/organization/attention/{attentionId}/answer',
+  '/v1/organization/attention/{attentionId}/withdraw',
+  '/v1/organization/events',
 ];
+const frozenPathCount = 47;
+const organizationPathCount = 18;
 
 function read(relativePath: string): string {
   return readFileSync(path.join(repositoryRoot, relativePath), 'utf8');
@@ -138,7 +163,7 @@ function assertAcceptedOpenApi(spec: string, label: string): void {
   assert.deepEqual(
     [...spec.matchAll(/^ {2}(\/v1\/[^:]+):$/gm)].map((match) => match[1]),
     acceptedPaths,
-    `${label} must expose the accepted phase-1 paths`,
+    `${label} must expose the accepted additive 1.0.0 and 1.1.0 paths`,
   );
   assert.deepEqual(
     [...spec.matchAll(/^ {2}- url: (.+)$/gm)].map((match) => match[1]),
@@ -235,6 +260,11 @@ function assertProjectStatus(source: string, label: string): void {
   assert.equal(status.publicContract.version, '1.0.0');
   assert.equal(status.publicContract.pathCount, 47);
   assert.equal(status.publicContract.frozen, true);
+  assert.deepEqual(status.publicContract.additive, {
+    version: '1.1.0',
+    pathCount: organizationPathCount,
+    frozen: true,
+  });
   assert.deepEqual(status.aiEntry.requiredOrder, [
     'AGENTS.md',
     'docs/AI_HANDOFF.md',
@@ -336,18 +366,20 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /ADR 0021/);
   assert.match(handoff, /ADR 0022/);
   assert.match(handoff, /ADR 0023/);
-  assert.match(handoff, /ADRs 0030–0037/);
+  assert.match(handoff, /ADRs 0030–0039/);
   assert.match(handoff, /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-contract\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-store\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-store\.sqlite\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-execution\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-agent-projection\.ts/);
+  assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-coordinator\.ts/);
   assert.match(read('tests/organization-contract.test.ts'), /organization kernel/);
   assert.match(read('tests/organization-store.test.ts'), /organization store/);
   assert.match(read('tests/organization-persistence.test.ts'), /organization actions migrate/);
   assert.match(read('tests/organization-execution.test.ts'), /organization execution planner/);
   assert.match(read('tests/organization-agent-projection.test.ts'), /dynamic agent projection/);
+  assert.match(read('tests/organization-coordinator.test.ts'), /coordinator applies one action/);
   assert.match(handoff, /Plaintext handle values are never returned/);
   assert.match(handoff, /process-scoped AES-256-GCM sealed value/);
   assert.match(handoff, /deterministic live loopback paired-runtime acceptance/);
@@ -614,6 +646,8 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
   assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-persistence'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-execution-planner'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'dynamic-agent-projection'));
+  assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-coordinator'));
+  assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-public-api'));
   assert.ok(
     currentStatus.validationEvidence.some(
       (record) => record.id === 'organization-domain-fixture' && record.executableFixture === true,
@@ -639,7 +673,18 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
       (record) => record.id === 'dynamic-agent-projection-fixture' && record.executableFixture === true,
     ),
   );
+  assert.ok(
+    currentStatus.validationEvidence.some(
+      (record) => record.id === 'organization-coordinator-fixture' && record.executableFixture === true,
+    ),
+  );
+  assert.ok(
+    currentStatus.validationEvidence.some(
+      (record) => record.id === 'organization-api-fixture' && record.executableFixture === true,
+    ),
+  );
   assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /完整组织运行时/);
+  assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /0038/);
   assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
   assert.match(read('docs/AI_TASK_QUEUE.md'), /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
   assertSequentialHandoffReadOrder(read('docs/AI_HANDOFF.md'), 'docs/AI_HANDOFF.md');
@@ -960,7 +1005,12 @@ test('guardrail helpers reject representative boundary violations', () => {
     release: '1.0.0',
     objectiveMode: 'target-mode',
     developmentBoundaryAdr: '0026-ai-handoff-readiness-development-boundary.md',
-    publicContract: { version: '1.0.0', pathCount: 47, frozen: true },
+    publicContract: {
+      version: '1.0.0',
+      pathCount: frozenPathCount,
+      frozen: true,
+      additive: { version: '1.1.0', pathCount: organizationPathCount, frozen: true },
+    },
     aiEntry: {
       requiredOrder: [
         'AGENTS.md',
@@ -1039,7 +1089,7 @@ test('guardrail helpers reject representative boundary violations', () => {
   );
   assert.throws(
     () => assertAcceptedOpenApi(syntheticMissingPath, 'synthetic'),
-    /must expose the accepted phase-1 paths/,
+    /must expose the accepted additive 1\.0\.0 and 1\.1\.0 paths/,
   );
   assert.throws(
     () => assertLoopbackConfig(syntheticNonLoopbackConfig, 'synthetic'),

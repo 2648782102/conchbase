@@ -67,6 +67,6 @@ test('dynamic agent projection does not add public routes or store writes', () =
   );
   assert.doesNotMatch(source, /SqliteTaskStore|createAgent\(|database|fetch\(|exec\(/);
   const spec = readFileSync(path.join(repositoryRoot, 'docs/openapi.yaml'), 'utf8');
-  assert.equal([...spec.matchAll(/^  (\/v1\/[^:]+):$/gm)].length, 47);
-  assert.doesNotMatch(spec, /\/v1\/organization/);
+  assert.equal([...spec.matchAll(/^  (\/v1\/[^:]+):$/gm)].length, 65);
+  assert.doesNotMatch(source, /\/v1\/organization/);
 });

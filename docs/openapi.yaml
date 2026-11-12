@@ -1195,6 +1195,323 @@ paths:
                 $ref: '#/components/schemas/SecretHandleUseReceiptList'
         '503':
           $ref: '#/components/responses/PlatformUnavailableError'
+  /v1/organization/session:
+    get:
+      operationId: getOrganizationSession
+      summary: Read the published primary organization session and active projects.
+      responses:
+        '200':
+          description: Published organization facts without private events, drafts, paths, or plaintext.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationSessionView'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/organization/session/intents:
+    post:
+      operationId: submitOrganizationIntent
+      summary: Submit one bounded organization intent; the runtime derives all lifecycle actions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationIntentRequest'
+      responses:
+        '202':
+          description: Intent accepted, or the original result replayed for the same idempotency key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationIntentResult'
+        '400':
+          $ref: '#/components/responses/OrganizationValidationError'
+        '409':
+          $ref: '#/components/responses/OrganizationConflictError'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/organization/projects:
+    get:
+      operationId: listOrganizationProjects
+      summary: List published organization projects.
+      responses:
+        '200':
+          description: Published project collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationProjectList'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/organization/projects/{projectId}:
+    get:
+      operationId: getOrganizationProject
+      summary: Read one published organization project.
+      parameters:
+        - $ref: '#/components/parameters/OrganizationProjectId'
+      responses:
+        '200':
+          description: Published project.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationProjectView'
+        '404':
+          $ref: '#/components/responses/OrganizationNotFoundError'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/organization/projects/{projectId}/threads:
+    get:
+      operationId: listOrganizationProjectThreads
+      summary: Read the published, non-conversational fact thread for one project.
+      parameters:
+        - $ref: '#/components/parameters/OrganizationProjectId'
+      responses:
+        '200':
+          description: Ordered published project facts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationProjectThreadList'
+        '404':
+          $ref: '#/components/responses/OrganizationNotFoundError'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/organization/agents/proposals:
+    get:
+      operationId: listOrganizationAgentProposals
+      summary: List digest-only dynamic-Agent audit proposals.
+      responses:
+        '200':
+          description: Digest-only proposal collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationAgentProposalList'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/organization/agents/proposals/{proposalId}:
+    get:
+      operationId: getOrganizationAgentProposal
+      summary: Read one digest-only dynamic-Agent audit proposal.
+      parameters:
+        - $ref: '#/components/parameters/OrganizationProposalId'
+      responses:
+        '200':
+          description: Digest-only proposal.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationAgentProposalView'
+        '404':
+          $ref: '#/components/responses/OrganizationNotFoundError'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/organization/delegations:
+    get:
+      operationId: listOrganizationDelegations
+      summary: List published delegation authority records.
+      responses:
+        '200':
+          description: Delegation collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationDelegationList'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/organization/delegations/{delegationId}:
+    get:
+      operationId: getOrganizationDelegation
+      summary: Read one published delegation authority record.
+      parameters:
+        - $ref: '#/components/parameters/OrganizationDelegationId'
+      responses:
+        '200':
+          description: Published delegation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationDelegationView'
+        '404':
+          $ref: '#/components/responses/OrganizationNotFoundError'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/organization/work-items:
+    get:
+      operationId: listOrganizationWorkItems
+      summary: List organization views of published work items.
+      responses:
+        '200':
+          description: Work item view collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationWorkItemList'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/organization/work-items/{workItemId}:
+    get:
+      operationId: getOrganizationWorkItem
+      summary: Read one organization view of a published work item.
+      parameters:
+        - $ref: '#/components/parameters/OrganizationWorkItemId'
+      responses:
+        '200':
+          description: Published work item view.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationWorkItemView'
+        '404':
+          $ref: '#/components/responses/OrganizationNotFoundError'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/organization/reports:
+    get:
+      operationId: listOrganizationReports
+      summary: List structured organization reports.
+      responses:
+        '200':
+          description: Report collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationReportList'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/organization/reports/{reportId}:
+    get:
+      operationId: getOrganizationReport
+      summary: Read one structured organization report.
+      parameters:
+        - $ref: '#/components/parameters/OrganizationReportId'
+      responses:
+        '200':
+          description: Published report.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationReportView'
+        '404':
+          $ref: '#/components/responses/OrganizationNotFoundError'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/organization/attention:
+    get:
+      operationId: listOrganizationAttention
+      summary: List open and resolved AttentionRequests with published versions.
+      responses:
+        '200':
+          description: AttentionRequest collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationAttentionList'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/organization/attention/{attentionId}:
+    get:
+      operationId: getOrganizationAttention
+      summary: Read one AttentionRequest with its published expected version.
+      parameters:
+        - $ref: '#/components/parameters/OrganizationAttentionId'
+      responses:
+        '200':
+          description: Published AttentionRequest.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationAttentionView'
+        '404':
+          $ref: '#/components/responses/OrganizationNotFoundError'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/organization/attention/{attentionId}/answer:
+    post:
+      operationId: answerOrganizationAttention
+      summary: Answer an open AttentionRequest using its published expected version.
+      parameters:
+        - $ref: '#/components/parameters/OrganizationAttentionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationAttentionDecision'
+      responses:
+        '200':
+          description: Answered AttentionRequest.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationAttentionView'
+        '400':
+          $ref: '#/components/responses/OrganizationValidationError'
+        '404':
+          $ref: '#/components/responses/OrganizationNotFoundError'
+        '409':
+          $ref: '#/components/responses/OrganizationConflictError'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/organization/attention/{attentionId}/withdraw:
+    post:
+      operationId: withdrawOrganizationAttention
+      summary: Withdraw an open AttentionRequest using its published expected version.
+      parameters:
+        - $ref: '#/components/parameters/OrganizationAttentionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationAttentionDecision'
+      responses:
+        '200':
+          description: Withdrawn AttentionRequest.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationAttentionView'
+        '400':
+          $ref: '#/components/responses/OrganizationValidationError'
+        '404':
+          $ref: '#/components/responses/OrganizationNotFoundError'
+        '409':
+          $ref: '#/components/responses/OrganizationConflictError'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/organization/events:
+    get:
+      operationId: listOrganizationEvents
+      summary: Read immutable organization events in ascending sequence with bounded cursors.
+      parameters:
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^evt_[a-z0-9]+$'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        '200':
+          description: Ordered organization event page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationEventPage'
+        '400':
+          $ref: '#/components/responses/OrganizationValidationError'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
 
 components:
   parameters:
@@ -1262,6 +1579,48 @@ components:
       schema:
         type: string
         pattern: '^work_[0-9a-f]{24}$'
+    OrganizationProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^project_[a-z0-9_-]+$'
+    OrganizationProposalId:
+      name: proposalId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^wrk_[a-z0-9_-]+$'
+    OrganizationDelegationId:
+      name: delegationId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^del_[a-z0-9_-]+$'
+    OrganizationWorkItemId:
+      name: workItemId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^work_[a-z0-9_-]+$'
+    OrganizationReportId:
+      name: reportId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^rpt_[a-z0-9_-]+$'
+    OrganizationAttentionId:
+      name: attentionId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^att_[a-z0-9_-]+$'
     AgentReference:
       type: object
       additionalProperties: false
@@ -1496,6 +1855,30 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    OrganizationValidationError:
+      description: Invalid organization intent, decision, cursor, limit, or unsupported contract shape.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    OrganizationNotFoundError:
+      description: Published organization resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    OrganizationConflictError:
+      description: Organization sequence, idempotency, or state conflict.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    OrganizationUnavailableError:
+      description: Organization runtime store is not configured.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
   schemas:
     Health:
       type: object
@@ -1511,7 +1894,7 @@ components:
     RuntimeStatus:
       type: object
       additionalProperties: false
-      required: [name, version, state, capabilities]
+      required: [name, version, state, capabilities, organizationContract, organizationPaths]
       properties:
         name:
           const: Conchbase
@@ -1524,6 +1907,10 @@ components:
           description: Runtime features currently available, including agents and provider-neutral-model-catalog when task services are enabled.
           items:
             type: string
+        organizationContract:
+          $ref: '#/components/schemas/OrganizationVersion'
+        organizationPaths:
+          const: 18
     Error:
       type: object
       additionalProperties: false
@@ -3024,3 +3411,434 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SecretHandleUseReceipt'
+    OrganizationVersion:
+      type: string
+      const: '1.1.0'
+    OrganizationOpaqueId:
+      type: string
+      pattern: '^[a-z][a-z0-9_-]{2,120}$'
+    OrganizationDigest:
+      type: string
+      pattern: '^[a-z0-9_.:-]{1,128}$'
+    OrganizationState:
+      type: string
+      pattern: '^[a-z][a-z0-9_-]{0,40}$'
+    OrganizationSessionRecord:
+      type: object
+      additionalProperties: false
+      required: [version, id, state, projectIds]
+      properties:
+        version:
+          const: 1
+        id:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        state:
+          const: active
+        projectIds:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationOpaqueId'
+    OrganizationProjectRecord:
+      type: object
+      additionalProperties: false
+      required: [version, id, bossSessionId, originTriggerId, state]
+      properties:
+        version:
+          const: 1
+        id:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        bossSessionId:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        originTriggerId:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        state:
+          $ref: '#/components/schemas/OrganizationState'
+    OrganizationDelegationRecord:
+      type: object
+      additionalProperties: false
+      required: [version, id, projectId, parentDelegationId, workerId, scope, capabilities, maxDelegationDepth, expiresAtSequence, authorizationDigest, state]
+      properties:
+        version:
+          const: 1
+        id:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        projectId:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        parentDelegationId:
+          type: [string, 'null']
+        workerId:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        scope:
+          type: array
+          items:
+            type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        maxDelegationDepth:
+          type: integer
+          minimum: 0
+          maximum: 3
+        expiresAtSequence:
+          type: integer
+          minimum: 0
+        authorizationDigest:
+          $ref: '#/components/schemas/OrganizationDigest'
+        state:
+          $ref: '#/components/schemas/OrganizationState'
+    OrganizationWorkerRecord:
+      type: object
+      additionalProperties: false
+      required: [version, id, projectId, delegationId, agentRevisionId, displayName, instructionsDigest, model, state]
+      properties:
+        version:
+          const: 1
+        id:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        projectId:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        delegationId:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        agentRevisionId:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 80
+        instructionsDigest:
+          $ref: '#/components/schemas/OrganizationDigest'
+        model:
+          $ref: '#/components/schemas/AgentReference'
+        state:
+          $ref: '#/components/schemas/OrganizationState'
+    OrganizationReportRecord:
+      type: object
+      additionalProperties: false
+      required: [version, id, projectId, workerId, state, summaryDigest, sequence]
+      properties:
+        version:
+          const: 1
+        id:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        projectId:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        workerId:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        state:
+          $ref: '#/components/schemas/OrganizationState'
+        summaryDigest:
+          $ref: '#/components/schemas/OrganizationDigest'
+        sequence:
+          type: integer
+          minimum: 1
+    OrganizationAttentionRecord:
+      type: object
+      additionalProperties: false
+      required: [version, id, projectId, workerId, state, questionDigest, sequence, expectedVersion]
+      properties:
+        version:
+          const: 1
+        id:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        projectId:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        workerId:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        state:
+          $ref: '#/components/schemas/OrganizationState'
+        questionDigest:
+          $ref: '#/components/schemas/OrganizationDigest'
+        sequence:
+          type: integer
+          minimum: 1
+        expectedVersion:
+          type: integer
+          minimum: 1
+    OrganizationIntent:
+      type: object
+      additionalProperties: false
+      required: [text, idempotencyKey, expectedSequence]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 20000
+          description: Bounded natural-language intent; secret-like content is rejected.
+        idempotencyKey:
+          type: string
+          minLength: 1
+          maxLength: 200
+        expectedSequence:
+          type: integer
+          minimum: 0
+    OrganizationIntentRequest:
+      type: object
+      additionalProperties: false
+      required: [intent]
+      properties:
+        intent:
+          $ref: '#/components/schemas/OrganizationIntent'
+    OrganizationIntentResult:
+      type: object
+      additionalProperties: false
+      required: [version, intentId, state, expectedSequence]
+      properties:
+        version:
+          $ref: '#/components/schemas/OrganizationVersion'
+        intentId:
+          type: string
+          pattern: '^int_[0-9a-f]{24}$'
+        state:
+          const: accepted
+        expectedSequence:
+          type: integer
+          minimum: 1
+    OrganizationSessionView:
+      type: object
+      additionalProperties: false
+      required: [version, bossSession, projects, delegations, workers, reports, attentionRequests]
+      properties:
+        version:
+          $ref: '#/components/schemas/OrganizationVersion'
+        bossSession:
+          $ref: '#/components/schemas/OrganizationSessionRecord'
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationProjectRecord'
+        delegations:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationDelegationRecord'
+        workers:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationWorkerRecord'
+        reports:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationReportRecord'
+        attentionRequests:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationAttentionRecord'
+    OrganizationProjectList:
+      type: object
+      additionalProperties: false
+      required: [version, projects]
+      properties:
+        version:
+          $ref: '#/components/schemas/OrganizationVersion'
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationProjectRecord'
+    OrganizationProjectView:
+      type: object
+      additionalProperties: false
+      required: [version, project]
+      properties:
+        version:
+          $ref: '#/components/schemas/OrganizationVersion'
+        project:
+          $ref: '#/components/schemas/OrganizationProjectRecord'
+    OrganizationProjectThreadFact:
+      type: object
+      additionalProperties: false
+      required: [eventId, sequence, type]
+      properties:
+        eventId:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        sequence:
+          type: integer
+          minimum: 1
+        type:
+          type: string
+    OrganizationProjectThreadList:
+      type: object
+      additionalProperties: false
+      required: [version, projectId, threads]
+      properties:
+        version:
+          $ref: '#/components/schemas/OrganizationVersion'
+        projectId:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        threads:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationProjectThreadFact'
+    OrganizationAgentProposalList:
+      type: object
+      additionalProperties: false
+      required: [version, proposals]
+      properties:
+        version:
+          $ref: '#/components/schemas/OrganizationVersion'
+        proposals:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [workerId, projectId, agentRevisionId, instructionsDigest, state]
+            properties:
+              workerId:
+                $ref: '#/components/schemas/OrganizationOpaqueId'
+              projectId:
+                $ref: '#/components/schemas/OrganizationOpaqueId'
+              agentRevisionId:
+                $ref: '#/components/schemas/OrganizationOpaqueId'
+              instructionsDigest:
+                $ref: '#/components/schemas/OrganizationDigest'
+              state:
+                $ref: '#/components/schemas/OrganizationState'
+    OrganizationAgentProposalView:
+      type: object
+      additionalProperties: false
+      required: [version, proposal]
+      properties:
+        version:
+          $ref: '#/components/schemas/OrganizationVersion'
+        proposal:
+          $ref: '#/components/schemas/OrganizationWorkerRecord'
+    OrganizationDelegationList:
+      type: object
+      additionalProperties: false
+      required: [version, delegations]
+      properties:
+        version:
+          $ref: '#/components/schemas/OrganizationVersion'
+        delegations:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationDelegationRecord'
+    OrganizationDelegationView:
+      type: object
+      additionalProperties: false
+      required: [version, delegation]
+      properties:
+        version:
+          $ref: '#/components/schemas/OrganizationVersion'
+        delegation:
+          $ref: '#/components/schemas/OrganizationDelegationRecord'
+    OrganizationWorkItemViewRecord:
+      type: object
+      additionalProperties: false
+      required: [workItemId, projectId, workerId, state]
+      properties:
+        workItemId:
+          type: string
+          pattern: '^work_[a-z0-9_-]+$'
+        projectId:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        workerId:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        state:
+          $ref: '#/components/schemas/OrganizationState'
+    OrganizationWorkItemList:
+      type: object
+      additionalProperties: false
+      required: [version, workItems]
+      properties:
+        version:
+          $ref: '#/components/schemas/OrganizationVersion'
+        workItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationWorkItemViewRecord'
+    OrganizationWorkItemView:
+      type: object
+      additionalProperties: false
+      required: [version, workItem]
+      properties:
+        version:
+          $ref: '#/components/schemas/OrganizationVersion'
+        workItem:
+          $ref: '#/components/schemas/OrganizationWorkItemViewRecord'
+    OrganizationReportList:
+      type: object
+      additionalProperties: false
+      required: [version, reports]
+      properties:
+        version:
+          $ref: '#/components/schemas/OrganizationVersion'
+        reports:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationReportRecord'
+    OrganizationReportView:
+      type: object
+      additionalProperties: false
+      required: [version, report]
+      properties:
+        version:
+          $ref: '#/components/schemas/OrganizationVersion'
+        report:
+          $ref: '#/components/schemas/OrganizationReportRecord'
+    OrganizationAttentionList:
+      type: object
+      additionalProperties: false
+      required: [version, attentionRequests]
+      properties:
+        version:
+          $ref: '#/components/schemas/OrganizationVersion'
+        attentionRequests:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationAttentionRecord'
+    OrganizationAttentionView:
+      type: object
+      additionalProperties: false
+      required: [version, attentionRequest]
+      properties:
+        version:
+          $ref: '#/components/schemas/OrganizationVersion'
+        attentionRequest:
+          $ref: '#/components/schemas/OrganizationAttentionRecord'
+    OrganizationAttentionDecision:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion]
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 1
+        decisionDigest:
+          $ref: '#/components/schemas/OrganizationDigest'
+    OrganizationEventRecord:
+      type: object
+      additionalProperties: false
+      required: [id, sequence, type, projectId, data, expectedVersion]
+      properties:
+        id:
+          type: string
+          pattern: '^evt_[0-9a-f]{24}$'
+        sequence:
+          type: integer
+          minimum: 1
+        type:
+          type: string
+        projectId:
+          $ref: '#/components/schemas/OrganizationOpaqueId'
+        data:
+          type: object
+          additionalProperties:
+            type: [string, number, boolean]
+        expectedVersion:
+          type: integer
+          minimum: 1
+    OrganizationEventPage:
+      type: object
+      additionalProperties: false
+      required: [version, events, nextCursor, hasMore]
+      properties:
+        version:
+          $ref: '#/components/schemas/OrganizationVersion'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationEventRecord'
+        nextCursor:
+          type: [string, 'null']
+        hasMore:
+          type: boolean
