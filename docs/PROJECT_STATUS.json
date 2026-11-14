@@ -232,6 +232,11 @@
       "id": "agent-chat-history",
       "summary": "ADR 0055 adds GET /v1/agent-chat/conversations for recent conversation recovery, pins reasoningEffort per conversation, and exposes it to provider requests; private schema advances to user_version 6.",
       "evidence": "src/runtime/agent-chat.ts"
+    },
+    {
+      "id": "skill-provider",
+      "summary": "ADR 0056 implements an administrator-configured read-only Skill provider: SKILL.md front matter and body parsing, bounded count and bytes, traversal and symlink rejection, ignored allowed-tools, and non-authoritative system injection into the Agent loop.",
+      "evidence": "src/runtime/skill-provider.ts"
     }
   ],
   "validationEvidence": [
@@ -398,6 +403,12 @@
       "summary": "Executable fixtures cover conversation listing, default model selection, reasoning-effort pinning and validation, and history survival across restart.",
       "evidence": "tests/agent-chat-history.test.ts",
       "executableFixture": true
+    },
+    {
+      "id": "skill-provider-fixture",
+      "summary": "Executable fixtures cover front-matter parsing, missing front matter, empty-body skipping, allowed-tools being ignored, size and count bounds, symlink rejection, and Agent loop injection.",
+      "evidence": "tests/skill-provider.test.ts",
+      "executableFixture": true
     }
   ],
   "blockedDirections": [
@@ -434,16 +445,7 @@
       "requiresAcceptedAdr": true
     }
   ],
-  "nextBoundedSlices": [
-    {
-      "id": "skill-provider",
-      "summary": "Add a Skill directory provider that supplies instructions only and grants no capability.",
-      "publicContractChange": false,
-      "requiresAcceptedAdr": true,
-      "requiredAdr": "a new Skill provider ADR",
-      "status": "proposal"
-    }
-  ],
+  "nextBoundedSlices": [],
   "invariants": [
     "Never expose SecretHandle plaintext to a model, client, event, log, error, configuration document, or generic resolver.",
     "Never execute a tool outside the runtime policy and approval path.",

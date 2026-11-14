@@ -74,6 +74,14 @@ npm run dev
 
 Runtime 只启动这里声明的绝对路径命令，不继承环境变量，不接受 `shell`，并且只暴露显式列出的 `read` 工具。写入类工具与远程 MCP 传输仍需单独 ADR。
 
+需要让 Agent 参考 Skill 时，把标准 `SKILL.md` 目录放到一处，并用 `CONCHBASE_SKILLS_DIR` 指向父目录：
+
+```sh
+CONCHBASE_SKILLS_DIR=/path/to/skills npm run dev
+```
+
+Runtime 只读取每个子目录的 `SKILL.md` 正文，最多注入 8 个 Skill、8 KiB 指令；`allowed-tools`、脚本和附件会被完全忽略。Skill 只是建议性指令，不能覆盖 Runtime 策略、工具授权或审批要求。
+
 独立 Agent 对话不需要在 Conchbase 配置供应商凭证；请在 Magpie 中配置模型、供应商、凭证、路由与 app key，Conchbase 只通过 OpenAI 兼容协议接口访问本机 Magpie。
 
 ## 架构边界

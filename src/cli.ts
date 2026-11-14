@@ -88,12 +88,13 @@ async function main(argv: readonly string[]): Promise<void> {
     const toolRuntime = await createToolRuntime({
       root: process.cwd(),
       ...(config.mcpConfigPath ? { mcpConfigPath: config.mcpConfigPath } : {}),
+  ...(config.skillsDirectory ? { skillsDirectory: config.skillsDirectory } : {}),
     });
     const service = createTaskService(config.databasePath, {
       magpieBaseUrl: config.magpieBaseUrl,
       ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
       defaultModel: config.defaultModel,
-      }, { tools: toolRuntime.tools });
+      }, { tools: toolRuntime.tools, skills: toolRuntime.skills.skills });
     const conversationService = new PrimaryConversationService();
     const bossMode = createBossModeService(service, config, conversationService);
     const executionService = new ControlledExecutionService();
@@ -129,12 +130,13 @@ async function main(argv: readonly string[]): Promise<void> {
   const toolRuntime = await createToolRuntime({
     root: process.cwd(),
     ...(config.mcpConfigPath ? { mcpConfigPath: config.mcpConfigPath } : {}),
+  ...(config.skillsDirectory ? { skillsDirectory: config.skillsDirectory } : {}),
   });
   const service = createTaskService(config.databasePath, {
     magpieBaseUrl: config.magpieBaseUrl,
     ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
     defaultModel: config.defaultModel,
-    }, { tools: toolRuntime.tools });
+    }, { tools: toolRuntime.tools, skills: toolRuntime.skills.skills });
   const conversationService = new PrimaryConversationService();
   const controller = new AbortController();
   process.once('SIGINT', () => controller.abort());

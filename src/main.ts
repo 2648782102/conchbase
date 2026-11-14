@@ -19,12 +19,13 @@ mkdirSync(path.dirname(config.databasePath), { recursive: true });
 const toolRuntime = await createToolRuntime({
   root: process.cwd(),
   ...(config.mcpConfigPath ? { mcpConfigPath: config.mcpConfigPath } : {}),
+  ...(config.skillsDirectory ? { skillsDirectory: config.skillsDirectory } : {}),
 });
 const taskService = createTaskService(config.databasePath, {
   magpieBaseUrl: config.magpieBaseUrl,
   ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
   defaultModel: config.defaultModel,
-  }, { tools: toolRuntime.tools });
+  }, { tools: toolRuntime.tools, skills: toolRuntime.skills.skills });
 const executionService = new ControlledExecutionService();
 const executionRunService = new IsolatedExecutionService({ host: executionService });
 const conversationService = new PrimaryConversationService();
