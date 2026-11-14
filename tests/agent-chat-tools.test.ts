@@ -250,3 +250,51 @@ test('rejecting a write in Agent Chat publishes an explicit rejection reply', as
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('assistant activity is rebuilt from durable events after reload', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-chat-tools-rebuild-'));
+  const read = createBuiltinReadTools({ root: directory });
+  const filename = path.join(directory, 'runtime.sqlite');
+  const service = new TaskService(
+    new SqliteTaskStore(filename),
+    {
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/model',
+      fetch: scripted([
+        () => toolCall('workspace_list', { path: '.' }),
+        () => text('完成'),
+      ]),
+    },
+    catalog(),
+    { tools: { list: () => Object.freeze([...read.list()]), has: (id) => read.has(id), invoke: (id, args) => read.invoke(id, args) } },
+  );
+  try {
+    const agent = await service.createAgent({
+      name: '重建助手', instructions: 'Use tools.', providerId: 'magpie', modelId: 'fixture/model',
+    });
+    const agentChatService = new AgentChatService(service);
+    const created = await agentChatService.createConversation({ agentId: agent.id });
+    const posted = await agentChatService.postMessage(created.id, {
+      text: '列目录', idempotencyKey: 'rebuild-1',
+    });
+    await waitForTask(service, posted.assistantMessage.taskId!, 'succeeded');
+    const before = agentChatService.view(created.id).messages[1]!;
+    assert.ok(before.activity.some((entry) => entry.kind === 'tool'));
+    service.close();
+    const reopened = new TaskService(
+      new SqliteTaskStore(filename),
+      { magpieBaseUrl: 'http://127.0.0.1:3425', defaultModel: 'fixture/model', fetch: scripted([() => text('完成')]) },
+      catalog(),
+      { tools: { list: () => Object.freeze([...read.list()]), has: (id) => read.has(id), invoke: (id, args) => read.invoke(id, args) } },
+    );
+    try {
+      const rebuilt = new AgentChatService(reopened).view(created.id).messages[1]!;
+      assert.ok(rebuilt.activity.some((entry) => entry.kind === 'tool'));
+      assert.ok(rebuilt.activity.some((entry) => entry.kind === 'turn'));
+    } finally {
+      reopened.close();
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

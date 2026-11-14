@@ -527,7 +527,16 @@ export class AgentChatService {
       modelId: record.modelId,
       configurationRevisionId: record.configurationRevisionId,
       reasoningEffort: record.reasoningEffort,
-      messages: Object.freeze(record.messages.map((message) => Object.freeze({ ...message }))),
+      messages: Object.freeze(record.messages.map((message) => {
+        if (message.activity.length > 0 || message.taskId === null) {
+          return Object.freeze({ ...message });
+        }
+        const activity = this.taskActivity(message.taskId);
+        return Object.freeze({
+          ...message,
+          activity: activity.length > 0 ? activity : message.activity,
+        });
+      })),
     });
   }
 
