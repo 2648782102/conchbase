@@ -153,6 +153,7 @@ test('agent chat SSE streams projected tool updates and resumes from a cursor', 
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type') ?? '', /text\/event-stream/);
     assert.equal(response.headers.get('cache-control'), 'no-cache, no-transform');
+    assert.match(response.headers.get('x-accel-buffering') ?? '', /no/);
 
     const waiting = await readFrames(
       response,

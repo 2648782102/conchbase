@@ -161,6 +161,7 @@ export function registerAgentChatRoutes(
         connection: 'keep-alive',
         'x-accel-buffering': 'no',
       });
+      response.write('retry: 1000\n\n');
       let closed = false;
       let cursor = after ?? null;
       let revision = service.conversationRevision(conversationId);
