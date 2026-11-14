@@ -123,7 +123,7 @@ test('agent chat starts a configured Agent conversation and publishes a real mod
       url: `/v1/agent-chat/conversations/${conversationId}/messages`,
       payload: { text: '你好', idempotencyKey: 'chat-fixture-1' },
     });
-    assert.equal(sent.statusCode, 202);
+    assert.equal(sent.statusCode, 202, sent.body);
     assert.equal(sent.json().userMessage.body, '你好');
     assert.match(sent.json().assistantMessage.state, /thinking|streaming|replied/);
 
@@ -738,6 +738,37 @@ test('agent chat conversation pins a user-selected model override', async () => 
     assert.equal(created.statusCode, 201);
     assert.equal(created.json().providerId, 'magpie');
     assert.equal(created.json().modelId, 'fixture/chat-model');
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${created.json().id}/messages`,
+      payload: { text: '你好', idempotencyKey: 'model-pick-task-1' },
+    });
+    assert.equal(sent.statusCode, 202, sent.body);
+    let view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${created.json().id}` });
+    for (let attempt = 0; attempt < 50 && view.json().messages[1]?.phase !== 'terminal'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${created.json().id}` });
+    }
+    const taskId = view.json().messages[1]?.taskId as string;
+    const task = (await app.inject({ method: 'GET', url: `/v1/tasks/${taskId}` })).json().task;
+    assert.equal(task.providerId, 'magpie');
+    assert.equal(task.modelId, 'fixture/chat-model');
+  });
+});
+
+test('agent chat accepts normal identifiers that contain secret-like substrings', async () => {
+  await withApp(async (app, agentId) => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/v1/agent-chat/conversations',
+      payload: { agentId },
+    });
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${created.json().id}/messages`,
+      payload: { text: '请解释 model-pick 和 keyboard 这两个词。', idempotencyKey: 'model-pick-task-1' },
+    });
+    assert.equal(sent.statusCode, 202, sent.body);
   });
 });
 

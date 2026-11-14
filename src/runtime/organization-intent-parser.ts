@@ -7,6 +7,7 @@ import {
 } from './organization-contract.js';
 import { chineseAgentDisplayName } from './agent-name.js';
 import type { BossOrganizationFacts } from './boss-organization-context.js';
+import { containsSecretLike } from './secret-filter.js';
 
 export const ORGANIZATION_INTENT_PARSER_VERSION = 1;
 
@@ -90,7 +91,7 @@ export function parseStructuredOrganizationResult(
   if (relay !== null && (typeof relay !== 'string' || relay.length > 2000)) {
     throw new OrganizationIntentParseError('Structured adapter relay is not bounded.');
   }
-  if (/sk-|Bearer|ghp_|github_pat_|password|apiKey|privateKey/i.test(relay ?? '')) {
+  if (containsSecretLike(relay)) {
     throw new OrganizationIntentParseError('Structured adapter relay contains secret-like content.');
   }
   return Object.freeze({
@@ -115,7 +116,7 @@ export function parseBossConversationResult(
     throw new OrganizationIntentParseError('Boss conversation reply is not bounded.');
   }
   const boundedReply = normalizeBossReply(reply);
-  if (/sk-|Bearer|ghp_|github_pat_|password|apiKey|privateKey|\.conchbase\/|runtime\.sqlite/i.test(boundedReply)) {
+  if (containsSecretLike(boundedReply)) {
     throw new OrganizationIntentParseError('Boss conversation reply contains secret-like content.');
   }
   const rawActions = value.actions;
@@ -175,7 +176,7 @@ export function createDeterministicOrganizationIntentParser(): OrganizationInten
     async parse(input) {
       const text = input.text.trim();
       if (text.length === 0) throw new OrganizationIntentParseError('Intent text must not be empty.');
-      if (/sk-|Bearer|ghp_|github_pat_|password|apiKey|privateKey/i.test(text)) {
+      if (containsSecretLike(text)) {
         throw new OrganizationIntentParseError('Intent text contains secret-like content.');
       }
       const snapshot = input.snapshot ?? createOrganization('primary_conversation');

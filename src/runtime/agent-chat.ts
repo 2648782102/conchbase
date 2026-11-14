@@ -4,6 +4,7 @@ import type { TaskService } from './task-service.js';
 import type { TaskSnapshot } from './task-store.js';
 import { chineseAgentDisplayName } from './agent-name.js';
 import type { BossModeService } from './boss-mode-service.js';
+import { containsSecretLike } from './secret-filter.js';
 import {
   InMemoryAgentChatStore,
   type AgentChatConversationRecord,
@@ -118,7 +119,7 @@ function boundedText(value: unknown, label: string): string {
     throw new AgentChatServiceError(`${label} must be a non-empty string of at most 20000 characters.`);
   }
   const text = value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
-  if (/sk-|Bearer|ghp_|github_pat_|password|apiKey|privateKey/i.test(text)) {
+  if (containsSecretLike(text)) {
     throw new AgentChatServiceError(`${label} contains secret-like content.`);
   }
   return text;
@@ -308,6 +309,7 @@ export class AgentChatService {
         prompt,
         agentId: record.agentId,
         expectedAgentRevisionId: record.agentRevisionId,
+        modelOverride: { providerId: record.providerId, modelId: record.modelId },
       });
     } catch (cause) {
       const errorText = cause instanceof Error ? cause.message.slice(0, 240) : 'Agent task creation failed.';

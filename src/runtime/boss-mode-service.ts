@@ -20,6 +20,7 @@ import type { OrganizationStore } from './organization-store.js';
 import type { TaskService } from './task-service.js';
 import { type WorkTriggerRequest } from './work-contract.js';
 import { buildBossOrganizationFacts } from './boss-organization-context.js';
+import { containsSecretLike } from './secret-filter.js';
 
 export const BOSS_MODE_SERVICE_VERSION = 2;
 
@@ -118,7 +119,7 @@ function validateSubmission(input: unknown): BossModeSubmitInput {
   if (typeof input.idempotencyKey !== 'string' || input.idempotencyKey.length === 0 || input.idempotencyKey.length > 200) {
     throw new BossModeServiceError('idempotencyKey must be a non-empty string of at most 200 characters.');
   }
-  if (/sk-|Bearer|ghp_|github_pat_|password|apiKey|privateKey/i.test(`${input.text} ${input.idempotencyKey}`)) {
+  if (containsSecretLike(`${input.text} ${input.idempotencyKey}`)) {
     throw new BossModeServiceError('Boss mode intent contains secret-like content.');
   }
   let boundedConversation: readonly { readonly author: 'user' | 'assistant'; readonly body: string }[] | undefined;
@@ -129,7 +130,7 @@ function validateSubmission(input: unknown): BossModeSubmitInput {
     boundedConversation = Object.freeze(conversation.map((item, index) => {
       if (!isRecord(item) || (item.author !== 'user' && item.author !== 'assistant')
         || typeof item.body !== 'string' || item.body.length === 0 || item.body.length > 6000
-        || /sk-|Bearer|ghp_|github_pat_|password|apiKey|privateKey/i.test(item.body)) {
+        || containsSecretLike(item.body)) {
         throw new BossModeServiceError(`conversation[${index}] is not a bounded safe message.`);
       }
       return Object.freeze({ author: item.author, body: item.body });
