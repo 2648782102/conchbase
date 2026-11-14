@@ -145,6 +145,10 @@ test('agent chat SSE streams projected tool updates and resumes from a cursor', 
         && frame.data.messageId === assistantId
         && frame.data.message?.state === 'waiting_approval'),
     );
+    assert.doesNotMatch(
+      JSON.stringify(waiting),
+      /runtime\.sqlite|\.conchbase\/|sk-|Bearer|\/var\/folders|\/Users\//i,
+    );
     assert.equal(waiting[0]?.data.kind, 'snapshot');
     assert.ok(waiting[0]?.data.conversation);
     const approvalFrame = waiting.find((frame) =>

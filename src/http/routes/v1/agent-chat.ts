@@ -10,6 +10,7 @@ import { EventOrderError } from '../../../runtime/event-log.js';
 const STREAM_INTERVAL_MS = 300;
 const HEARTBEAT_MS = 15_000;
 const REPLAY_LIMIT = 500;
+const MAX_STREAM_CONNECTIONS = 32;
 
 function frameText(frame: AgentChatStreamFrame): string {
   return [
@@ -40,6 +41,7 @@ export function registerAgentChatRoutes(
   app: FastifyInstance,
   service: AgentChatService | undefined,
 ): void {
+  let activeStreams = 0;
   app.get('/v1/agent-chat/agents', async (_request, reply) => {
     if (!service) return unavailable(reply);
     try {
@@ -125,6 +127,9 @@ export function registerAgentChatRoutes(
       if (after !== undefined && !/^evt_[0-9]{12}$/.test(after)) {
         return errorResponse(reply, new AgentChatServiceError('after must be an event id.'));
       }
+      if (activeStreams >= MAX_STREAM_CONNECTIONS) {
+        return reply.code(503).send({ error: 'Too many active Agent Chat streams.' });
+      }
 
       let taskIds: readonly string[];
       try {
@@ -147,6 +152,7 @@ export function registerAgentChatRoutes(
       }
 
       reply.hijack();
+      activeStreams += 1;
       const response = reply.raw;
       response.writeHead(200, {
         'content-type': 'text/event-stream; charset=utf-8',
@@ -165,6 +171,7 @@ export function registerAgentChatRoutes(
       const close = () => {
         if (closed) return;
         closed = true;
+        activeStreams = Math.max(0, activeStreams - 1);
         if (interval !== null) clearInterval(interval);
         if (heartbeat !== null) clearInterval(heartbeat);
         response.end();
