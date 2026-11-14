@@ -1790,6 +1790,7 @@ paths:
             text/event-stream:
               schema:
                 type: string
+                description: 'UTF-8 event-stream. Each `event: agent-chat` frame has a `data:` JSON payload matching AgentChatStreamFrame; `id:` carries the Runtime event id and is used for Last-Event-ID resume.'
         '400':
           $ref: '#/components/responses/OrganizationValidationError'
         '404':
