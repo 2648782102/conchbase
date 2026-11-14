@@ -146,6 +146,7 @@ export interface TaskStore {
   getToolRequest(requestId: string): ToolRequestRecord | null;
   decideToolRequest(requestId: string, input: ToolRequestDecisionInput): ToolRequestDecisionResult;
   listEvents(afterEventId: string | null): readonly RuntimeEvent[];
+  listTaskEvents(taskId: string): readonly RuntimeEvent[];
   getEvent(eventId: string): RuntimeEvent | null;
   getConfigurationState(): ConfigurationState;
   getConfigurationRevision(id: string): ConfigurationRevision | null;
@@ -798,6 +799,13 @@ export class SqliteTaskStore implements TaskStore {
     return row === undefined ? null : toEvent(row);
   }
 
+  listTaskEvents(taskId: string): readonly RuntimeEvent[] {
+    const rows = this.database.prepare(
+      'SELECT * FROM events WHERE task_id = ? ORDER BY sequence',
+    ).all(taskId) as unknown as EventRow[];
+    return Object.freeze(rows.map(toEvent));
+  }
+
   close(): void {
     this.database.close();
   }
@@ -1057,6 +1065,9 @@ export class SqliteTaskStore implements TaskStore {
         this.database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`);
       }
     }
+    this.database.exec(
+      'CREATE INDEX IF NOT EXISTS events_task_sequence ON events (task_id, sequence)',
+    );
     this.database.exec(`
       CREATE TABLE IF NOT EXISTS work_triggers (
         id TEXT PRIMARY KEY,

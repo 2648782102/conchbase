@@ -10,6 +10,7 @@ import {
   type AgentChatConversationRecord,
 } from '../src/runtime/agent-chat-store.js';
 import { DatabaseSync } from 'node:sqlite';
+import { SqliteTaskStore } from '../src/runtime/task-store.js';
 
 function record(id = 'chat_fixture'): AgentChatConversationRecord {
   return Object.freeze({
@@ -165,6 +166,43 @@ test('SQLite agent chat store upserts messages without duplicating rows', () => 
     ).get(base.id) as { count: number };
     assert.equal(rows.count, 2);
     database.close();
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('task event lookup uses a task_id index and returns only that task', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-task-events-'));
+  try {
+    const store = new SqliteTaskStore(path.join(directory, 'runtime.sqlite'));
+    const agent = store.createAgent({
+      name: '索引助手', instructions: 'X', providerId: 'magpie', modelId: 'fixture/model',
+    });
+    const task = store.createAgentTask({
+      id: 'task_index_fixture',
+      prompt: 'hello',
+      agentId: agent.id,
+      expectedAgentRevisionId: agent.currentRevisionId,
+    });
+    store.recordEvent(task.id, {
+      taskId: task.id,
+      type: 'agent_loop.turn_started',
+      state: 'running',
+      configurationRevisionId: task.configurationRevisionId,
+      attempt: 1,
+      data: { iteration: 0 },
+    });
+    store.close();
+    const database = new DatabaseSync(path.join(directory, 'runtime.sqlite'));
+    const plan = database.prepare(
+      "EXPLAIN QUERY PLAN SELECT * FROM events WHERE task_id = ? ORDER BY sequence",
+    ).all(task.id) as unknown as { detail: string }[];
+    assert.ok(plan.some((row) => /events_task_sequence|USING INDEX/.test(row.detail)));
+    database.close();
+    const reopened = new SqliteTaskStore(path.join(directory, 'runtime.sqlite'));
+    assert.ok(reopened.listTaskEvents(task.id).length >= 1);
+    assert.equal(reopened.listTaskEvents('task_missing').length, 0);
+    reopened.close();
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

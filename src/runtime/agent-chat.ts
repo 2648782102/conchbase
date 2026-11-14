@@ -816,7 +816,7 @@ export class AgentChatService {
   }
 
   private taskActivity(taskId: string): readonly AgentChatActivity[] {
-    const events = this.taskService.store.listEvents(null).filter((event) => event.taskId === taskId);
+    const events = this.taskService.store.listTaskEvents(taskId);
     const activity: AgentChatActivity[] = [];
     let lastTurn: AgentChatActivity | null = null;
     const byTool = new Map<string, AgentChatActivity[]>();
