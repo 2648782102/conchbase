@@ -791,7 +791,9 @@ export class AgentChatService {
         body: state === 'replied'
           ? boundedOutput(task.output)
           : state === 'failed'
-            ? '模型调用失败。'
+            ? /rejected by the operator/i.test(error ?? '')
+              ? '你拒绝了这次工具执行，本轮已停止。'
+              : '模型调用失败。'
             : '回复已取消。',
         state: finalState,
         phase: 'terminal',

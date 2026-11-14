@@ -194,3 +194,59 @@ test('agent chat keeps separate activity entries for each turn and repeated tool
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('rejecting a write in Agent Chat publishes an explicit rejection reply', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-chat-tools-reject-'));
+  const read = createBuiltinReadTools({ root: directory });
+  const write = createBuiltinWriteTools({ root: directory });
+  const service = new TaskService(
+    new SqliteTaskStore(path.join(directory, 'runtime.sqlite')),
+    {
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/model',
+      fetch: scripted([() => toolCall('workspace_write', { path: 'x.txt', content: 'x' })]),
+    },
+    catalog(),
+    {
+      tools: {
+        list: () => Object.freeze([...read.list(), ...write.list()]),
+        has: (id) => read.has(id) || write.has(id),
+        invoke: (id, args) => read.has(id) ? read.invoke(id, args) : write.invoke(id, args),
+      },
+    },
+  );
+  const agentChat = new AgentChatService(service);
+  const app = createApp({ logger: false, taskService: service, agentChatService: agentChat });
+  try {
+    const agent = await service.createAgent({
+      name: '拒绝助手', instructions: 'Write.', providerId: 'magpie', modelId: 'fixture/model',
+    });
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
+    });
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${created.json().id}/messages`,
+      payload: { text: '写文件', idempotencyKey: 'reject-chat-1' },
+    });
+    const assistantId = sent.json().assistantMessage.id as string;
+    const taskId = sent.json().assistantMessage.taskId as string;
+    await waitForTask(service, taskId, 'waiting_approval');
+    await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${created.json().id}/approval`,
+      payload: { assistantMessageId: assistantId, decision: 'rejected' },
+    });
+    await waitForTask(service, taskId, 'failed');
+    const view = await app.inject({
+      method: 'GET', url: `/v1/agent-chat/conversations/${created.json().id}`,
+    });
+    const reply = view.json().messages[1];
+    assert.equal(reply.state, 'failed');
+    assert.match(reply.body, /拒绝/);
+  } finally {
+    await app.close();
+    await service.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
