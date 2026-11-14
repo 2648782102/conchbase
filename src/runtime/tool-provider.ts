@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 export type ToolSideEffect = 'read' | 'write' | 'external';
@@ -66,7 +66,19 @@ function resolveInsideRoot(root: string, relative: string): string {
   if (target !== normalizedRoot && !target.startsWith(`${normalizedRoot}${path.sep}`)) {
     throw new ToolRejectedError('path_escapes_root');
   }
-  return target;
+  let realRoot: string;
+  let realTarget: string;
+  try {
+    realRoot = realpathSync(normalizedRoot);
+    realTarget = realpathSync(target);
+  } catch {
+    // Missing paths are reported by the calling tool with a bounded code.
+    return target;
+  }
+  if (realTarget !== realRoot && !realTarget.startsWith(`${realRoot}${path.sep}`)) {
+    throw new ToolRejectedError('path_escapes_root');
+  }
+  return realTarget;
 }
 
 export function createBuiltinReadTools(options: {
@@ -123,7 +135,14 @@ export function createBuiltinReadTools(options: {
     const relative = asString(args, 'path');
     if (relative.length === 0) throw new ToolRejectedError('invalid_arguments', 'path is required.');
     const target = resolveInsideRoot(root, relative);
-    const maxChars = Math.min(asInteger(args, 'maxBytes', maxBytes, maxBytes), maxBytes);
+    const requested = args.maxBytes;
+    if (requested !== undefined && (typeof requested !== 'number' || !Number.isInteger(requested) || requested < 1)) {
+      throw new ToolRejectedError('invalid_arguments', 'maxBytes must be a positive integer.');
+    }
+    if (typeof requested === 'number' && requested > maxBytes) {
+      throw new ToolRejectedError('byte_cap_exceeded');
+    }
+    const maxChars = requested ?? maxBytes;
     let stats;
     try {
       stats = statSync(target);

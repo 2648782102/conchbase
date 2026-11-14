@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -166,6 +166,37 @@ test('a write-capable tool is not registered in v1', async () => {
     assert.ok(tools.list().every((tool) => tool.sideEffect === 'read'));
   } finally {
     space.cleanup();
+  }
+});
+
+test('the read tool rejects requests above its byte cap instead of truncating silently', () => {
+  const space = workspace();
+  try {
+    writeFileSync(path.join(space.root, 'large.txt'), 'x'.repeat(64));
+    const tools = createBuiltinReadTools({ root: space.root, maxBytes: 16 });
+    assert.throws(
+      () => tools.invoke('workspace_read', { path: 'large.txt', maxBytes: 1024 }),
+      /byte cap|Tool call/i,
+    );
+  } finally {
+    space.cleanup();
+  }
+});
+
+test('a symlink pointing outside the root is rejected', () => {
+  const space = workspace();
+  const outside = mkdtempSync(path.join(tmpdir(), 'conchbase-outside-'));
+  try {
+    writeFileSync(path.join(outside, 'target.txt'), 'outside');
+    symlinkSync(path.join(outside, 'target.txt'), path.join(space.root, 'link.txt'));
+    const tools = createBuiltinReadTools({ root: space.root });
+    assert.throws(
+      () => tools.invoke('workspace_read', { path: 'link.txt' }),
+      /path|Tool call/i,
+    );
+  } finally {
+    space.cleanup();
+    rmSync(outside, { recursive: true, force: true });
   }
 });
 

@@ -669,6 +669,9 @@ export class TaskService {
         throw new Error('Provider tool-call observation is not actionable in this runtime slice.');
       }
       if (turn.kind !== 'tool_calls') throw new Error('Unsupported model turn.');
+      if (turn.calls.length !== 1) {
+        throw new Error('Agent loop v1 accepts exactly one tool call per turn.');
+      }
       if (iteration === maxIterations - 1) {
         throw new Error(`Agent loop exceeded ${maxIterations} iterations.`);
       }
@@ -680,7 +683,12 @@ export class TaskService {
       for (const call of turn.calls) {
         this.store.recordEvent(task.id, {
           ...this.eventInput(task, 'agent_loop.tool_requested', 'running', task.attempt),
-          data: { iteration, toolId: call.name, argumentsDigest: digestArguments(call.arguments) },
+            data: {
+              iteration,
+              toolId: call.name,
+              toolVersion: 1,
+              argumentsDigest: digestArguments(call.arguments),
+            },
         });
         try {
           if (!tools || !tools.has(call.name)) throw new ToolRejectedError('unknown_tool');
@@ -688,7 +696,7 @@ export class TaskService {
           this.store.recordEvent(task.id, {
             ...this.eventInput(task, 'agent_loop.tool_executed', 'running', task.attempt),
             data: {
-              iteration, toolId: call.name, resultDigest: result.digest, bytes: result.bytes,
+              iteration, toolId: call.name, toolVersion: 1, resultDigest: result.digest, bytes: result.bytes,
             },
           });
           messages.push({ role: 'tool', toolCallId: call.id, content: result.summary });
@@ -700,7 +708,7 @@ export class TaskService {
           const code = cause instanceof ToolRejectedError ? cause.code : 'tool_failed';
           this.store.recordEvent(task.id, {
             ...this.eventInput(task, 'agent_loop.tool_failed', 'running', task.attempt),
-            data: { iteration, toolId: call.name, errorCode: code },
+            data: { iteration, toolId: call.name, toolVersion: 1, errorCode: code },
           });
           messages.push({ role: 'tool', toolCallId: call.id, content: `error: ${code}` });
         }
