@@ -550,10 +550,12 @@ export class AgentChatService {
   conversationRevision(conversationId: string): string {
     const record = this.load(conversationId);
     if (!record) throw new AgentChatServiceError('Agent Chat conversation not found.', 404);
-    const last = record.messages.at(-1);
-    if (!last) return 'rev_0_0';
-    const timestamp = Number.isFinite(Date.parse(last.updatedAt)) ? Date.parse(last.updatedAt) : 0;
-    return `rev_${timestamp}_${last.sequence}`;
+    if (record.messages.length === 0) return 'rev_0_0';
+    const digest = createHash('sha256');
+    for (const message of record.messages) {
+      digest.update(`${message.id}:${message.updatedAt}:${message.sequence}:${message.state};`);
+    }
+    return `rev_${record.messages.length}_${digest.digest('hex').slice(0, 16)}`;
   }
 
   snapshotFrame(conversationId: string, cursor: string | null): AgentChatStreamFrame {
