@@ -112,14 +112,15 @@ interface IdempotencyRow {
 }
 
 function messageFromRow(row: MessageRow): AgentChatMessage {
+  const legacyRestart = /Runtime restarted before this reply finished/i.test(row.error ?? '');
   return Object.freeze({
     id: row.id,
     sequence: row.sequence,
     author: row.author as AgentChatMessageAuthor,
     body: row.body,
-    state: row.state as AgentChatMessageState,
+    state: legacyRestart ? 'failed' : row.state as AgentChatMessageState,
     taskId: row.task_id,
-    error: row.error,
+    error: legacyRestart ? RECOVERED_ERROR : row.error,
     phase: row.phase as AgentChatMessagePhase,
     progress: row.progress,
     updatedAt: row.updated_at,
