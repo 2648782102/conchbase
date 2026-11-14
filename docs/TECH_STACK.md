@@ -37,7 +37,7 @@ Repository guardrails use Node's built-in test runner and local-file assertions;
 
 - Provider capability discovery, streaming tool-call accumulation, multi-turn context, error classification, direct vendor adapters, public tool execution routes, durable execution results, crash-safe side effects, model-driven composition scheduling, portable configuration files, secret resolution, and install/enable/grant operations.
 - Stable cross-process SecretHandle keys, OS keychain custody, replayable encrypted-at-rest values, real external Sources, real Outbox writes, arbitrary fixed injectors, executable tools, multi-process ownership, and cloud deployment.
-- Production SQLite driver, schema migrations, retention, SSE, and `Last-Event-ID` mapping.
+- Production SQLite driver, schema migrations, SSE event retention, multi-process fan-out, and non-loopback stream authentication.
 - Plugin isolation and capability grants.
 - Remote authentication, pairing, and desktop packaging.
 
