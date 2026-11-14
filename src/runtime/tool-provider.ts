@@ -25,7 +25,7 @@ export interface ToolExecutionResult {
 export interface ToolProvider {
   list(): readonly ToolDefinition[];
   has(toolId: string): boolean;
-  invoke(toolId: string, args: ToolArguments): ToolExecutionResult;
+  invoke(toolId: string, args: ToolArguments): ToolExecutionResult | Promise<ToolExecutionResult>;
 }
 
 export class ToolRejectedError extends Error {
@@ -33,6 +33,21 @@ export class ToolRejectedError extends Error {
     super(message);
     this.name = 'ToolRejectedError';
   }
+}
+
+export function combineToolProviders(providers: readonly ToolProvider[]): ToolProvider {
+  const all = providers.flatMap((provider) => [...provider.list()]);
+  const ids = new Set(all.map((tool) => tool.id));
+  if (ids.size !== all.length) throw new ToolRejectedError('duplicate_tool');
+  return Object.freeze({
+    list: () => Object.freeze(all),
+    has: (toolId: string) => providers.some((provider) => provider.has(toolId)),
+    invoke: async (toolId: string, args: ToolArguments) => {
+      const provider = providers.find((candidate) => candidate.has(toolId));
+      if (!provider) throw new ToolRejectedError('unknown_tool');
+      return provider.invoke(toolId, args);
+    },
+  });
 }
 
 const DEFAULT_MAX_BYTES = 8_192;

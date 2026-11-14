@@ -13,7 +13,7 @@ Current state has three distinct record classes: `implemented`, `validationEvide
 ADR 0052 accepts the Agent-loop architecture and ADR 0053 fixes its first slice. ADR 0053 is an accepted contract, not implemented behavior. Work in this order:
 
 1. **Ready:** implement the bounded Agent loop with read-only built-in tools, multi-turn provider context, and durable per-iteration events. Preserve task pins, cancellation, restart interruption, and the frozen public path set.
-2. **Proposal:** add an MCP capability provider through the same seam. Requires an accepted MCP lifecycle, timeout, isolation, and authorization ADR.
+2. **Implemented:** ADR 0054 adds an administrator-configured MCP stdio provider with a read-only tool allowlist, sanitized environment, timeouts, and bounded results. Write-capable MCP tools and remote transports remain blocked.
 3. **Proposal:** add a Skill directory provider that supplies instructions only. Requires an accepted Skill ADR.
 4. **Blocked:** write-capable tools, network tools, external writes, arbitrary shell, plugin hosts, and secret injection. These require their own accepted ADRs and must not be smuggled in as "read" tools.
 

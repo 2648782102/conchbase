@@ -13,7 +13,7 @@ import {
   createOpenAiCompatibleBossConversationParser,
   createOpenAiCompatibleOrganizationIntentParser,
 } from './runtime/organization-intent-parser.js';
-import { createBuiltinReadTools } from './runtime/tool-provider.js';
+import { createToolRuntime } from './runtime/tool-runtime.js';
 
 function usage(): string {
   return `Conchbase 1.0.0
@@ -85,11 +85,15 @@ async function main(argv: readonly string[]): Promise<void> {
 
   if (command === 'serve') {
     mkdirSync(path.dirname(config.databasePath), { recursive: true });
+    const toolRuntime = await createToolRuntime({
+      root: process.cwd(),
+      ...(config.mcpConfigPath ? { mcpConfigPath: config.mcpConfigPath } : {}),
+    });
     const service = createTaskService(config.databasePath, {
       magpieBaseUrl: config.magpieBaseUrl,
       ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
       defaultModel: config.defaultModel,
-      }, { tools: createBuiltinReadTools({ root: process.cwd() }) });
+      }, { tools: toolRuntime.tools });
     const conversationService = new PrimaryConversationService();
     const bossMode = createBossModeService(service, config, conversationService);
     const executionService = new ControlledExecutionService();
@@ -122,11 +126,15 @@ async function main(argv: readonly string[]): Promise<void> {
   }
 
   mkdirSync(path.dirname(config.databasePath), { recursive: true });
+  const toolRuntime = await createToolRuntime({
+    root: process.cwd(),
+    ...(config.mcpConfigPath ? { mcpConfigPath: config.mcpConfigPath } : {}),
+  });
   const service = createTaskService(config.databasePath, {
     magpieBaseUrl: config.magpieBaseUrl,
     ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
     defaultModel: config.defaultModel,
-    }, { tools: createBuiltinReadTools({ root: process.cwd() }) });
+    }, { tools: toolRuntime.tools });
   const conversationService = new PrimaryConversationService();
   const controller = new AbortController();
   process.once('SIGINT', () => controller.abort());

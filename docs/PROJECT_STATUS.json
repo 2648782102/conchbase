@@ -222,6 +222,11 @@
       "id": "agent-loop-v1",
       "summary": "ADR 0053 implements a Runtime-owned bounded Agent loop for Agent-backed tasks with read-only built-in tools (workspace_list, workspace_read, text_search), multi-turn provider context, durable agent_loop events, iteration and time budgets, and path-escape rejection.",
       "evidence": "src/runtime/task-service.ts"
+    },
+    {
+      "id": "mcp-provider",
+      "summary": "ADR 0054 implements an administrator-configured MCP stdio provider without the MCP SDK: JSON-RPC handshake, tool allowlist, read-only enforcement, sanitized environment, timeouts, bounded results, and namespaced tool ids.",
+      "evidence": "src/runtime/mcp-provider.ts"
     }
   ],
   "validationEvidence": [
@@ -376,6 +381,12 @@
       "summary": "Executable fixtures cover loop continuation after a tool result, iteration-budget termination, out-of-root rejection, read-only provider surface, and streamed tool-call accumulation.",
       "evidence": "tests/agent-loop.test.ts",
       "executableFixture": true
+    },
+    {
+      "id": "mcp-provider-fixture",
+      "summary": "Executable fixtures cover MCP discovery, namespacing, calls, non-read rejection, timeouts, malformed responses, bounded output, config validation, and Agent loop integration.",
+      "evidence": "tests/mcp-provider.test.ts",
+      "executableFixture": true
     }
   ],
   "blockedDirections": [
@@ -413,14 +424,6 @@
     }
   ],
   "nextBoundedSlices": [
-    {
-      "id": "mcp-provider",
-      "summary": "Add an MCP capability provider through the ADR 0052 seam, with lifecycle, timeout, isolation, and authorization.",
-      "publicContractChange": true,
-      "requiresAcceptedAdr": true,
-      "requiredAdr": "a new MCP provider ADR",
-      "status": "proposal"
-    },
     {
       "id": "skill-provider",
       "summary": "Add a Skill directory provider that supplies instructions only and grants no capability.",

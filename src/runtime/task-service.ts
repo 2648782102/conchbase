@@ -692,7 +692,7 @@ export class TaskService {
         });
         try {
           if (!tools || !tools.has(call.name)) throw new ToolRejectedError('unknown_tool');
-          const result = tools.invoke(call.name, call.arguments);
+          const result = await tools.invoke(call.name, call.arguments);
           this.store.recordEvent(task.id, {
             ...this.eventInput(task, 'agent_loop.tool_executed', 'running', task.attempt),
             data: {

@@ -10,6 +10,7 @@ export interface RuntimeConfig {
   defaultModel: string;
   organizationIntentModel?: string;
   bossModel?: string;
+  mcpConfigPath?: string;
   allowAuthenticatedRemoteBinding: boolean;
   authTokenDigest?: string;
 }
@@ -66,6 +67,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
       ? { organizationIntentModel: env.CONCHBASE_ORGANIZATION_INTENT_MODEL }
       : {}),
     ...(env.CONCHBASE_BOSS_MODEL ? { bossModel: env.CONCHBASE_BOSS_MODEL } : {}),
+    ...(env.CONCHBASE_MCP_CONFIG ? { mcpConfigPath: env.CONCHBASE_MCP_CONFIG } : {}),
     allowAuthenticatedRemoteBinding,
     ...(authTokenDigest ? { authTokenDigest } : {}),
   };
