@@ -762,12 +762,19 @@ export class AgentChatService {
         const state = taskStateToMessageState(task);
         const activity = this.taskActivity(task.id);
         if (task.partialOutput && task.partialOutput.length > 0) {
+          const body = boundedOutput(task.partialOutput);
+          const progress = Math.min(100, Math.max(5, task.partialOutput.length));
+          const activityChanged = JSON.stringify(message.activity) !== JSON.stringify(activity);
+          if (message.body === body && message.state === state && message.progress === progress
+            && !activityChanged) {
+            continue;
+          }
           this.replaceMessage(record, message.id, {
             ...message,
-            body: boundedOutput(task.partialOutput),
+            body,
             state,
             phase: 'model',
-            progress: Math.min(100, Math.max(5, task.partialOutput.length)),
+            progress,
             updatedAt: this.now(),
             activity,
           });
