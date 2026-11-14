@@ -212,6 +212,11 @@
       "id": "agent-chat-model-selection",
       "summary": "ADR 0051 adds optional provider-neutral model selection at Agent Chat conversation creation, validated against the Magpie catalog and pinned for ordinary Agent and Boss conversation turns.",
       "evidence": "docs/decisions/0051-agent-chat-model-selection.md"
+    },
+    {
+      "id": "agent-loop-architecture",
+      "summary": "ADR 0052 accepts a Runtime-owned bounded Agent loop, capability-provider seam, explicit approval state, durable per-iteration events, and bounded multi-turn provider context without changing Runtime authority.",
+      "evidence": "docs/decisions/0052-agent-loop-architecture.md"
     }
   ],
   "validationEvidence": [
@@ -396,7 +401,31 @@
       "requiresAcceptedAdr": true
     }
   ],
-  "nextBoundedSlices": [],
+  "nextBoundedSlices": [
+    {
+      "id": "agent-loop-v1-read-tools",
+      "summary": "Implement ADR 0053: bounded Agent loop, read-only built-in tools behind a capability provider, multi-turn provider context, and durable tool events.",
+      "publicContractChange": false,
+      "requiresAcceptedAdr": false,
+      "status": "ready"
+    },
+    {
+      "id": "mcp-provider",
+      "summary": "Add an MCP capability provider through the ADR 0052 seam, with lifecycle, timeout, isolation, and authorization.",
+      "publicContractChange": true,
+      "requiresAcceptedAdr": true,
+      "requiredAdr": "a new MCP provider ADR",
+      "status": "proposal"
+    },
+    {
+      "id": "skill-provider",
+      "summary": "Add a Skill directory provider that supplies instructions only and grants no capability.",
+      "publicContractChange": false,
+      "requiresAcceptedAdr": true,
+      "requiredAdr": "a new Skill provider ADR",
+      "status": "proposal"
+    }
+  ],
   "invariants": [
     "Never expose SecretHandle plaintext to a model, client, event, log, error, configuration document, or generic resolver.",
     "Never execute a tool outside the runtime policy and approval path.",
@@ -404,5 +433,6 @@
     "Do not let a UI read or write Conchbase private files or database.",
     "Do not hardcode a canonical Agent topology; user-authored composition remains topology-neutral.",
     "Distinguish implemented behavior from roadmap and validation evidence."
-  ]
+  ],
+  "decisionsArchive": "docs/decisions/archive/"
 }

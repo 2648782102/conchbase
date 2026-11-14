@@ -29,8 +29,8 @@ Status: research notes observed on 2026-11-07 (Asia/Shanghai). This is a time-bo
 ## Boundaries reinforced by this snapshot
 
 - Conchbase remains the execution authority; CLI, Pagurus, IDEs, and third-party clients consume the Runtime API.
-- User-defined agent composition is a product direction, not a fixed hierarchy. A layered multi-role arrangement is one illustrative configuration; the runtime must not hardcode layer counts, role names, or coordination patterns. See [ADR 0005](decisions/0005-user-defined-agent-topology-proposal.md).
-- Provider adapters, Skills, plugins, MCP servers, and memory/context services are replaceable inputs. None owns durable task state, policy decisions, or the public API. See [ADR 0006](decisions/0006-provider-adapter-capability-boundary-proposal.md) and [ADR 0007](decisions/0007-skill-plugin-mcp-configuration-proposal.md).
+- User-defined agent composition is a product direction, not a fixed hierarchy. A layered multi-role arrangement is one illustrative configuration; the runtime must not hardcode layer counts, role names, or coordination patterns. See [ADR 0005](decisions/archive/0005-user-defined-agent-topology-proposal.md).
+- Provider adapters, Skills, plugins, MCP servers, and memory/context services are replaceable inputs. None owns durable task state, policy decisions, or the public API. See [ADR 0006](decisions/archive/0006-provider-adapter-capability-boundary-proposal.md) and [ADR 0007](decisions/archive/0007-skill-plugin-mcp-configuration-proposal.md).
 - Every tool call remains behind the runtime policy and approval path. A Skill does not grant tool permissions; `allowed-tools` is not authority.
 - Loopback-only binding, no authentication/pairing design, and no remote management surface remain current repository facts. The accepted local configuration write routes are documented in `docs/openapi.yaml`.
 
@@ -43,10 +43,10 @@ Status: research notes observed on 2026-11-07 (Asia/Shanghai). This is a time-bo
 
 ## Resulting repository records
 
-- [ADR 0005](decisions/0005-user-defined-agent-topology-proposal.md): topology-neutral, user-defined agent composition.
-- [ADR 0006](decisions/0006-provider-adapter-capability-boundary-proposal.md): provider adapter and capability boundary.
-- [ADR 0007](decisions/0007-skill-plugin-mcp-configuration-proposal.md): Skill, plugin, MCP, and configuration-revision boundary.
-- [ADR 0008](decisions/0008-sqlite-driver-compatibility-proposal.md): dated, local SQLite driver compatibility evidence with no production driver selection.
+- [ADR 0005](decisions/archive/0005-user-defined-agent-topology-proposal.md): topology-neutral, user-defined agent composition.
+- [ADR 0006](decisions/archive/0006-provider-adapter-capability-boundary-proposal.md): provider adapter and capability boundary.
+- [ADR 0007](decisions/archive/0007-skill-plugin-mcp-configuration-proposal.md): Skill, plugin, MCP, and configuration-revision boundary.
+- [ADR 0008](decisions/archive/0008-sqlite-driver-compatibility-proposal.md): dated, local SQLite driver compatibility evidence with no production driver selection.
 - [ADR 0009](decisions/0009-ai-development-guardrails.md): accepted, executable development guardrails based on deterministic validators.
 - [AI task queue](AI_TASK_QUEUE.md): current implemented facts, blocked work, and the next independent implementation slice.
 

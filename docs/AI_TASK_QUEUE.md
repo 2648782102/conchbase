@@ -8,6 +8,17 @@ The final local-first `1.0.0` target and the complete Boss-mode Organization Run
 
 Current state has three distinct record classes: `implemented`, `validationEvidence`, and `blockedDirections`. A completed walkthrough is validation evidence, not an executable fixture or an implemented feature. Every `blockedDirections` item has `requiresAcceptedAdr: true`; do not implement stable cross-process secrets, real external Sources, executable tools, production remote pairing, or generated clients by silently extending the frozen 47-path contract. ADR 0035 accepts one internal, additive migration to private `user_version = 4` for organization persistence, and ADR 0050 adds private Agent Chat persistence at `user_version = 5`; the published `1.0.0` platform still freezes 47 paths and its historical `user_version = 3` contract. In `nextBoundedSlices`, only `status: "ready"` with `requiresAcceptedAdr: false` is directly executable; `status: "proposal"` with `requiresAcceptedAdr: true` is gated on its named ADR.
 
+## Agent capability sequence
+
+ADR 0052 accepts the Agent-loop architecture and ADR 0053 fixes its first slice. ADR 0053 is an accepted contract, not implemented behavior. Work in this order:
+
+1. **Ready:** implement the bounded Agent loop with read-only built-in tools, multi-turn provider context, and durable per-iteration events. Preserve task pins, cancellation, restart interruption, and the frozen public path set.
+2. **Proposal:** add an MCP capability provider through the same seam. Requires an accepted MCP lifecycle, timeout, isolation, and authorization ADR.
+3. **Proposal:** add a Skill directory provider that supplies instructions only. Requires an accepted Skill ADR.
+4. **Blocked:** write-capable tools, network tools, external writes, arbitrary shell, plugin hosts, and secret injection. These require their own accepted ADRs and must not be smuggled in as "read" tools.
+
+Superseded proposal records `0002`–`0008` now live in `docs/decisions/archive/`. They are historical context, not open contracts. Do not re-open them or cite them as current direction; use ADR 0052/0053 and the target documents instead.
+
 ADR 0028 and Pagurus ADR 0014 close the executable interface-validation slice as credential-free provider compatibility, jsdom/CSS accessibility, and local published-contract fixtures. ADR 0029 closes the persistence test-boundary slice as abrupt-exit recovery, additive migration preservation, single-owner rejection, and portable reopen fixtures. ADR 0041 and Pagurus ADR 0018 close the deterministic dual-repository Boss-mode product loop. ADR 0043 and Pagurus ADR 0020 close controlled execution v1; ADR 0044 and Pagurus ADR 0021 close isolated local deterministic execution v2 with durable runs and recovery; ADR 0045 and Pagurus ADR 0022 close the primary-conversation projection and complete conversation panel; ADR 0046 and Pagurus ADR 0023 close the separate Agent Chat module and direct configured-Agent conversation. Those fixtures are `validationEvidence`; they are not live real-provider conformance, a real-browser accessibility audit, production storage hardening, real external capability execution, or new product behavior. `nextBoundedSlices` is empty; the remaining `blockedDirections` are external capability, durable cross-process chat, and provider transcript boundaries that require accepted ADRs before implementation.
 
 ## Current state

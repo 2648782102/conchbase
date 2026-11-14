@@ -8,7 +8,7 @@ Date: 2026-11-08 (Asia/Shanghai).
 
 [ADR 0010](0010-first-real-model-slice.md) keeps the phase-1 HTTP task path single-turn and rejects model-requested tools. [ADR 0012](0012-streaming-output-progress.md) also rejects streaming tool-call deltas. `src/runtime/policy-gate.ts` and `src/runtime/task-runner.ts` are deterministic acceptance primitives: they show that a denied or unapproved tool does not execute, but they do not define an authoritative tool registry, explicit approval records, idempotent side effects, or an audit event vocabulary.
 
-`docs/AI_TASK_QUEUE.md` makes the tool capability slice the next bounded item and requires an accepted ADR before a public contract changes. [ADR 0007](0007-skill-plugin-mcp-configuration-proposal.md) keeps portable profiles, Skill bundles, plugin isolation, MCP lifecycle, and per-tool grants open. [ADR 0003](0003-event-ordering-proposal.md) keeps the durable global event log authoritative.
+`docs/AI_TASK_QUEUE.md` makes the tool capability slice the next bounded item and requires an accepted ADR before a public contract changes. [ADR 0007](archive/0007-skill-plugin-mcp-configuration-proposal.md) keeps portable profiles, Skill bundles, plugin isolation, MCP lifecycle, and per-tool grants open. [ADR 0003](archive/0003-event-ordering-proposal.md) keeps the durable global event log authoritative.
 
 This ADR accepts the narrow internal kernel needed before any future real tool can execute. It does not connect that kernel to a provider, HTTP route, CLI command, Pagurus form, MCP server, Skill loader, plugin host, or private file. No public API or OpenAPI schema changes.
 

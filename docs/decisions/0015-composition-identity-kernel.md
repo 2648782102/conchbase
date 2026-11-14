@@ -6,7 +6,7 @@ Date: 2026-11-08 (Asia/Shanghai).
 
 ## Context
 
-[ADR 0005](0005-user-defined-agent-topology-proposal.md) accepts topology-neutral user-authored composition as product intent and leaves the public schema, identity, validation, delegation, concurrency, cancellation propagation, and topology representation open. [ADR 0010](0010-first-real-model-slice.md) implements a single-turn execution unit for real-model validation. [ADR 0014](0014-versioned-configuration-api.md) publishes a `schemaVersion: 1` configuration document that deliberately contains opaque references and no composition section.
+[ADR 0005](archive/0005-user-defined-agent-topology-proposal.md) accepts topology-neutral user-authored composition as product intent and leaves the public schema, identity, validation, delegation, concurrency, cancellation propagation, and topology representation open. [ADR 0010](0010-first-real-model-slice.md) implements a single-turn execution unit for real-model validation. [ADR 0014](0014-versioned-configuration-api.md) publishes a `schemaVersion: 1` configuration document that deliberately contains opaque references and no composition section.
 
 [ADR 0013](0013-bounded-tool-capability-kernel.md) accepts an internal, fixture-only tool capability kernel. Its approval records are scoped to `taskId`, `attempt`, `toolName`, and `argumentsDigest`; they have no composition node identity. `docs/AI_TASK_QUEUE.md` currently puts the public tool contract first, but exposing tool execution before an execution subject exists would lock approval records, audit events, and cancellation semantics around a flat task identity. Later adding multi-node compositions would require breaking those contracts.
 

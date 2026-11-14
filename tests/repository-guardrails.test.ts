@@ -364,11 +364,12 @@ function assertProjectStatus(source: string, label: string): void {
     assert.equal(direction.requiresAcceptedAdr, true, `${direction.id} must require an accepted ADR`);
   }
   for (const slice of status.nextBoundedSlices) {
-    assert.equal(slice.publicContractChange, false, `${slice.id} must not change the public contract`);
     if (slice.status === 'ready') {
+      assert.equal(slice.publicContractChange, false, `${slice.id} must not change the public contract`);
       assert.equal(slice.requiresAcceptedAdr, false, `${slice.id} must be executable without a new ADR`);
       assert.equal(slice.requiredAdr, undefined, `${slice.id} must not name a required ADR`);
     } else {
+      // A proposal may change the public contract only through its own accepted ADR.
       assert.equal(slice.requiresAcceptedAdr, true, `${slice.id} must require its accepted ADR`);
       assert.ok(slice.requiredAdr, `${slice.id} must name its required ADR`);
     }
@@ -432,7 +433,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /ADR 0021/);
   assert.match(handoff, /ADR 0022/);
   assert.match(handoff, /ADR 0023/);
-  assert.match(handoff, /ADRs `0030`–`0051`/);
+  assert.match(handoff, /ADRs `0030`–`0053`/);
   assert.match(handoff, /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-contract\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-store\.ts/);
@@ -588,7 +589,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('package.json'), /tests\/persistence-conformance\.test\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /tests\/provider-conformance\.test\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /tests\/persistence-conformance\.test\.ts/);
-  assert.match(read('docs/AI_HANDOFF.md'), /ADRs `0002`–`0008` plus `0023`[\s\S]*ADR 0028/s);
+  assert.match(read('docs/AI_HANDOFF.md'), /decisions\/archive\//);
   const pairedTest = read('tests/agent-paired-runtime.test.ts');
   assert.match(pairedTest, /nested Pagurus checkout is not present/);
   assert.match(pairedTest, /delayedPrompts\.delete\(delayKey\)/);
@@ -603,12 +604,20 @@ test('decision records separate accepted phase-1 direction from proposals', () =
     .sort();
   const proposals = files.filter((file) => /^000[2-8]-/.test(file));
 
-  assert.equal(proposals.length, 7, 'ADRs 0002-0008 must remain proposal records');
-  for (const file of proposals) {
+  assert.equal(proposals.length, 0, 'superseded proposals must live in docs/decisions/archive/');
+  for (const file of [
+    '0002-task-lifecycle-proposal.md',
+    '0003-event-ordering-proposal.md',
+    '0004-configuration-revision-proposal.md',
+    '0005-user-defined-agent-topology-proposal.md',
+    '0006-provider-adapter-capability-boundary-proposal.md',
+    '0007-skill-plugin-mcp-configuration-proposal.md',
+    '0008-sqlite-driver-compatibility-proposal.md',
+  ]) {
     assert.match(
-      read(`${decisionsDir}/${file}`),
+      read(`${decisionsDir}/archive/${file}`),
       /^Status: \*\*proposed, not accepted as a public contract\*\*$/m,
-      `${file} must remain a proposal`,
+      `${file} must remain an archived proposal`,
     );
   }
 
@@ -645,7 +654,7 @@ test('decision records separate accepted phase-1 direction from proposals', () =
     /^Status: \*\*accepted internal architecture direction; no public API contract changes\*\*$/m,
   );
   assert.match(
-    read(`${decisionsDir}/0005-user-defined-agent-topology-proposal.md`),
+    read(`${decisionsDir}/archive/0005-user-defined-agent-topology-proposal.md`),
     /ADR 0015.*internal, topology-neutral identity kernel/s,
   );
   assert.match(
@@ -653,7 +662,7 @@ test('decision records separate accepted phase-1 direction from proposals', () =
     /^Status: \*\*accepted product and public API direction/m,
   );
   assert.match(
-    read(`${decisionsDir}/0005-user-defined-agent-topology-proposal.md`),
+    read(`${decisionsDir}/archive/0005-user-defined-agent-topology-proposal.md`),
     /ADR 0016.*bounded public graph representation/s,
   );
   assert.match(
@@ -729,7 +738,7 @@ test('decision records separate accepted phase-1 direction from proposals', () =
 test('target-mode status and Chinese objective brief are machine-checkable entry artifacts', () => {
   assertProjectStatus(read('docs/PROJECT_STATUS.json'), 'docs/PROJECT_STATUS.json');
   const currentStatus = JSON.parse(read('docs/PROJECT_STATUS.json')) as ProjectStatus;
-  assert.equal(currentStatus.nextBoundedSlices.length, 0);
+  assert.ok(currentStatus.nextBoundedSlices.some((slice) => slice.id === 'agent-loop-v1-read-tools'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-domain-kernel'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-store'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-persistence'));
