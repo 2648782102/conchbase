@@ -26,6 +26,7 @@ Polling is still the compatibility path. Any live stream must be additive, must 
 8. Pagurus adds a typed SSE client with automatic reconnect and cursor tracking. It keeps polling as a fallback when `EventSource` is unavailable or the runtime does not advertise `1.8.0`.
 9. The SSE route is available on loopback, where the existing auth hook does not require a bearer token. Authenticated non-loopback binding still requires `Authorization: Bearer`, which a browser `EventSource` cannot send. SSE over authenticated non-loopback binding is therefore blocked until a paired cookie or short-lived stream ticket is designed; clients must fall back to polling there. The runtime does not accept a token in the query string.
 10. A client must not treat an open connection as proof of progress. If a pending assistant turn receives no frame for 8 seconds, the client re-enables polling and labels the transport as degraded. This covers a silently stalled stream without inventing message state.
+11. The runtime keeps an in-process change notifier per task. When a task records an output delta or reaches a terminal state, every matching open stream is woken immediately; the 300 ms interval remains only as a fallback for changes this process did not observe (for example another writer or a missed notification). The notifier carries only a task id and never crosses a process boundary.
 
 ## Options
 
