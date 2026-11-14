@@ -6,6 +6,10 @@ import test from 'node:test';
 import { createApp } from '../src/http/create-app.js';
 import { createTaskService } from '../src/runtime/task-service.js';
 import { AgentChatService } from '../src/runtime/agent-chat.js';
+import { BossModeService } from '../src/runtime/boss-mode-service.js';
+import { InMemoryOrganizationStore } from '../src/runtime/organization-store.js';
+import type { OrganizationIntentParser } from '../src/runtime/organization-intent-parser.js';
+import { parseOrganizationAction, type OrganizationAction } from '../src/runtime/organization-contract.js';
 
 function fakeFetch(): typeof globalThis.fetch {
   return (async (input: RequestInfo | URL) => {
@@ -116,4 +120,64 @@ test('agent chat starts a configured Agent conversation and publishes a real mod
     });
     assert.equal(secret.statusCode, 400);
   });
+});
+
+test('boss agent appears in Agent Chat and routes messages through Boss Mode', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-agent-chat-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: fakeFetch(),
+  });
+  const organization = new InMemoryOrganizationStore();
+  const parser: OrganizationIntentParser = {
+    async parse(input) {
+      const actions: readonly OrganizationAction[] = Object.freeze([
+        parseOrganizationAction({
+          type: 'open_project',
+          expectedSequence: input.expectedSequence,
+          projectId: 'project_boss_chat',
+          originTriggerId: input.intentId,
+        }),
+        parseOrganizationAction({
+          type: 'activate_project',
+          expectedSequence: input.expectedSequence + 1,
+          projectId: 'project_boss_chat',
+        }),
+      ]);
+      return Object.freeze({ version: 1 as const, intentId: input.intentId, actions, relay: '老板已建立项目。' });
+    },
+  };
+  const bossMode = new BossModeService(organization, taskService, { parser, waitForTasks: false });
+  const agentChat = new AgentChatService(taskService, bossMode);
+  const app = createApp({ logger: false, taskService, organizationStore: organization, bossModeService: bossMode, agentChatService: agentChat });
+  try {
+    const agents = await app.inject({ method: 'GET', url: '/v1/agent-chat/agents' });
+    assert.equal(agents.json().agents[0].id, 'boss-agent');
+    assert.equal(agents.json().agents[0].name, '老板 Agent');
+    assert.equal(agents.json().agents[0].providerId, 'runtime');
+    const created = await app.inject({
+      method: 'POST',
+      url: '/v1/agent-chat/conversations',
+      payload: { agentId: 'boss-agent' },
+    });
+    assert.equal(created.statusCode, 201);
+    assert.equal(created.json().agentId, 'boss-agent');
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${created.json().id}/messages`,
+      payload: { text: '请建立项目并汇报', idempotencyKey: 'boss-chat-fixture-1' },
+    });
+    assert.equal(sent.statusCode, 202);
+    assert.equal(sent.json().assistantMessage.author, 'assistant');
+    assert.equal(sent.json().assistantMessage.body, '老板已建立项目。');
+    assert.equal(sent.json().assistantMessage.state, 'succeeded');
+    assert.equal(sent.json().assistantMessage.taskId, null);
+    const session = await app.inject({ method: 'GET', url: '/v1/organization/session' });
+    assert.equal(session.json().projects.some((project: { id: string }) => project.id === 'project_boss_chat'), true);
+  } finally {
+    await app.close();
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

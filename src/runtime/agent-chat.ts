@@ -3,6 +3,7 @@ import type { AgentDetail } from './agent-profile.js';
 import type { TaskService } from './task-service.js';
 import type { TaskSnapshot } from './task-store.js';
 import { chineseAgentDisplayName } from './agent-name.js';
+import type { BossModeService } from './boss-mode-service.js';
 
 export const AGENT_CHAT_CONTRACT_VERSION = '1.5.0';
 
@@ -14,6 +15,12 @@ export const AGENT_CHAT_PUBLIC_PATHS = Object.freeze([
 ] as const);
 
 export const AGENT_CHAT_PUBLIC_PATH_COUNT = AGENT_CHAT_PUBLIC_PATHS.length;
+
+export const BOSS_AGENT_ID = 'boss-agent';
+export const BOSS_AGENT_NAME = '老板 Agent';
+export const BOSS_AGENT_REVISION_ID = 'boss-runtime-v1';
+export const BOSS_AGENT_PROVIDER_ID = 'runtime';
+export const BOSS_AGENT_MODEL_ID = '组织编排';
 
 export type AgentChatMessageAuthor = 'user' | 'assistant' | 'runtime';
 export type AgentChatMessageState = 'published' | 'pending' | 'succeeded' | 'failed' | 'cancelled';
@@ -63,6 +70,7 @@ interface ConversationRecord {
   readonly providerId: string;
   readonly modelId: string;
   readonly configurationRevisionId: string;
+  readonly isBoss: boolean;
   readonly messages: AgentChatMessage[];
   readonly idempotency: Map<string, string>;
 }
@@ -114,10 +122,13 @@ function taskStateToMessageState(task: TaskSnapshot): AgentChatMessageState {
 export class AgentChatService {
   private readonly conversations = new Map<string, ConversationRecord>();
 
-  constructor(private readonly taskService: TaskService) {}
+  constructor(
+    private readonly taskService: TaskService,
+    private readonly bossMode?: BossModeService,
+  ) {}
 
   listAgents(): readonly AgentChatAgentView[] {
-    return Object.freeze(this.taskService.listAgents().map((agent) => Object.freeze({
+    const configured = this.taskService.listAgents().map((agent) => Object.freeze({
       id: agent.id,
       name: chineseAgentDisplayName(agent.current.name),
       currentRevisionId: agent.currentRevisionId,
@@ -125,7 +136,9 @@ export class AgentChatService {
       modelId: agent.current.modelId,
       isDefault: agent.isDefault,
       archived: agent.archived,
-    })));
+    }));
+    const boss = this.bossMode ? this.bossAgentView() : null;
+    return Object.freeze(boss ? [boss, ...configured] : configured);
   }
 
   createConversation(input: unknown): AgentChatConversationView {
@@ -136,15 +149,25 @@ export class AgentChatService {
     const agentId = input.agentId === undefined
       ? this.defaultAgentId()
       : boundedText(input.agentId, 'agentId');
-    const agent = this.getUsableAgent(agentId);
+    const isBoss = agentId === BOSS_AGENT_ID;
+    if (isBoss && !this.bossMode) throw new AgentChatServiceError('Boss Agent is not configured.', 503);
+    const bossView = isBoss ? this.bossAgentView() : null;
+    const agentDetail = bossView ? undefined : this.getUsableAgent(agentId);
+    const agent = bossView ?? {
+      id: agentDetail!.id,
+      currentRevisionId: agentDetail!.currentRevisionId,
+      providerId: agentDetail!.current.providerId,
+      modelId: agentDetail!.current.modelId,
+    };
     const id = reference('chat', `${agent.id}:${agent.currentRevisionId}:${randomUUID()}`);
     const record: ConversationRecord = {
       id,
-      agentId: agent.id,
+      agentId: isBoss ? BOSS_AGENT_ID : agent.id,
       agentRevisionId: agent.currentRevisionId,
-      providerId: agent.current.providerId,
-      modelId: agent.current.modelId,
+      providerId: agent.providerId,
+      modelId: agent.modelId,
       configurationRevisionId: this.taskService.activeConfigurationRevisionId,
+      isBoss,
       messages: [],
       idempotency: new Map(),
     };
@@ -178,6 +201,7 @@ export class AgentChatService {
       }
     }
 
+    if (record.isBoss) return this.postBossMessage(record, text, idempotencyKey);
     const context = record.messages.slice(-8).map((message) =>
       `${message.author === 'user' ? 'User' : 'Assistant'}: ${message.body}`).join('\n');
     const prompt = context.length > 0 ? `${context}\n\nUser: ${text}` : text;
@@ -250,6 +274,7 @@ export class AgentChatService {
   }
 
   private defaultAgentId(): string {
+    if (this.bossMode) return BOSS_AGENT_ID;
     const defaultAgent = this.taskService.listAgents().find((agent) => agent.isDefault && !agent.archived);
     if (defaultAgent) return defaultAgent.id;
     const first = this.taskService.listAgents().find((agent) => !agent.archived);
@@ -266,6 +291,65 @@ export class AgentChatService {
     }
     if (agent.archived) throw new AgentChatServiceError('Archived Agents cannot start a chat.', 409);
     return agent;
+  }
+
+  private bossAgentView(): AgentChatAgentView {
+    return Object.freeze({
+      id: BOSS_AGENT_ID,
+      name: BOSS_AGENT_NAME,
+      currentRevisionId: BOSS_AGENT_REVISION_ID,
+      providerId: BOSS_AGENT_PROVIDER_ID,
+      modelId: BOSS_AGENT_MODEL_ID,
+      isDefault: false,
+      archived: false,
+    });
+  }
+
+  private async postBossMessage(
+    record: ConversationRecord,
+    text: string,
+    idempotencyKey: string,
+  ): Promise<AgentChatMessageResult> {
+    const bossMode = this.bossMode;
+    if (!bossMode) throw new AgentChatServiceError('Boss Agent is not configured.', 503);
+    let submitted;
+    try {
+      submitted = await bossMode.submit({
+        text,
+        idempotencyKey: `agent-chat:${record.id}:${idempotencyKey}`,
+      });
+    } catch (cause) {
+      throw new AgentChatServiceError(
+        cause instanceof Error ? cause.message.slice(0, 240) : 'Boss Agent submit failed.',
+        409,
+      );
+    }
+    const userMessage: AgentChatMessage = Object.freeze({
+      id: reference('amsg', `${record.id}:${submitted.intentId}:user`),
+      sequence: record.messages.length + 1,
+      author: 'user',
+      body: text,
+      state: 'published',
+      taskId: null,
+      error: null,
+    });
+    const assistantMessage: AgentChatMessage = Object.freeze({
+      id: reference('amsg', `${record.id}:${submitted.intentId}:assistant`),
+      sequence: record.messages.length + 2,
+      author: 'assistant',
+      body: submitted.reply ?? `已提交 ${submitted.actions.length} 个 Runtime 可验证动作。`,
+      state: submitted.executions.some((execution) => execution.status === 'failed') ? 'failed' : 'succeeded',
+      taskId: null,
+      error: null,
+    });
+    record.messages.push(userMessage, assistantMessage);
+    record.idempotency.set(idempotencyKey, userMessage.id);
+    return Object.freeze({
+      version: AGENT_CHAT_CONTRACT_VERSION,
+      conversationId: record.id,
+      userMessage,
+      assistantMessage,
+    });
   }
 
   private refreshConversation(record: ConversationRecord): void {

@@ -46,14 +46,14 @@ export function createApp(options: CreateAppOptions = {}) {
     ?? options.taskService?.store?.organization;
   const conversation = options.conversationService
     ?? (organization ? new PrimaryConversationService() : undefined);
-  const agentChat = options.agentChatService
-    ?? (options.taskService ? new AgentChatService(options.taskService) : undefined);
   const bossMode = options.bossModeService
     ?? (options.taskService && organization
       ? new BossModeService(organization, options.taskService, conversation
         ? { conversation: { recordIntentText: (intentId, text) => conversation.recordIntentText(intentId, text) } }
         : {})
       : undefined);
+  const agentChat = options.agentChatService
+    ?? (options.taskService ? new AgentChatService(options.taskService, bossMode) : undefined);
   const execution = options.executionService;
   const executionRuns = options.executionRunService;
   const loopback = options.config?.host === undefined

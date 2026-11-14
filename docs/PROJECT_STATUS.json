@@ -187,6 +187,11 @@
       "id": "agent-chat-module",
       "summary": "ADR 0046 implements an additive 1.5.0 Agent Chat module that reuses configured Agent revisions and Agent-backed tasks over the user-configured Magpie OpenAI-compatible protocol endpoint.",
       "evidence": "src/runtime/agent-chat.ts"
+    },
+    {
+      "id": "boss-agent-adapter",
+      "summary": "ADR 0047 exposes Boss Mode as a Runtime-owned virtual 老板 Agent inside Agent Chat, routing messages through BossModeService while preserving Runtime authority and one primary conversation.",
+      "evidence": "src/runtime/agent-chat.ts"
     }
   ],
   "validationEvidence": [
@@ -309,6 +314,12 @@
     {
       "id": "agent-chat-fixture",
       "summary": "An executable fixture covers configured Agent conversation creation, real Agent-backed model reply, idempotent replay, bounded errors, 1.5.0 discovery, and no private-state leakage.",
+      "evidence": "tests/agent-chat.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "boss-agent-adapter-fixture",
+      "summary": "An executable fixture covers virtual Boss Agent listing, conversation routing through BossModeService, bounded Runtime reply, organization session projection, and no normal Agent task creation.",
       "evidence": "tests/agent-chat.test.ts",
       "executableFixture": true
     }
