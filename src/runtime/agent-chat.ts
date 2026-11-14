@@ -440,25 +440,26 @@ export class AgentChatService {
       phase: 'organization',
       updatedAt: this.now(),
     });
+    const onAccepted = (submitted: Awaited<ReturnType<BossModeService['submit']>>) => {
+      const waiting = submitted.relays.some((relay) => relay.kind === 'attention')
+        || this.bossMode?.snapshot().attentionRequests.some((request) => request.state === 'open')
+        || false;
+      const failed = submitted.executions.some((execution) => execution.status === 'failed');
+      this.replaceMessage(record, assistantMessage.id, {
+        ...assistantMessage,
+        body: submitted.reply ?? (failed
+          ? 'Runtime 执行组织动作时失败。'
+          : `已提交 ${submitted.actions.length} 个 Runtime 可验证动作。`),
+        state: failed ? 'failed' : waiting ? 'waiting_attention' : 'replied',
+        phase: waiting ? 'human' : 'terminal',
+        error: failed ? 'Boss Agent execution failed.' : null,
+        updatedAt: this.now(),
+      });
+    };
     void bossMode.submit({
         text,
         idempotencyKey: `agent-chat:${record.id}:${idempotencyKey}`,
-      }).then((submitted) => {
-        const waiting = submitted.relays.some((relay) => relay.kind === 'attention')
-          || this.bossMode?.snapshot().attentionRequests.some((request) => request.state === 'open')
-          || false;
-        const failed = submitted.executions.some((execution) => execution.status === 'failed');
-        this.replaceMessage(record, assistantMessage.id, {
-          ...assistantMessage,
-          body: submitted.reply ?? (failed
-            ? 'Runtime 执行组织动作时失败。'
-            : `已提交 ${submitted.actions.length} 个 Runtime 可验证动作。`),
-          state: failed ? 'failed' : waiting ? 'waiting_attention' : 'replied',
-          phase: waiting ? 'human' : 'terminal',
-          error: failed ? 'Boss Agent execution failed.' : null,
-          updatedAt: this.now(),
-        });
-      }).catch((cause: unknown) => {
+      }, onAccepted).catch((cause: unknown) => {
         const textError = cause instanceof Error ? cause.message.slice(0, 240) : 'Boss Agent submit failed.';
         this.replaceMessage(record, assistantMessage.id, {
           ...assistantMessage,

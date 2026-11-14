@@ -266,3 +266,40 @@ test('agent chat publishes unavailable state when the model catalog fails', asyn
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('boss mode invokes the accepted callback before returning its final result', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-chat-slow-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: fakeFetch(),
+  });
+  const organization = new InMemoryOrganizationStore();
+  const parser: OrganizationIntentParser = {
+    async parse(input) {
+      const actions: readonly OrganizationAction[] = Object.freeze([
+        parseOrganizationAction({
+          type: 'open_project', expectedSequence: input.expectedSequence,
+          projectId: 'project_slow', originTriggerId: input.intentId,
+        }),
+        parseOrganizationAction({
+          type: 'activate_project', expectedSequence: input.expectedSequence + 1,
+          projectId: 'project_slow',
+        }),
+      ]);
+      return Object.freeze({ version: 1 as const, intentId: input.intentId, actions, relay: '老板已接受。' });
+    },
+  };
+  const bossMode = new BossModeService(organization, taskService, { parser, waitForTasks: true });
+  try {
+    let accepted = false;
+    const result = await bossMode.submit({ text: '开始', idempotencyKey: 'slow-boss-fixture-1' }, () => {
+      accepted = true;
+    });
+    assert.equal(accepted, true);
+    assert.equal(result.reply, '老板已接受。');
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

@@ -58,6 +58,7 @@ export interface BossModeServiceOptions {
   readonly conversation?: {
     recordIntentText(intentId: string, text: string): void;
   };
+  readonly onAccepted?: (result: BossModeSubmitResult) => void;
 }
 
 interface WorkerExecutionRecord {
@@ -123,6 +124,7 @@ export class BossModeService {
   private readonly now: () => string;
   private readonly waitForTasks: boolean;
   private readonly conversation: BossModeServiceOptions['conversation'];
+  private readonly onAccepted: BossModeServiceOptions['onAccepted'];
   private readonly workerExecutions = new Map<string, WorkerExecutionRecord>();
   private readonly startedWorkers = new Set<string>();
   private readonly outcomeByTaskId = new Map<string, string>();
@@ -136,6 +138,7 @@ export class BossModeService {
     this.now = options.now ?? (() => new Date().toISOString());
     this.waitForTasks = options.waitForTasks ?? true;
     this.conversation = options.conversation;
+    this.onAccepted = options.onAccepted;
     this.restoreRecords();
     this.coordinator = new OrganizationCoordinator(store, {
       listWorkState: () => this.listWorkState(),
@@ -148,7 +151,10 @@ export class BossModeService {
     });
   }
 
-  async submit(input: unknown): Promise<BossModeSubmitResult> {
+  async submit(
+    input: unknown,
+    onAccepted?: (result: BossModeSubmitResult) => void,
+  ): Promise<BossModeSubmitResult> {
     const submission = validateSubmission(input);
     const resolvedIntentId = intentId(submission.idempotencyKey);
     this.conversation?.recordIntentText(resolvedIntentId, submission.text);
@@ -168,6 +174,7 @@ export class BossModeService {
     const actions: OrganizationAction[] = [];
     const executions: BossModeExecution[] = [];
     const createdWorkers: WorkerExecutionRecord[] = [];
+    let acceptedPublished = false;
     let sequence = snapshot.events.length;
 
     for (const parsedAction of parsed.actions) {
@@ -224,6 +231,23 @@ export class BossModeService {
       executions.push(Object.freeze({ action, status: 'dispatched' as const }));
     }
 
+    const publishAccepted = () => {
+      if (acceptedPublished) return;
+      acceptedPublished = true;
+      const accepted: BossModeSubmitResult = Object.freeze({
+        version: BOSS_MODE_SERVICE_VERSION,
+        intentId: resolvedIntentId,
+        state: 'accepted' as const,
+        expectedSequence: this.store.get().events.length,
+        actions: Object.freeze(actions),
+        executions: Object.freeze(executions),
+        relays: Object.freeze([]),
+        reply: parsed.relay,
+      });
+      onAccepted?.(accepted);
+      this.onAccepted?.(accepted);
+    };
+    publishAccepted();
     if (createdWorkers.length > 0 && this.waitForTasks) {
       await this.collectWorkerOutcomes(createdWorkers);
     }
