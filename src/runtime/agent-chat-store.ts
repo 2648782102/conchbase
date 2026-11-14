@@ -167,14 +167,23 @@ export class SqliteAgentChatStore implements AgentChatStore {
         record.reasoningEffort,
         record.createdAt,
       );
-      this.database.prepare('DELETE FROM agent_chat_messages WHERE conversation_id = ?').run(record.id);
-      this.database.prepare('DELETE FROM agent_chat_idempotency WHERE conversation_id = ?').run(record.id);
       for (const message of record.messages) {
         this.database.prepare(`
           INSERT INTO agent_chat_messages (
             conversation_id, id, sequence, author, body, state, task_id, error,
             phase, progress, updated_at, reply_to_id
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(conversation_id, sequence) DO UPDATE SET
+            id = excluded.id,
+            author = excluded.author,
+            body = excluded.body,
+            state = excluded.state,
+            task_id = excluded.task_id,
+            error = excluded.error,
+            phase = excluded.phase,
+            progress = excluded.progress,
+            updated_at = excluded.updated_at,
+            reply_to_id = excluded.reply_to_id
         `).run(
           record.id,
           message.id,
@@ -194,6 +203,8 @@ export class SqliteAgentChatStore implements AgentChatStore {
         this.database.prepare(`
           INSERT INTO agent_chat_idempotency (conversation_id, idempotency_key, message_id)
           VALUES (?, ?, ?)
+          ON CONFLICT(conversation_id, idempotency_key) DO UPDATE SET
+            message_id = excluded.message_id
         `).run(record.id, key, messageId);
       }
       this.database.exec('COMMIT');

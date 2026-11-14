@@ -128,3 +128,44 @@ test('SQLite agent chat store recovers an interrupted organizing message on init
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('SQLite agent chat store upserts messages without duplicating rows', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-agent-chat-upsert-'));
+  const filename = path.join(directory, 'runtime.sqlite');
+  try {
+    const database = new DatabaseSync(filename);
+    database.exec('PRAGMA user_version = 4;');
+    migrateAgentChatSchema(database);
+    const store = new SqliteAgentChatStore(database);
+    store.initialize();
+    const base = record();
+    store.save(base);
+    const updated = Object.freeze({
+      ...base,
+      messages: Object.freeze([
+        Object.freeze({ ...base.messages[0]!, body: '更新后的内容' }),
+        Object.freeze({
+          ...base.messages[0]!,
+          id: 'amsg_second',
+          sequence: 2,
+          author: 'assistant' as const,
+          body: '新回复',
+          state: 'replied' as const,
+          phase: 'terminal' as const,
+        }),
+      ]),
+    });
+    store.save(updated);
+    const loaded = store.get(base.id);
+    assert.equal(loaded?.messages.length, 2);
+    assert.equal(loaded?.messages[0]?.body, '更新后的内容');
+    assert.equal(loaded?.messages[1]?.body, '新回复');
+    const rows = database.prepare(
+      'SELECT COUNT(*) AS count FROM agent_chat_messages WHERE conversation_id = ?',
+    ).get(base.id) as { count: number };
+    assert.equal(rows.count, 2);
+    database.close();
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
