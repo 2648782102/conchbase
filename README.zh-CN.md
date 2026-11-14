@@ -57,7 +57,7 @@ curl -X POST http://127.0.0.1:4318/v1/tasks \
   -d '{"prompt":"只回复：ok","model":"provider/model-id"}'
 ```
 
-任务、事件、配置、模型目录、工具请求/审批台账以及 additive `1.1.0` 组织接口见 [API 文档](docs/API.md) 和 [OpenAPI 契约](docs/openapi.yaml)。Boss Mode `1.1.0` 提供唯一主会话意图入口与组织已发布状态；见 [v1.1.0 中文发布说明](docs/RELEASE_NOTES_1.1.0.zh-CN.md) 和 [中文快速开始](docs/QUICK_START.zh-CN.md)。
+任务、事件、配置、模型目录、工具请求/审批台账、additive `1.1.0` 组织接口与 additive `1.2.0` 受控执行接口见 [API 文档](docs/API.md) 和 [OpenAPI 契约](docs/openapi.yaml)。Boss Mode `1.1.0` 提供唯一主会话意图入口；`1.2.0` 提供显式授权、审批、确定性假执行、撤销与审计。见 [v1.1.0](docs/RELEASE_NOTES_1.1.0.zh-CN.md)、[v1.2.0](docs/RELEASE_NOTES_1.2.0.zh-CN.md) 与 [中文快速开始](docs/QUICK_START.zh-CN.md)。
 
 ## 设计边界
 
@@ -72,7 +72,7 @@ curl -X POST http://127.0.0.1:4318/v1/tasks \
 - Skill 只提供指令，不授予工具权限；第一阶段会拒绝模型发起的工具调用。
 - 公开的工具请求/审批决策只是持久台账状态，绝不是执行许可。临时的供应商观察值只是未受信任的规范化数据，也绝不是执行许可。
 
-架构、技术栈、路线图、验证计划和[完整组织运行时目标](docs/ORGANIZATION_RUNTIME_TARGET.zh-CN.md)见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/TECH_STACK.md](docs/TECH_STACK.md)、[docs/ROADMAP.md](docs/ROADMAP.md) 和 [docs/VALIDATION_PLAN.md](docs/VALIDATION_PLAN.md)。配套控制台：[Pagurus 寄居蟹](https://github.com/2648782102/pagurus)。中文文档：[快速开始](docs/QUICK_START.zh-CN.md)、[目标模式接手说明](docs/OBJECTIVE_MODE.zh-CN.md)、[v1.0.0 发布说明](docs/RELEASE_NOTES_1.0.0.zh-CN.md) 与 [v1.1.0 发布说明](docs/RELEASE_NOTES_1.1.0.zh-CN.md)。另有可选的[视觉概览](docs/VISUAL_OVERVIEW.zh-CN.md)，仅供人类快速理解，不是契约事实源。English: [README.md](README.md).
+架构、技术栈、路线图、验证计划和[完整组织运行时目标](docs/ORGANIZATION_RUNTIME_TARGET.zh-CN.md)见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/TECH_STACK.md](docs/TECH_STACK.md)、[docs/ROADMAP.md](docs/ROADMAP.md) 和 [docs/VALIDATION_PLAN.md](docs/VALIDATION_PLAN.md)。配套控制台：[Pagurus 寄居蟹](https://github.com/2648782102/pagurus)。中文文档：[快速开始](docs/QUICK_START.zh-CN.md)、[目标模式接手说明](docs/OBJECTIVE_MODE.zh-CN.md)、[v1.0.0 发布说明](docs/RELEASE_NOTES_1.0.0.zh-CN.md)、[v1.1.0 发布说明](docs/RELEASE_NOTES_1.1.0.zh-CN.md) 与 [v1.2.0 发布说明](docs/RELEASE_NOTES_1.2.0.zh-CN.md)。另有可选的[视觉概览](docs/VISUAL_OVERVIEW.zh-CN.md)，仅供人类快速理解，不是契约事实源。English: [README.md](README.md).
 
 ## 面向 AI 开发
 

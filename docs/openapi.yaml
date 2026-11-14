@@ -1512,6 +1512,205 @@ paths:
           $ref: '#/components/responses/OrganizationValidationError'
         '503':
           $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/execution/health:
+    get:
+      operationId: getExecutionHealth
+      summary: Read controlled-execution contract availability and exact published paths.
+      responses:
+        '200':
+          description: Controlled-execution contract availability.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionHealth'
+        '503':
+          $ref: '#/components/responses/ExecutionUnavailableError'
+  /v1/execution/capabilities:
+    get:
+      operationId: listExecutionCapabilities
+      summary: List published capability facts; recorded data never grants execution.
+      responses:
+        '200':
+          description: Capability collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionCapabilityList'
+        '503':
+          $ref: '#/components/responses/ExecutionUnavailableError'
+  /v1/execution/grants:
+    get:
+      operationId: listExecutionGrants
+      summary: List explicit Runtime-owned execution grants.
+      responses:
+        '200':
+          description: Grant collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionGrantList'
+        '503':
+          $ref: '#/components/responses/ExecutionUnavailableError'
+    post:
+      operationId: createExecutionGrant
+      summary: Create one explicit grant bound to Agent, Delegation, WorkItem, policy, and operation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateExecutionGrantRequest'
+      responses:
+        '201':
+          description: Grant created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionGrantEnvelope'
+        '400':
+          $ref: '#/components/responses/ExecutionValidationError'
+        '409':
+          $ref: '#/components/responses/ExecutionConflictError'
+        '503':
+          $ref: '#/components/responses/ExecutionUnavailableError'
+  /v1/execution/grants/{grantId}/revoke:
+    post:
+      operationId: revokeExecutionGrant
+      summary: Revoke an active grant using its published expected version.
+      parameters:
+        - name: grantId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecutionExpectedVersionRequest'
+      responses:
+        '200':
+          description: Grant revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionGrantEnvelope'
+        '400':
+          $ref: '#/components/responses/ExecutionValidationError'
+        '404':
+          $ref: '#/components/responses/ExecutionNotFoundError'
+        '409':
+          $ref: '#/components/responses/ExecutionConflictError'
+        '503':
+          $ref: '#/components/responses/ExecutionUnavailableError'
+  /v1/execution/requests:
+    post:
+      operationId: createExecutionRequest
+      summary: Create a bounded pending execution request under an active grant.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateExecutionRequest'
+      responses:
+        '201':
+          description: Execution request created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionRequestEnvelope'
+        '400':
+          $ref: '#/components/responses/ExecutionValidationError'
+        '404':
+          $ref: '#/components/responses/ExecutionNotFoundError'
+        '409':
+          $ref: '#/components/responses/ExecutionConflictError'
+        '503':
+          $ref: '#/components/responses/ExecutionUnavailableError'
+  /v1/execution/requests/{requestId}:
+    get:
+      operationId: getExecutionRequest
+      summary: Read one published execution request.
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Execution request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionRequestEnvelope'
+        '404':
+          $ref: '#/components/responses/ExecutionNotFoundError'
+        '503':
+          $ref: '#/components/responses/ExecutionUnavailableError'
+  /v1/execution/requests/{requestId}/decide:
+    post:
+      operationId: decideExecutionRequest
+      summary: Approve and fake-execute, or reject, a pending request using its published expected version.
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecideExecutionRequest'
+      responses:
+        '200':
+          description: Decided execution request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionRequestEnvelope'
+        '400':
+          $ref: '#/components/responses/ExecutionValidationError'
+        '404':
+          $ref: '#/components/responses/ExecutionNotFoundError'
+        '409':
+          $ref: '#/components/responses/ExecutionConflictError'
+        '503':
+          $ref: '#/components/responses/ExecutionUnavailableError'
+  /v1/execution/events:
+    get:
+      operationId: listExecutionEvents
+      summary: Read bounded deterministic execution audit events.
+      parameters:
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^exe_[a-z0-9]+$'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        '200':
+          description: Execution event page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionEventPage'
+        '400':
+          $ref: '#/components/responses/ExecutionValidationError'
+        '503':
+          $ref: '#/components/responses/ExecutionUnavailableError'
 
 components:
   parameters:
@@ -1831,6 +2030,30 @@ components:
           items:
             $ref: '#/components/schemas/ProviderModel'
   responses:
+    ExecutionValidationError:
+      description: Invalid execution request, unknown field, or unsupported contract shape.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ExecutionNotFoundError:
+      description: Execution resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ExecutionConflictError:
+      description: Execution state, version, or idempotency conflict.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ExecutionUnavailableError:
+      description: Controlled execution service is not configured.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     PlatformValidationError:
       description: Invalid JSON, unknown field, or unsupported contract shape.
       content:
@@ -1911,6 +2134,11 @@ components:
           $ref: '#/components/schemas/OrganizationVersion'
         organizationPaths:
           const: 18
+        executionContract:
+          type: string
+          const: '1.2.0'
+        executionPaths:
+          const: 8
     Error:
       type: object
       additionalProperties: false
@@ -3838,6 +4066,307 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/OrganizationEventRecord'
+        nextCursor:
+          type: [string, 'null']
+        hasMore:
+          type: boolean
+    ExecutionVersion:
+      type: string
+      const: '1.2.0'
+    ExecutionOpaqueId:
+      type: string
+      pattern: '^[a-z][a-z0-9_-]{2,120}$'
+    ExecutionDigest:
+      type: string
+      pattern: '^sha256:[0-9a-f]{64}$'
+    ExecutionState:
+      type: string
+      enum: [recorded, enabled, revoked, granted, pending, approved, rejected, running, succeeded, failed]
+    ExecutionHealth:
+      type: object
+      additionalProperties: false
+      required: [version, status, paths]
+      properties:
+        version:
+          $ref: '#/components/schemas/ExecutionVersion'
+        status:
+          const: ready
+        paths:
+          type: array
+          items:
+            type: string
+    ExecutionCapability:
+      type: object
+      additionalProperties: false
+      required: [version, id, kind, name, adapterId, destinationDigest, capabilitiesDigest, state, createdAt]
+      properties:
+        version:
+          $ref: '#/components/schemas/ExecutionVersion'
+        id:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        kind:
+          type: string
+          enum: [mcp, skill, plugin, secret-handle, fake]
+        name:
+          type: string
+        adapterId:
+          type: string
+        destinationDigest:
+          $ref: '#/components/schemas/ExecutionDigest'
+        capabilitiesDigest:
+          $ref: '#/components/schemas/ExecutionDigest'
+        state:
+          $ref: '#/components/schemas/ExecutionState'
+        createdAt:
+          type: string
+    ExecutionCapabilityList:
+      type: object
+      additionalProperties: false
+      required: [version, capabilities]
+      properties:
+        version:
+          $ref: '#/components/schemas/ExecutionVersion'
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExecutionCapability'
+    ExecutionGrant:
+      type: object
+      additionalProperties: false
+      required: [version, id, capabilityId, state, expectedVersion, agentId, agentRevisionId, configurationRevisionId, delegationId, projectId, workItemId, assignmentId, operation, destinationDigest, scope, capabilities, expiresAtSequence, createdAt, revokedAt]
+      properties:
+        version:
+          $ref: '#/components/schemas/ExecutionVersion'
+        id:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        capabilityId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        state:
+          $ref: '#/components/schemas/ExecutionState'
+        expectedVersion:
+          type: integer
+          minimum: 1
+        agentId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        agentRevisionId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        configurationRevisionId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        delegationId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        projectId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        workItemId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        assignmentId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        operation:
+          type: string
+          pattern: '^[a-z][a-z0-9_]{0,63}$'
+        destinationDigest:
+          $ref: '#/components/schemas/ExecutionDigest'
+        scope:
+          type: array
+          items:
+            type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        expiresAtSequence:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+        revokedAt:
+          type: [string, 'null']
+    ExecutionGrantEnvelope:
+      type: object
+      additionalProperties: false
+      required: [version, grant]
+      properties:
+        version:
+          $ref: '#/components/schemas/ExecutionVersion'
+        grant:
+          $ref: '#/components/schemas/ExecutionGrant'
+    ExecutionGrantList:
+      type: object
+      additionalProperties: false
+      required: [version, grants]
+      properties:
+        version:
+          $ref: '#/components/schemas/ExecutionVersion'
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExecutionGrant'
+    CreateExecutionGrantRequest:
+      type: object
+      additionalProperties: false
+      required: [capabilityId, agentId, agentRevisionId, configurationRevisionId, delegationId, projectId, workItemId, assignmentId, operation, destinationDigest, scope, capabilities, expiresAtSequence]
+      properties:
+        capabilityId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        agentId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        agentRevisionId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        configurationRevisionId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        delegationId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        projectId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        workItemId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        assignmentId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        operation:
+          type: string
+          pattern: '^[a-z][a-z0-9_]{0,63}$'
+        destinationDigest:
+          $ref: '#/components/schemas/ExecutionDigest'
+        scope:
+          type: array
+          minItems: 1
+          maxItems: 16
+          items:
+            type: string
+        capabilities:
+          type: array
+          minItems: 1
+          maxItems: 16
+          items:
+            type: string
+        expiresAtSequence:
+          type: integer
+          minimum: 1
+    ExecutionExpectedVersionRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion]
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 1
+    ExecutionRequest:
+      type: object
+      additionalProperties: false
+      required: [version, id, grantId, state, expectedVersion, operation, argumentsDigest, idempotencyKey, resultDigest, errorDigest, createdAt, decidedAt, startedAt, finishedAt]
+      properties:
+        version:
+          $ref: '#/components/schemas/ExecutionVersion'
+        id:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        grantId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        state:
+          $ref: '#/components/schemas/ExecutionState'
+        expectedVersion:
+          type: integer
+          minimum: 1
+        operation:
+          type: string
+          pattern: '^[a-z][a-z0-9_]{0,63}$'
+        argumentsDigest:
+          $ref: '#/components/schemas/ExecutionDigest'
+        idempotencyKey:
+          type: string
+        resultDigest:
+          type: [string, 'null']
+        errorDigest:
+          type: [string, 'null']
+        createdAt:
+          type: string
+        decidedAt:
+          type: [string, 'null']
+        startedAt:
+          type: [string, 'null']
+        finishedAt:
+          type: [string, 'null']
+    ExecutionRequestEnvelope:
+      type: object
+      additionalProperties: false
+      required: [version, request]
+      properties:
+        version:
+          $ref: '#/components/schemas/ExecutionVersion'
+        request:
+          $ref: '#/components/schemas/ExecutionRequest'
+    CreateExecutionRequest:
+      type: object
+      additionalProperties: false
+      required: [grantId, expectedGrantVersion, operation, argumentsDigest, idempotencyKey]
+      properties:
+        grantId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        expectedGrantVersion:
+          type: integer
+          minimum: 1
+        operation:
+          type: string
+          pattern: '^[a-z][a-z0-9_]{0,63}$'
+        argumentsDigest:
+          $ref: '#/components/schemas/ExecutionDigest'
+        idempotencyKey:
+          type: string
+    DecideExecutionRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, decision, reasonDigest]
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 1
+        decision:
+          type: string
+          enum: [approved, rejected]
+        reasonDigest:
+          $ref: '#/components/schemas/ExecutionDigest'
+    ExecutionEvent:
+      type: object
+      additionalProperties: false
+      required: [version, id, sequence, type, data, createdAt]
+      properties:
+        version:
+          $ref: '#/components/schemas/ExecutionVersion'
+        id:
+          type: string
+          pattern: '^exe_[0-9a-f]{24}$'
+        sequence:
+          type: integer
+          minimum: 1
+        type:
+          type: string
+          enum:
+            - execution.capability_recorded
+            - execution.capability_enabled
+            - execution.capability_revoked
+            - execution.grant_created
+            - execution.grant_revoked
+            - execution.request_created
+            - execution.request_approved
+            - execution.request_rejected
+            - execution.started
+            - execution.succeeded
+            - execution.failed
+        data:
+          type: object
+          additionalProperties:
+            type: [string, number, boolean]
+        createdAt:
+          type: string
+    ExecutionEventPage:
+      type: object
+      additionalProperties: false
+      required: [version, events, nextCursor, hasMore]
+      properties:
+        version:
+          $ref: '#/components/schemas/ExecutionVersion'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExecutionEvent'
         nextCursor:
           type: [string, 'null']
         hasMore:

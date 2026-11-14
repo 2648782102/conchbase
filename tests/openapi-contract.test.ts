@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { createApp } from '../src/http/create-app.js';
 import {
+  EXECUTION_PATHS_FIXTURE,
   HEALTH_RESPONSE_FIXTURE,
   ORGANIZATION_PATHS_FIXTURE,
   RUNTIME_RESPONSE_FIXTURE,
@@ -104,6 +105,7 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
       '/v1/secret-handles/{handleId}/use',
       '/v1/secret-handles/use-receipts',
       ...ORGANIZATION_PATHS_FIXTURE,
+      ...EXECUTION_PATHS_FIXTURE,
     ],
   );
   assert.match(spec, /\$ref: '#\/components\/schemas\/Health'/);
@@ -115,6 +117,8 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
     'state',
     'capabilities',
   ]);
+  assert.match(spec, /executionContract:/);
+  assert.match(spec, /executionPaths:/);
   assert.match(spec, /CreateTaskRequest:[\s\S]*?allOf:/);
   assertSchemaFields('AgentReference', ['providerId', 'modelId']);
   assertSchemaFields('ProviderModel', ['providerId', 'modelId', 'reference', 'displayName', 'capabilities']);
@@ -319,6 +323,12 @@ test('live injected responses equal the documented response fixtures', async () 
         ? {
           organizationContract: runtime.json().organizationContract,
           organizationPaths: runtime.json().organizationPaths,
+        }
+        : {}),
+      ...(runtime.json().executionContract
+        ? {
+          executionContract: runtime.json().executionContract,
+          executionPaths: runtime.json().executionPaths,
         }
         : {}),
     });

@@ -4,6 +4,7 @@ export function registerRuntimeRoute(
   app: FastifyInstance,
   tasksEnabled = false,
   organizationEnabled = false,
+  executionEnabled = false,
 ): void {
   app.get('/v1/runtime', async () => ({
     name: 'Conchbase',
@@ -12,6 +13,10 @@ export function registerRuntimeRoute(
     ...(organizationEnabled ? {
       organizationContract: '1.1.0' as const,
       organizationPaths: 18,
+    } : {}),
+    ...(executionEnabled ? {
+      executionContract: '1.2.0' as const,
+      executionPaths: 8,
     } : {}),
     capabilities: tasksEnabled
       ? [

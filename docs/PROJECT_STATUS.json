@@ -17,6 +17,11 @@
       "pathCount": 18,
       "frozen": true
     },
+    "execution": {
+      "version": "1.2.0",
+      "pathCount": 8,
+      "frozen": true
+    },
     "workContractVersion": 2,
     "databaseUserVersion": 3,
     "currentPrivateDatabaseUserVersion": 4,
@@ -147,6 +152,11 @@
       "id": "archive-offboard-resume",
       "summary": "Project quiet/archive/offboard/resume transitions preserve events, revoke active authority, and require revalidation before resumed projects accept new work.",
       "evidence": "src/runtime/organization-contract.ts"
+    },
+    {
+      "id": "controlled-execution-v1",
+      "summary": "ADR 0043 implements deterministic controlled execution v1 with explicit grants, request approval/rejection, digest-only fake execution, revocation, and bounded audit events over additive 1.2.0 paths.",
+      "evidence": "src/runtime/controlled-execution.ts"
     }
   ],
   "validationEvidence": [
@@ -247,14 +257,20 @@
       "summary": "A dual-repository live loopback fixture drives Pagurus typed organization clients over a credential-free fake provider through multiple projects, concurrent workers, one attention answer, and one archive/resume path.",
       "evidence": "tests/organization-e2e.test.ts",
       "executableFixture": true
+    },
+    {
+      "id": "controlled-execution-v1-fixture",
+      "summary": "An executable fixture covers explicit grants, stale versions, idempotency, approved fake execution, rejected requests, revocation, public paths, discovery, digest-only results, and no plaintext/private-path leakage.",
+      "evidence": "tests/controlled-execution.test.ts",
+      "executableFixture": true
     }
   ],
   "blockedDirections": [
     {
-      "id": "controlled-execution",
-      "summary": "Real tool authorization, executor isolation, MCP/Skill/plugin lifecycle, grants, approvals, audit, and crash-safe side effects are accepted as the next direction by ADR 0042 but require separate implementation ADRs and paired client contracts.",
+      "id": "real-controlled-execution",
+      "summary": "Real executor isolation, MCP/Skill/plugin lifecycle, external Sources, external writes, and crash-safe side effects remain blocked; ADR 0043 implements only the deterministic fake-executor v1 slice.",
       "requiresAcceptedAdr": true,
-      "directionAdr": "docs/decisions/0042-controlled-execution-direction.md"
+      "directionAdr": "docs/decisions/0043-controlled-execution-v1.md"
     },
     {
       "id": "stable-cross-process-secrets",

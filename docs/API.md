@@ -80,6 +80,15 @@ The service listens on `127.0.0.1:4318` by default. The machine-readable source 
 | `POST /v1/organization/attention/{attentionId}/answer` | Answer an open request using its published `expectedVersion`; stale versions return `409`. |
 | `POST /v1/organization/attention/{attentionId}/withdraw` | Withdraw an open request using its published `expectedVersion`; stale versions return `409`. |
 | `GET /v1/organization/events?after=<eventId>&limit=<n>` | Read immutable organization events in strict ascending sequence, default limit `100`, maximum `1000`; unknown cursors return `400`. |
+| `GET /v1/execution/health` | Read controlled-execution `1.2.0` availability and exact published paths. |
+| `GET /v1/execution/capabilities` | List published capability facts; recorded data never grants execution. |
+| `GET /v1/execution/grants` | List explicit Runtime-owned grants. |
+| `POST /v1/execution/grants` | Create one explicit grant bound to Agent/Delegation/WorkItem/Assignment/policy identity. |
+| `POST /v1/execution/grants/{grantId}/revoke` | Revoke an active grant using its published expected version. |
+| `POST /v1/execution/requests` | Create a bounded pending request under an active grant. |
+| `GET /v1/execution/requests/{requestId}` | Read one published request. |
+| `POST /v1/execution/requests/{requestId}/decide` | Approve and fake-execute, or reject, a pending request. |
+| `GET /v1/execution/events?after=<eventId>&limit=<n>` | Read bounded deterministic execution audit events. |
 
 An Agent profile is a versioned resource with bounded name, instructions, and `{ providerId, modelId }` default model reference. It contains no credential, provider URL, permission, or tool grant. The first Agent becomes default; there is no implicit default selection for task creation. Profile edits and history apply use `expectedRevisionId`; rollback appends a revision. Archiving is soft and irreversible in the current API, preserves history, and prevents new tasks. Existing tasks, including retries, stay bound to their pinned revision.
 
@@ -109,5 +118,6 @@ Durable work documents are deterministic, topology-neutral state from [ADR 0024]
 - Tool request and approval routes do not execute tools, transition task state, load code, resolve secrets, or grant capabilities.
 - Work and platform routes do not call a model, execute a host tool, perform an external write, expose a generic secret resolver, read a private file from a client, define a canonical topology, or reinterpret the phase-1 `Task` resource. A submitted SecretHandle value is sealed with a process-scoped key and is exposed only to one runtime-owned fixed adapter; restart invalidates old sealed values.
 - The additive `1.1.0` organization contract publishes only Runtime-owned facts. Intents are bounded, idempotent text submissions; the Runtime may use a deterministic or OpenAI-compatible structured parser, then validates all proposed actions, creates real Agent revisions, starts durable work, commits structured reports/Attention, and returns `202` while clients read published state. Clients cannot submit lifecycle commands, inspect drafts or raw transcripts, compute authority locally, or read private files/database state.
+- The additive `1.2.0` controlled-execution contract adds explicit grants, pending requests, approval/rejection, deterministic fake execution, revocation, and bounded audit. It does not install MCP servers, load Skills/plugins, execute host tools, write external systems, or expose plaintext secrets. Capability records are data; only an active explicit grant plus an approved request can reach the fake executor.
 
 > Final local-first target: Conchbase `1.0.0` and ADR 0025 close the exact 47-path platform contract. Write-only SecretHandle values are sealed at rest with a process-scoped AES-256-GCM key, exposed only to one runtime-owned fixed adapter, and never returned, logged, or sent to a model, client, event, or UI. Restart invalidates previously sealed values; cross-process key sources, real external adapters, executors, Sources, external writes, and tools require separate ADRs.

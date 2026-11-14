@@ -4,7 +4,7 @@
 
 Chinese release and quick-start documents are available in [README.zh-CN.md](../README.zh-CN.md), [QUICK_START.zh-CN.md](QUICK_START.zh-CN.md), and [RELEASE_NOTES_1.0.0.zh-CN.md](RELEASE_NOTES_1.0.0.zh-CN.md). For target mode, read the machine-readable [project status](PROJECT_STATUS.json) and the Chinese [objective-mode brief](OBJECTIVE_MODE.zh-CN.md) immediately after this handoff; they separate implemented behavior, validation evidence, and ADR-gated directions. `PROJECT_STATUS.json`'s `aiEntry.requiredOrder` is the canonical AI reading order; this numbered list expands it. English repository documents, OpenAPI, and accepted ADRs remain the source of truth.
 
-This document is the starting packet for a coding model that has not seen the design conversation. It describes repository facts and accepted boundaries; roadmap items are not implemented features. The complete Organization Runtime described in [ORGANIZATION_RUNTIME_TARGET.zh-CN.md](ORGANIZATION_RUNTIME_TARGET.zh-CN.md) is implemented under ADRs 0030–0041: one primary conversation, dynamic Agent revisions, Delegations, concurrent work, structured reports, Attention, archive/offboard/resume, additive `1.1.0` public contract, and a paired Pagurus console. Real tool execution and external side effects remain gated boundaries.
+This document is the starting packet for a coding model that has not seen the design conversation. It describes repository facts and accepted boundaries; roadmap items are not implemented features. The complete Organization Runtime described in [ORGANIZATION_RUNTIME_TARGET.zh-CN.md](ORGANIZATION_RUNTIME_TARGET.zh-CN.md) is implemented under ADRs 0030–0041. ADR 0043 adds controlled execution v1: explicit grants, approvals, deterministic fake execution, revocation, and bounded audit over additive `1.2.0` paths. Real tool execution, MCP/Skill/plugin lifecycle, and external side effects remain gated boundaries.
 
 ## Product definition
 
@@ -47,7 +47,7 @@ The exact OpenAPI path set is forty-seven paths. The work contract is version 2.
 24. `docs/ARCHITECTURE.md` — runtime and client boundaries plus current source layout.
 25. `docs/API.md` and `docs/openapi.yaml` — the versioned API source of truth.
 26. `docs/TECH_STACK.md` — chosen and deferred technology.
-27. [Organization Runtime target](ORGANIZATION_RUNTIME_TARGET.zh-CN.md) and ADRs `0030`–`0041` — the complete product loop, domain, delegation, concurrency/reporting/archive, internal boundaries, coordinator seam, additive `1.1.0` public contract, and Boss-mode execution bridge.
+27. [Organization Runtime target](ORGANIZATION_RUNTIME_TARGET.zh-CN.md) and ADRs `0030`–`0043` — the complete product loop, domain, delegation, concurrency/reporting/archive, internal boundaries, coordinator seam, additive `1.1.0` public contract, Boss-mode execution bridge, and controlled execution v1.
 28. `docs/ROADMAP.md`, `docs/REFERENCE_PROJECTS.md`, and proposal ADRs `0002`–`0008` plus `0023` — wider intended sequencing and still-open contracts.
 29. `docs/AI_TASK_QUEUE.md` — bounded work for the next coding model.
 30. `src/runtime/work-contract.ts`, `src/runtime/work-store.ts`, `src/runtime/platform-contract.ts`, `src/runtime/platform-store.ts`, `src/http/routes/v1/platform.ts`, and `src/http/routes/v1/work.ts` — the current durable-work domain, persistence, and HTTP boundary.

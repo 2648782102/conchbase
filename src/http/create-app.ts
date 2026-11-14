@@ -2,8 +2,10 @@ import Fastify from 'fastify';
 import type { RuntimeConfig } from '../config/runtime-config.js';
 import type { TaskService } from '../runtime/task-service.js';
 import { BossModeService } from '../runtime/boss-mode-service.js';
+import { ControlledExecutionService } from '../runtime/controlled-execution.js';
 import { installAuthHook } from './auth.js';
 import { registerConfigurationRoutes } from './routes/v1/configuration.js';
+import { registerExecutionRoutes } from './routes/v1/execution.js';
 import { registerEventRoutes } from './routes/v1/events.js';
 import { registerHealthRoute } from './routes/v1/health.js';
 import { registerModelRoutes } from './routes/v1/models.js';
@@ -20,6 +22,7 @@ export interface CreateAppOptions {
   logger?: boolean;
   taskService?: TaskService;
   bossModeService?: BossModeService;
+  executionService?: ControlledExecutionService;
   config?: RuntimeConfig;
 }
 
@@ -30,6 +33,7 @@ export function createApp(options: CreateAppOptions = {}) {
   const organization = options.bossModeService?.organizationStore ?? options.taskService?.store?.organization;
   const bossMode = options.bossModeService
     ?? (options.taskService && organization ? new BossModeService(organization, options.taskService) : undefined);
+  const execution = options.executionService;
   const loopback = options.config?.host === undefined
     || ['127.0.0.1', '::1', 'localhost'].includes(options.config.host);
 
@@ -41,7 +45,7 @@ export function createApp(options: CreateAppOptions = {}) {
 
   registerHealthRoute(app);
   registerAgentRoutes(app, options.taskService);
-  registerRuntimeRoute(app, Boolean(options.taskService), Boolean(organization));
+  registerRuntimeRoute(app, Boolean(options.taskService), Boolean(organization), Boolean(execution));
   registerConfigurationRoutes(app, options.taskService);
   registerEventRoutes(app, options.taskService);
   registerModelRoutes(app, options.taskService);
@@ -51,6 +55,7 @@ export function createApp(options: CreateAppOptions = {}) {
   registerWorkRoutes(app, workStore);
   registerPlatformRoutes(app, platform);
   registerOrganizationRoutes(app, organization, bossMode);
+  registerExecutionRoutes(app, execution);
 
   return app;
 }

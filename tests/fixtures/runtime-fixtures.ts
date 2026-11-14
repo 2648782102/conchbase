@@ -16,6 +16,8 @@ interface RuntimeResponseFixture {
   readonly capabilities: readonly string[];
   readonly organizationContract?: '1.1.0';
   readonly organizationPaths?: 18;
+  readonly executionContract?: '1.2.0';
+  readonly executionPaths?: 8;
 }
 
 export const ORGANIZATION_PATHS_FIXTURE = Object.freeze([
@@ -37,6 +39,17 @@ export const ORGANIZATION_PATHS_FIXTURE = Object.freeze([
   '/v1/organization/attention/{attentionId}/answer',
   '/v1/organization/attention/{attentionId}/withdraw',
   '/v1/organization/events',
+] as const);
+
+export const EXECUTION_PATHS_FIXTURE = Object.freeze([
+  '/v1/execution/health',
+  '/v1/execution/capabilities',
+  '/v1/execution/grants',
+  '/v1/execution/grants/{grantId}/revoke',
+  '/v1/execution/requests',
+  '/v1/execution/requests/{requestId}',
+  '/v1/execution/requests/{requestId}/decide',
+  '/v1/execution/events',
 ] as const);
 
 export const HEALTH_RESPONSE_FIXTURE: HealthResponseFixture = Object.freeze({

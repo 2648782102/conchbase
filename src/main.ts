@@ -5,6 +5,7 @@ import { loadRuntimeConfig } from './config/runtime-config.js';
 import { createApp } from './http/create-app.js';
 import { createTaskService } from './runtime/task-service.js';
 import { BossModeService } from './runtime/boss-mode-service.js';
+import { ControlledExecutionService } from './runtime/controlled-execution.js';
 import { createOpenAiCompatibleOrganizationIntentParser } from './runtime/organization-intent-parser.js';
 
 const config = loadRuntimeConfig();
@@ -14,7 +15,8 @@ const taskService = createTaskService(config.databasePath, {
   ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
   defaultModel: config.defaultModel,
 });
-let servingApp = createApp({ taskService, config });
+const executionService = new ControlledExecutionService();
+let servingApp = createApp({ taskService, config, executionService });
 
 if (config.organizationIntentModel) {
   const parser = createOpenAiCompatibleOrganizationIntentParser({
@@ -23,7 +25,7 @@ if (config.organizationIntentModel) {
     ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
   });
   const bossMode = new BossModeService(taskService.store.organization, taskService, { parser });
-  servingApp = createApp({ taskService, config, bossModeService: bossMode });
+  servingApp = createApp({ taskService, config, bossModeService: bossMode, executionService });
 }
 
 await servingApp.listen(config);

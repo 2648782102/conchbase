@@ -30,6 +30,11 @@ interface ProjectStatus {
       readonly pathCount: number;
       readonly frozen: boolean;
     };
+    readonly execution?: {
+      readonly version: string;
+      readonly pathCount: number;
+      readonly frozen: boolean;
+    };
   };
   readonly aiEntry: {
     readonly requiredOrder: readonly string[];
@@ -132,9 +137,18 @@ const acceptedPaths = [
   '/v1/organization/attention/{attentionId}/answer',
   '/v1/organization/attention/{attentionId}/withdraw',
   '/v1/organization/events',
+  '/v1/execution/health',
+  '/v1/execution/capabilities',
+  '/v1/execution/grants',
+  '/v1/execution/grants/{grantId}/revoke',
+  '/v1/execution/requests',
+  '/v1/execution/requests/{requestId}',
+  '/v1/execution/requests/{requestId}/decide',
+  '/v1/execution/events',
 ];
 const frozenPathCount = 47;
 const organizationPathCount = 18;
+const executionPathCount = 8;
 
 function read(relativePath: string): string {
   return readFileSync(path.join(repositoryRoot, relativePath), 'utf8');
@@ -265,6 +279,11 @@ function assertProjectStatus(source: string, label: string): void {
     pathCount: organizationPathCount,
     frozen: true,
   });
+  assert.deepEqual(status.publicContract.execution, {
+    version: '1.2.0',
+    pathCount: executionPathCount,
+    frozen: true,
+  });
   assert.deepEqual(status.aiEntry.requiredOrder, [
     'AGENTS.md',
     'docs/AI_HANDOFF.md',
@@ -366,7 +385,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /ADR 0021/);
   assert.match(handoff, /ADR 0022/);
   assert.match(handoff, /ADR 0023/);
-  assert.match(handoff, /ADRs 0030–0041/);
+  assert.match(handoff, /ADRs `0030`–`0043`/);
   assert.match(handoff, /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-contract\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-store\.ts/);
@@ -463,6 +482,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('docs/RELEASE_NOTES_1.1.0.zh-CN.md'), /Boss Mode `1\.1\.0`/);
   assert.match(read('docs/QUICK_START.zh-CN.md'), /conchbase boss/);
   assert.match(read('docs/decisions/0042-controlled-execution-direction.md'), /accepted product direction; implementation blocked/);
+  assert.match(read('docs/decisions/0043-controlled-execution-v1.md'), /accepted and implemented v1 fake-executor boundary/);
   const validationPlan = read('docs/VALIDATION_PLAN.md');
   assert.match(validationPlan, /ADR 0021's opt-in paired-runtime acceptance/);
   assert.match(validationPlan, /Live real-provider conformance, real-browser accessibility validation/);
@@ -663,6 +683,7 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
   assert.ok(currentStatus.implemented.some((record) => record.id === 'archive-offboard-resume'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-runtime'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'bounded-delegation'));
+  assert.ok(currentStatus.implemented.some((record) => record.id === 'controlled-execution-v1'));
   assert.ok(
     currentStatus.validationEvidence.some(
       (record) => record.id === 'organization-domain-fixture' && record.executableFixture === true,
@@ -716,6 +737,11 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
   assert.ok(
     currentStatus.validationEvidence.some(
       (record) => record.id === 'organization-product-loop-fixture' && record.executableFixture === true,
+    ),
+  );
+  assert.ok(
+    currentStatus.validationEvidence.some(
+      (record) => record.id === 'controlled-execution-v1-fixture' && record.executableFixture === true,
     ),
   );
   assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /完整组织运行时/);
@@ -1045,6 +1071,7 @@ test('guardrail helpers reject representative boundary violations', () => {
       pathCount: frozenPathCount,
       frozen: true,
       additive: { version: '1.1.0', pathCount: organizationPathCount, frozen: true },
+      execution: { version: '1.2.0', pathCount: executionPathCount, frozen: true },
     },
     aiEntry: {
       requiredOrder: [

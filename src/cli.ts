@@ -4,6 +4,7 @@ import path from 'node:path';
 import { loadRuntimeConfig } from './config/runtime-config.js';
 import { createApp } from './http/create-app.js';
 import { BossModeService } from './runtime/boss-mode-service.js';
+import { ControlledExecutionService } from './runtime/controlled-execution.js';
 import { MagpieModelCatalog } from './runtime/model-catalog.js';
 import { createTaskService } from './runtime/task-service.js';
 import { createOpenAiCompatibleOrganizationIntentParser } from './runtime/organization-intent-parser.js';
@@ -72,7 +73,12 @@ async function main(argv: readonly string[]): Promise<void> {
       defaultModel: config.defaultModel,
     });
     const bossMode = createBossModeService(service, config);
-    const app = createApp({ taskService: service, config, bossModeService: bossMode });
+    const app = createApp({
+      taskService: service,
+      config,
+      bossModeService: bossMode,
+      executionService: new ControlledExecutionService(),
+    });
     try {
       await app.listen({ host: config.host, port: config.port });
     } catch (cause) {

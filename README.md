@@ -57,7 +57,7 @@ curl -X POST http://127.0.0.1:4318/v1/tasks \
   -d '{"prompt":"Reply with exactly: ok","model":"provider/model-id"}'
 ```
 
-See [the API guide](docs/API.md) and [OpenAPI contract](docs/openapi.yaml) for Agent, task, event, configuration, model-catalog, tool request/approval ledger, and additive `1.1.0` organization routes. Boss Mode `1.1.0` adds one primary-conversation intent entry and published organization state; see the [v1.1.0 Chinese release notes](docs/RELEASE_NOTES_1.1.0.zh-CN.md) and the [Chinese quick start](docs/QUICK_START.zh-CN.md).
+See [the API guide](docs/API.md) and [OpenAPI contract](docs/openapi.yaml) for `1.0.0` platform routes, additive `1.1.0` organization routes, and additive `1.2.0` controlled-execution routes. Boss Mode `1.1.0` adds one primary-conversation intent entry; controlled execution `1.2.0` adds explicit grants, approvals, deterministic fake execution, revocation, and bounded audit. See [v1.1.0](docs/RELEASE_NOTES_1.1.0.zh-CN.md), [v1.2.0](docs/RELEASE_NOTES_1.2.0.zh-CN.md), and the [Chinese quick start](docs/QUICK_START.zh-CN.md).
 
 ## Architecture
 
@@ -73,7 +73,7 @@ See [the API guide](docs/API.md) and [OpenAPI contract](docs/openapi.yaml) for A
 - A Skill supplies instructions, never tool permissions; model-requested tools are rejected in phase 1.
 - A public tool request/approval decision is durable ledger state, never execution permission. A transient provider observation is untrusted normalization data, never execution permission.
 
-See [architecture](docs/ARCHITECTURE.md), [technology baseline](docs/TECH_STACK.md), [roadmap](docs/ROADMAP.md), [validation plan](docs/VALIDATION_PLAN.md), and the complete [Organization Runtime target](docs/ORGANIZATION_RUNTIME_TARGET.zh-CN.md). The companion console is [Pagurus](https://github.com/2648782102/pagurus). Chinese: [README.zh-CN.md](README.zh-CN.md), [quick start](docs/QUICK_START.zh-CN.md), [target-mode brief](docs/OBJECTIVE_MODE.zh-CN.md), [v1.0.0 release notes](docs/RELEASE_NOTES_1.0.0.zh-CN.md), and [v1.1.0 release notes](docs/RELEASE_NOTES_1.1.0.zh-CN.md). The optional [visual overview](docs/VISUAL_OVERVIEW.zh-CN.md) is a human-facing illustration only, not a contract source of truth.
+See [architecture](docs/ARCHITECTURE.md), [technology baseline](docs/TECH_STACK.md), [roadmap](docs/ROADMAP.md), [validation plan](docs/VALIDATION_PLAN.md), and the complete [Organization Runtime target](docs/ORGANIZATION_RUNTIME_TARGET.zh-CN.md). The companion console is [Pagurus](https://github.com/2648782102/pagurus). Chinese: [README.zh-CN.md](README.zh-CN.md), [quick start](docs/QUICK_START.zh-CN.md), [target-mode brief](docs/OBJECTIVE_MODE.zh-CN.md), [v1.0.0 release notes](docs/RELEASE_NOTES_1.0.0.zh-CN.md), [v1.1.0 release notes](docs/RELEASE_NOTES_1.1.0.zh-CN.md), and [v1.2.0 release notes](docs/RELEASE_NOTES_1.2.0.zh-CN.md). The optional [visual overview](docs/VISUAL_OVERVIEW.zh-CN.md) is a human-facing illustration only, not a contract source of truth.
 
 ## AI-first development
 
