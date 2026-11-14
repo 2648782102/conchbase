@@ -599,3 +599,51 @@ test('a task change wakes the stream before the polling interval', async () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('a conversation with no tasks still publishes its user message', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-chat-stream-user-'));
+  const service = new TaskService(
+    new SqliteTaskStore(path.join(directory, 'runtime.sqlite')),
+    {
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/model',
+      fetch: scripted([() => text('稍后')]),
+    },
+    catalog(),
+  );
+  const agentChat = new AgentChatService(service);
+  const app = createApp({ logger: false, taskService: service, agentChatService: agentChat });
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address();
+  assert.ok(address && typeof address === 'object');
+  const base = `http://127.0.0.1:${address.port}`;
+  try {
+    const agent = await service.createAgent({
+      name: '用户消息助手', instructions: 'Reply.', providerId: 'magpie', modelId: 'fixture/model',
+    });
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
+    });
+    const conversationId = created.json().id as string;
+    const response = await fetch(`${base}/v1/agent-chat/conversations/${conversationId}/events`, {
+      signal: AbortSignal.timeout(20_000),
+    });
+    assert.equal(response.status, 200);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const first = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: { text: '用户的第一句话', idempotencyKey: 'user-msg-1' },
+    });
+    const userId = first.json().userMessage.id as string;
+    const frames = await readFrames(response, (entries) => entries.some((frame) =>
+      frame.data.messageId === userId
+      && frame.data.message?.state === 'published'
+      && frame.data.message.body === '用户的第一句话'));
+    assert.ok(frames.some((frame) => frame.data.messageId === userId));
+  } finally {
+    await app.close();
+    await service.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
