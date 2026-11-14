@@ -54,6 +54,9 @@ export interface BossModeServiceOptions {
   readonly parser?: OrganizationIntentParser;
   readonly now?: () => string;
   readonly waitForTasks?: boolean;
+  readonly conversation?: {
+    recordIntentText(intentId: string, text: string): void;
+  };
 }
 
 interface WorkerExecutionRecord {
@@ -118,6 +121,7 @@ export class BossModeService {
   private readonly parser: OrganizationIntentParser;
   private readonly now: () => string;
   private readonly waitForTasks: boolean;
+  private readonly conversation: BossModeServiceOptions['conversation'];
   private readonly workerExecutions = new Map<string, WorkerExecutionRecord>();
   private readonly startedWorkers = new Set<string>();
   private readonly outcomeByTaskId = new Map<string, string>();
@@ -130,6 +134,7 @@ export class BossModeService {
     this.parser = options.parser ?? createDeterministicOrganizationIntentParser();
     this.now = options.now ?? (() => new Date().toISOString());
     this.waitForTasks = options.waitForTasks ?? true;
+    this.conversation = options.conversation;
     this.restoreRecords();
     this.coordinator = new OrganizationCoordinator(store, {
       listWorkState: () => this.listWorkState(),
@@ -145,6 +150,7 @@ export class BossModeService {
   async submit(input: unknown): Promise<BossModeSubmitResult> {
     const submission = validateSubmission(input);
     const resolvedIntentId = intentId(submission.idempotencyKey);
+    this.conversation?.recordIntentText(resolvedIntentId, submission.text);
     const bodyDigest = digest(JSON.stringify([submission.text, resolvedIntentId]));
     const recorded = this.findRecordedIntent(resolvedIntentId, bodyDigest);
     if (recorded) return recorded;

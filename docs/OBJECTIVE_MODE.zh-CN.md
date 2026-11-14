@@ -23,7 +23,7 @@
 
 [ADR 0028](decisions/0028-interface-validation-boundary.md) 已把可直接推进的接口验证切片闭合为可执行夹具：`tests/provider-conformance.test.ts` 使用临时本地 HTTP 服务覆盖当前 provider 兼容形态，不需要真实凭证；Pagurus [ADR 0014](../pagurus/docs/decisions/0014-interface-validation-boundary.md) 同步闭合自动化无障碍与已发布契约夹具。[ADR 0029](decisions/0029-persistence-test-boundary.md) 进一步把持久化测试边界闭合为可执行夹具：`tests/persistence-conformance.test.ts` 覆盖异常退出后的已提交 WAL 状态、增量迁移保留、单实例拒绝与正常重开。它们记录在 `PROJECT_STATUS.json` 的 `validationEvidence` 中，不替代真实供应商一致性、真实浏览器无障碍审计、生产持久化矩阵或多进程支持。
 
-目前 `nextBoundedSlices` 为空。组织状态机、动态 Agent/委派、并发/汇报/归档、公开契约与双仓端到端夹具已经闭合。受控执行 `1.2.0` 由 [ADR 0043](decisions/0043-controlled-execution-v1.md) 实现为确定性 fake executor；隔离本地执行 `1.3.0` 由 [ADR 0044](decisions/0044-isolated-local-execution-v2.md) 实现为 Runtime 拥有的固定子进程、durable run、重启中断与显式恢复，二者均不产生外部写入。持久化测试边界已由 ADR 0029 接受并完成；生产平台矩阵、任意崩溃点恢复、事件保留、多进程写入协议和归一化驱动错误仍属于独立的 ADR 门控方向，不得把当前单进程 SQLite 所有权说成多进程支持。
+目前 `nextBoundedSlices` 为空。组织状态机、动态 Agent/委派、并发/汇报/归档、公开契约与双仓端到端夹具已经闭合。受控执行 `1.2.0` 由 [ADR 0043](decisions/0043-controlled-execution-v1.md) 实现为确定性 fake executor；隔离本地执行 `1.3.0` 由 [ADR 0044](decisions/0044-isolated-local-execution-v2.md) 实现为 Runtime 拥有的固定子进程、durable run、重启中断与显式恢复；主会话对话投影 `1.4.0` 由 [ADR 0045](decisions/0045-primary-conversation-projection.md) 实现为只读、有序、bounded 的 published message stream。三者均不产生外部写入。持久化测试边界已由 ADR 0029 接受并完成；生产平台矩阵、任意崩溃点恢复、事件保留、多进程写入协议和归一化驱动错误仍属于独立的 ADR 门控方向，不得把当前单进程 SQLite 所有权说成多进程支持。
 
 每项工作都要按 `docs/PROJECT_STATUS.json` 的 `aiEntry.requiredOrder` 阅读：先读 `AGENTS.md`、`docs/AI_HANDOFF.md`、机器可读状态和本文，再读 `docs/AI_DEVELOPMENT.md`、任务队列与英文契约文档。完成后运行 `npm run check`、`npm test`、`npm run build`，并同步更新受影响文档。
 

@@ -1512,6 +1512,60 @@ paths:
           $ref: '#/components/responses/OrganizationValidationError'
         '503':
           $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/organization/conversation:
+    get:
+      operationId: getPrimaryConversation
+      summary: Read the bounded primary-conversation projection.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+      responses:
+        '200':
+          description: Published primary conversation without raw transcripts, drafts, prompts, paths, or plaintext.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrimaryConversationView'
+        '400':
+          $ref: '#/components/responses/OrganizationValidationError'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/organization/conversation/messages:
+    get:
+      operationId: listPrimaryConversationMessages
+      summary: Read published primary-conversation messages in ascending sequence with bounded cursors.
+      parameters:
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^msg_[0-9a-f]{24}$'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+      responses:
+        '200':
+          description: Ordered primary-conversation message page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationMessagePage'
+        '400':
+          $ref: '#/components/responses/OrganizationValidationError'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
   /v1/execution/health:
     get:
       operationId: getExecutionHealth
@@ -2371,6 +2425,11 @@ components:
           const: '1.3.0'
         executionRunPaths:
           const: 8
+        conversationContract:
+          type: string
+          const: '1.4.0'
+        conversationPaths:
+          const: 2
     Error:
       type: object
       additionalProperties: false
@@ -4790,6 +4849,88 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ExecutionRunEvent'
+        nextCursor:
+          type: [string, 'null']
+        hasMore:
+          type: boolean
+    PrimaryConversationVersion:
+      type: string
+      const: '1.4.0'
+    ConversationMessageKind:
+      type: string
+      enum: [user_message, boss_acknowledgement, worker_activity, report, attention, system_status]
+    ConversationMessageAuthor:
+      type: string
+      enum: [user, boss, worker, runtime]
+    ConversationMessageState:
+      type: string
+      enum: [published, open, answered, withdrawn, attention, ready, failed, running, succeeded]
+    ConversationMessage:
+      type: object
+      additionalProperties: false
+      required: [version, id, sequence, kind, author, body, state, createdByEventId, projectId, workerId, reportId, attentionId, expectedVersion]
+      properties:
+        version:
+          $ref: '#/components/schemas/PrimaryConversationVersion'
+        id:
+          type: string
+          pattern: '^msg_[0-9a-f]{24}$'
+        sequence:
+          type: integer
+          minimum: 1
+        kind:
+          $ref: '#/components/schemas/ConversationMessageKind'
+        author:
+          $ref: '#/components/schemas/ConversationMessageAuthor'
+        body:
+          type: string
+          maxLength: 600
+        state:
+          $ref: '#/components/schemas/ConversationMessageState'
+        createdByEventId:
+          type: string
+        projectId:
+          type: [string, 'null']
+        workerId:
+          type: [string, 'null']
+        reportId:
+          type: [string, 'null']
+        attentionId:
+          type: [string, 'null']
+        expectedVersion:
+          type: [integer, 'null']
+          minimum: 1
+    PrimaryConversationView:
+      type: object
+      additionalProperties: false
+      required: [version, bossSessionId, messageCount, nextCursor, hasMore, messages]
+      properties:
+        version:
+          $ref: '#/components/schemas/PrimaryConversationVersion'
+        bossSessionId:
+          type: string
+        messageCount:
+          type: integer
+          minimum: 0
+        nextCursor:
+          type: [string, 'null']
+        hasMore:
+          type: boolean
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConversationMessage'
+    ConversationMessagePage:
+      type: object
+      additionalProperties: false
+      required: [version, messages, nextCursor, hasMore]
+      properties:
+        version:
+          $ref: '#/components/schemas/PrimaryConversationVersion'
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConversationMessage'
         nextCursor:
           type: [string, 'null']
         hasMore:

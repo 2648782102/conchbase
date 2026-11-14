@@ -40,6 +40,11 @@ interface ProjectStatus {
       readonly pathCount: number;
       readonly frozen: boolean;
     };
+    readonly conversation?: {
+      readonly version: string;
+      readonly pathCount: number;
+      readonly frozen: boolean;
+    };
   };
   readonly aiEntry: {
     readonly requiredOrder: readonly string[];
@@ -142,6 +147,8 @@ const acceptedPaths = [
   '/v1/organization/attention/{attentionId}/answer',
   '/v1/organization/attention/{attentionId}/withdraw',
   '/v1/organization/events',
+  '/v1/organization/conversation',
+  '/v1/organization/conversation/messages',
   '/v1/execution/health',
   '/v1/execution/capabilities',
   '/v1/execution/grants',
@@ -163,6 +170,7 @@ const frozenPathCount = 47;
 const organizationPathCount = 18;
 const executionPathCount = 8;
 const executionRunPathCount = 8;
+const conversationPathCount = 2;
 
 function read(relativePath: string): string {
   return readFileSync(path.join(repositoryRoot, relativePath), 'utf8');
@@ -303,6 +311,11 @@ function assertProjectStatus(source: string, label: string): void {
     pathCount: executionRunPathCount,
     frozen: true,
   });
+  assert.deepEqual(status.publicContract.conversation, {
+    version: '1.4.0',
+    pathCount: conversationPathCount,
+    frozen: true,
+  });
   assert.deepEqual(status.aiEntry.requiredOrder, [
     'AGENTS.md',
     'docs/AI_HANDOFF.md',
@@ -404,7 +417,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /ADR 0021/);
   assert.match(handoff, /ADR 0022/);
   assert.match(handoff, /ADR 0023/);
-  assert.match(handoff, /ADRs `0030`–`0044`/);
+  assert.match(handoff, /ADRs `0030`–`0045`/);
   assert.match(handoff, /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-contract\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-store\.ts/);
@@ -485,7 +498,8 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('README.zh-CN.md'), /仍在最终本地优先目标之外/);
   assert.match(read('README.zh-CN.md'), /ADR 0018/);
   assert.match(read('README.zh-CN.md'), /ADR 0019/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0044\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0045\]/);
+  assert.match(read('README.md'), /1\.4\.0/);
   assert.match(read('README.md'), /ADR 0021 adds an opt-in live loopback acceptance test/);
   assert.match(read('README.zh-CN.md'), /ADR 0021/);
   assert.match(read('README.zh-CN.md'), /真实 loopback HTTP 验收/);
@@ -503,6 +517,9 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('docs/decisions/0042-controlled-execution-direction.md'), /accepted product direction; implementation blocked/);
   assert.match(read('docs/decisions/0043-controlled-execution-v1.md'), /accepted and implemented v1 fake-executor boundary/);
   assert.match(read('docs/decisions/0044-isolated-local-execution-v2.md'), /accepted and implemented isolated local execution v2/);
+  assert.match(read('docs/decisions/0045-primary-conversation-projection.md'), /accepted and implemented primary conversation projection/);
+  assert.match(read('tests/primary-conversation.test.ts'), /primary conversation projects/);
+  assert.match(read('docs/RELEASE_NOTES_1.4.0.zh-CN.md'), /主会话对话投影/);
   const validationPlan = read('docs/VALIDATION_PLAN.md');
   assert.match(validationPlan, /ADR 0021's opt-in paired-runtime acceptance/);
   assert.match(validationPlan, /Live real-provider conformance, real-browser accessibility validation/);
@@ -705,6 +722,7 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
   assert.ok(currentStatus.implemented.some((record) => record.id === 'bounded-delegation'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'controlled-execution-v1'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'isolated-execution-v2'));
+  assert.ok(currentStatus.implemented.some((record) => record.id === 'primary-conversation-projection'));
   assert.ok(
     currentStatus.validationEvidence.some(
       (record) => record.id === 'organization-domain-fixture' && record.executableFixture === true,
@@ -770,6 +788,11 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
       (record) => record.id === 'isolated-execution-v2-fixture' && record.executableFixture === true,
     ),
   );
+  assert.ok(
+    currentStatus.validationEvidence.some(
+      (record) => record.id === 'primary-conversation-projection-fixture' && record.executableFixture === true,
+    ),
+  );
   assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /完整组织运行时/);
   assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /0041/);
   assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
@@ -798,7 +821,7 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
     assert.match(read(file), /OBJECTIVE_MODE\.zh-CN\.md/, `${file} must link the Chinese objective brief`);
   }
   assert.match(read('docs/AI_TASK_QUEUE.md'), /Target-mode entry/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0044\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0045\]/);
   assert.match(read('README.md'), /Organization Runtime target/);
   assert.match(read('README.zh-CN.md'), /完整组织运行时目标/);
   assert.match(read('docs/QUICK_START.zh-CN.md'), /ADR 0030–0034/);
@@ -1099,6 +1122,7 @@ test('guardrail helpers reject representative boundary violations', () => {
       additive: { version: '1.1.0', pathCount: organizationPathCount, frozen: true },
       execution: { version: '1.2.0', pathCount: executionPathCount, frozen: true },
       executionRun: { version: '1.3.0', pathCount: executionRunPathCount, frozen: true },
+      conversation: { version: '1.4.0', pathCount: conversationPathCount, frozen: true },
     },
     aiEntry: {
       requiredOrder: [

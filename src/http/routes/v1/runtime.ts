@@ -6,6 +6,7 @@ export function registerRuntimeRoute(
   organizationEnabled = false,
   executionEnabled = false,
   executionRunEnabled = false,
+  conversationEnabled = false,
 ): void {
   app.get('/v1/runtime', async () => ({
     name: 'Conchbase',
@@ -22,6 +23,10 @@ export function registerRuntimeRoute(
     ...(executionRunEnabled ? {
       executionRunContract: '1.3.0' as const,
       executionRunPaths: 8,
+    } : {}),
+    ...(conversationEnabled ? {
+      conversationContract: '1.4.0' as const,
+      conversationPaths: 2,
     } : {}),
     capabilities: tasksEnabled
       ? [

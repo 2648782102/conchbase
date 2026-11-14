@@ -4,7 +4,7 @@
   "pairedRepository": "pagurus",
   "project": "Conchbase / 海螺",
   "release": "1.0.0",
-  "statusUpdatedAt": "2026-11-13",
+  "statusUpdatedAt": "2026-11-14",
   "objectiveMode": "target-mode",
   "developmentBoundaryAdr": "0026-ai-handoff-readiness-development-boundary.md",
   "publicContract": {
@@ -25,6 +25,11 @@
     "executionRun": {
       "version": "1.3.0",
       "pathCount": 8,
+      "frozen": true
+    },
+    "conversation": {
+      "version": "1.4.0",
+      "pathCount": 2,
       "frozen": true
     },
     "workContractVersion": 2,
@@ -167,6 +172,11 @@
       "id": "isolated-execution-v2",
       "summary": "ADR 0044 implements isolated local execution v2 with a fixed Node child-process worker, closed deterministic operations, durable queued/running/succeeded/failed/cancelled/interrupted runs, explicit start/cancel/recover, restart interruption, and digest-only audit over additive 1.3.0 paths.",
       "evidence": "src/runtime/isolated-execution.ts"
+    },
+    {
+      "id": "primary-conversation-projection",
+      "summary": "ADR 0045 implements an additive 1.4.0 primary-conversation read model over Runtime-owned organization facts, with bounded user messages, Boss acknowledgements, worker activity, reports, Attention, system status, cursors, and no raw transcripts or private state.",
+      "evidence": "src/runtime/primary-conversation.ts"
     }
   ],
   "validationEvidence": [
@@ -278,6 +288,12 @@
       "id": "isolated-execution-v2-fixture",
       "summary": "An executable fixture covers approved-request/active-grant run creation, isolated child-process execution, stale versions, idempotency conflicts, cancel/recover, restart interruption, public run discovery, adapters, and no plaintext/private-path leakage.",
       "evidence": "tests/isolated-execution.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "primary-conversation-projection-fixture",
+      "summary": "An executable fixture covers ordered primary-conversation messages, bounded cursors, duplicate suppression, no private-state leakage, 1.4.0 discovery, and HTTP error paths.",
+      "evidence": "tests/primary-conversation.test.ts",
       "executableFixture": true
     }
   ],

@@ -20,6 +20,8 @@ interface RuntimeResponseFixture {
   readonly executionPaths?: 8;
   readonly executionRunContract?: '1.3.0';
   readonly executionRunPaths?: 8;
+  readonly conversationContract?: '1.4.0';
+  readonly conversationPaths?: 2;
 }
 
 export const ORGANIZATION_PATHS_FIXTURE = Object.freeze([
@@ -63,6 +65,11 @@ export const EXECUTION_RUN_PATHS_FIXTURE = Object.freeze([
   '/v1/execution/runs/{runId}/cancel',
   '/v1/execution/runs/{runId}/recover',
   '/v1/execution/runs/{runId}/events',
+] as const);
+
+export const CONVERSATION_PATHS_FIXTURE = Object.freeze([
+  '/v1/organization/conversation',
+  '/v1/organization/conversation/messages',
 ] as const);
 
 export const HEALTH_RESPONSE_FIXTURE: HealthResponseFixture = Object.freeze({

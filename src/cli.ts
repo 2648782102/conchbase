@@ -6,6 +6,7 @@ import { createApp } from './http/create-app.js';
 import { BossModeService } from './runtime/boss-mode-service.js';
 import { ControlledExecutionService } from './runtime/controlled-execution.js';
 import { IsolatedExecutionService } from './runtime/isolated-execution.js';
+import { PrimaryConversationService } from './runtime/primary-conversation.js';
 import { MagpieModelCatalog } from './runtime/model-catalog.js';
 import { createTaskService } from './runtime/task-service.js';
 import { createOpenAiCompatibleOrganizationIntentParser } from './runtime/organization-intent-parser.js';
@@ -47,6 +48,7 @@ function requireModel(config: ReturnType<typeof loadRuntimeConfig>): string {
 function createBossModeService(
   service: ReturnType<typeof createTaskService>,
   config: ReturnType<typeof loadRuntimeConfig>,
+  conversation: PrimaryConversationService,
 ): BossModeService {
   const parser = config.organizationIntentModel
     ? createOpenAiCompatibleOrganizationIntentParser({
@@ -55,7 +57,10 @@ function createBossModeService(
       ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
     })
     : undefined;
-  return new BossModeService(service.store.organization, service, parser ? { parser } : {});
+  return new BossModeService(service.store.organization, service, {
+    ...(parser ? { parser } : {}),
+    conversation: { recordIntentText: (intentId, text) => conversation.recordIntentText(intentId, text) },
+  });
 }
 
 async function main(argv: readonly string[]): Promise<void> {
@@ -73,7 +78,8 @@ async function main(argv: readonly string[]): Promise<void> {
       ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
       defaultModel: config.defaultModel,
     });
-    const bossMode = createBossModeService(service, config);
+    const conversationService = new PrimaryConversationService();
+    const bossMode = createBossModeService(service, config, conversationService);
     const executionService = new ControlledExecutionService();
     const executionRunService = new IsolatedExecutionService({ host: executionService });
     const app = createApp({
@@ -82,6 +88,7 @@ async function main(argv: readonly string[]): Promise<void> {
       bossModeService: bossMode,
       executionService,
       executionRunService,
+      conversationService,
     });
     try {
       await app.listen({ host: config.host, port: config.port });
@@ -108,6 +115,7 @@ async function main(argv: readonly string[]): Promise<void> {
     ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
     defaultModel: config.defaultModel,
   });
+  const conversationService = new PrimaryConversationService();
   const controller = new AbortController();
   process.once('SIGINT', () => controller.abort());
   process.once('SIGTERM', () => controller.abort());
@@ -116,7 +124,7 @@ async function main(argv: readonly string[]): Promise<void> {
     if (command === 'boss') {
       const text = args.join(' ').trim();
       if (!text) throw new Error('Boss-mode intent must not be empty.');
-      const bossMode = createBossModeService(service, config);
+      const bossMode = createBossModeService(service, config, conversationService);
       const result = await bossMode.submit({
         text,
         idempotencyKey: `cli-${Date.now()}-${Math.random().toString(16).slice(2)}`,
