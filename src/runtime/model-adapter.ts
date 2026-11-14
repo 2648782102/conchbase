@@ -1,4 +1,4 @@
-import type { ToolCallProposal } from './tool-request.js';
+import type { ToolCallArguments, ToolCallProposal } from './tool-request.js';
 
 export interface ProviderToolCallObservation {
   readonly version: 1;
@@ -31,6 +31,7 @@ export type ProviderModelTurn =
 
 export type StreamingModelTurn =
   | { readonly kind: 'final'; readonly output: string }
+  | { readonly kind: 'tool_calls'; readonly content: string; readonly calls: readonly ProviderToolCall[] }
   | ProviderToolCallObservationTurn;
 
 export interface ModelAdapterInput {
@@ -38,6 +39,26 @@ export interface ModelAdapterInput {
   readonly prompt: string;
   readonly turnIndex: number;
   readonly signal?: AbortSignal;
+  readonly messages?: readonly ProviderMessage[];
+  readonly tools?: readonly ProviderToolDefinition[];
+}
+
+export interface ProviderToolDefinition {
+  readonly id: string;
+  readonly description: string;
+  readonly parameters: Readonly<Record<string, unknown>>;
+}
+
+export type ProviderMessage =
+  | { readonly role: 'system'; readonly content: string }
+  | { readonly role: 'user'; readonly content: string }
+  | { readonly role: 'assistant'; readonly content: string; readonly toolCalls?: readonly ProviderToolCall[] }
+  | { readonly role: 'tool'; readonly toolCallId: string; readonly content: string };
+
+export interface ProviderToolCall {
+  readonly id: string;
+  readonly name: string;
+  readonly arguments: ToolCallArguments;
 }
 
 export interface ModelAdapter {

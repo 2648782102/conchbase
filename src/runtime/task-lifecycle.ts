@@ -41,7 +41,12 @@ export type TaskEventType =
   | 'tool.executed'
   | 'tool.replayed'
   | 'tool.denied'
-  | 'tool.failed';
+  | 'tool.failed'
+  | 'agent_loop.turn_started'
+  | 'agent_loop.turn_completed'
+  | 'agent_loop.tool_requested'
+  | 'agent_loop.tool_executed'
+  | 'agent_loop.tool_failed';
 
 const TRANSITIONS: Readonly<Record<TaskState, readonly TaskState[]>> = Object.freeze({
   queued: Object.freeze<TaskState[]>([
@@ -125,6 +130,11 @@ export const TASK_TRANSITIONS: Readonly<Record<TaskEventType, TaskTransition>> =
   'tool.replayed': { state: 'running', eventType: 'tool.replayed' },
   'tool.denied': { state: 'running', eventType: 'tool.denied' },
   'tool.failed': { state: 'running', eventType: 'tool.failed' },
+  'agent_loop.turn_started': { state: 'running', eventType: 'agent_loop.turn_started' },
+  'agent_loop.turn_completed': { state: 'running', eventType: 'agent_loop.turn_completed' },
+  'agent_loop.tool_requested': { state: 'running', eventType: 'agent_loop.tool_requested' },
+  'agent_loop.tool_executed': { state: 'running', eventType: 'agent_loop.tool_executed' },
+  'agent_loop.tool_failed': { state: 'running', eventType: 'agent_loop.tool_failed' },
 });
 
 export function canTransition(from: TaskState, to: TaskState): boolean {

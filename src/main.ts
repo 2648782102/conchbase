@@ -12,6 +12,7 @@ import {
   createOpenAiCompatibleBossConversationParser,
   createOpenAiCompatibleOrganizationIntentParser,
 } from './runtime/organization-intent-parser.js';
+import { createBuiltinReadTools } from './runtime/tool-provider.js';
 
 const config = loadRuntimeConfig();
 mkdirSync(path.dirname(config.databasePath), { recursive: true });
@@ -19,7 +20,7 @@ const taskService = createTaskService(config.databasePath, {
   magpieBaseUrl: config.magpieBaseUrl,
   ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
   defaultModel: config.defaultModel,
-});
+  }, { tools: createBuiltinReadTools({ root: process.cwd() }) });
 const executionService = new ControlledExecutionService();
 const executionRunService = new IsolatedExecutionService({ host: executionService });
 const conversationService = new PrimaryConversationService();

@@ -96,31 +96,21 @@ test('the streaming provider accepts one whole message-shaped tool call without 
   assert.deepEqual(deltas, []);
 });
 
-test('the streaming provider rejects tool calls, malformed frames, and empty output', async () => {
+test('the streaming provider rejects malformed tool calls, frames, and empty output', async () => {
   const cases: Array<{ response: () => Response; message: RegExp }> = [
     {
       response: () => sseResponse([JSON.stringify({
         choices: [{ delta: { content: null, tool_calls: [] } }],
       })]),
-      message: /tool calls are not supported/,
-    },
-    {
-      response: () => sseResponse([JSON.stringify({
-        choices: [{ delta: { tool_calls: [{
-          id: 'call_1',
-          type: 'function',
-          function: { name: 'fixture_read', arguments: '{}' },
-        }] } }],
-      })]),
-      message: /tool calls are not supported/,
+      message: /unsupported tool call/,
     },
     {
       response: () => sseResponse([
         JSON.stringify({
           choices: [{ message: { content: null, tool_calls: [{
-            id: 'call_1',
+            id: 'call_0000000000000001',
             type: 'function',
-            function: { name: 'fixture_read', arguments: '{}' },
+            function: { name: 'workspace_list', arguments: '{"limit":5}' },
           }] } }],
         }),
         chunk('answer'),

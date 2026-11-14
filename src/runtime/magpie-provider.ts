@@ -8,6 +8,28 @@ import {
   ProviderToolCallError,
   parseOpenAiChatCompletionsToolCall,
 } from './provider-tool-call.js';
+import type { ToolCallArguments } from './tool-request.js';
+
+function parseToolArguments(raw: string): ToolCallArguments {
+  if (raw.trim().length === 0) return Object.freeze({});
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new ModelProviderError('Model provider returned malformed tool arguments.');
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new ModelProviderError('Model provider returned malformed tool arguments.');
+  }
+  const bounded: Record<string, string | number | boolean | null> = {};
+  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+    if (key.length === 0 || key.length > 120) continue;
+    if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      bounded[key] = value;
+    }
+  }
+  return Object.freeze(bounded);
+}
 
 export interface MagpieProviderConfig {
   readonly baseUrl: string;
@@ -104,7 +126,7 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
   }
 
   async nextTurn(input: ModelAdapterInput): Promise<ProviderModelTurn> {
-    if (input.turnIndex !== 0) {
+    if (input.turnIndex < 0) {
       throw new ModelProviderError('This provider supports one model turn per task attempt.');
     }
     if (input.prompt.trim().length === 0) {
@@ -131,7 +153,7 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
         body: JSON.stringify({
           model: this.model,
           stream: false,
-          messages: [{ role: 'user', content: input.prompt }],
+          messages: input.messages ?? [{ role: 'user', content: input.prompt }],
         }),
         signal,
       });
@@ -165,7 +187,7 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
   }
 
   async streamTurn(input: StreamingTurnInput): Promise<StreamingModelTurn> {
-    if (input.turnIndex !== 0) {
+    if (input.turnIndex < 0) {
       throw new ModelProviderError('This provider supports one model turn per task attempt.');
     }
     if (input.prompt.trim().length === 0) {
@@ -193,7 +215,19 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
         body: JSON.stringify({
           model: this.model,
           stream: true,
-          messages: [{ role: 'user', content: input.prompt }],
+          messages: input.messages ?? [{ role: 'user', content: input.prompt }],
+          ...(input.tools && input.tools.length > 0
+            ? {
+              tools: input.tools.map((tool) => ({
+                type: 'function',
+                function: {
+                  name: tool.id,
+                  description: tool.description,
+                  parameters: tool.parameters,
+                },
+              })),
+            }
+            : {}),
         }),
         signal,
       });
@@ -214,6 +248,7 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
     let buffer = '';
     let output = '';
     let observation: StreamingModelTurn | null = null;
+    const toolCalls: { id: string; name: string; arguments: string }[] = [];
     let deltaCount = 0;
     let sawDone = false;
 
@@ -237,7 +272,23 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
       const choice = (payload as ChatCompletionChunk | null)?.choices?.[0];
       const delta = choice?.delta;
       if (delta?.tool_calls !== undefined) {
-        throw new ModelProviderError('Model tool calls are not supported in this runtime slice.');
+        if (!Array.isArray(delta.tool_calls) || delta.tool_calls.length === 0) {
+          throw new ModelProviderError('Model provider returned an unsupported tool call.');
+        }
+        for (const candidate of delta.tool_calls as readonly {
+          readonly index?: number;
+          readonly id?: string;
+          readonly function?: { readonly name?: string; readonly arguments?: string };
+        }[]) {
+          const index = candidate.index ?? 0;
+          const current = toolCalls[index] ?? { id: '', name: '', arguments: '' };
+          toolCalls[index] = {
+            id: candidate.id ?? current.id,
+            name: candidate.function?.name ?? current.name,
+            arguments: current.arguments + (candidate.function?.arguments ?? ''),
+          };
+        }
+        return;
       }
       const message = (payload as ChatCompletionResponse | null)?.choices?.[0]?.message;
       const parsedObservation = message !== undefined
@@ -297,6 +348,22 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
     }
     if (!sawDone) {
       throw new ModelProviderError('Model provider stream ended before completion.');
+    }
+    if (toolCalls.length > 0) {
+      if (observation) throw new ModelProviderError('Model provider returned a mixed tool-call response.');
+      const parsedCalls = toolCalls.filter((call) => call.name.length > 0);
+      if (parsedCalls.length === 0) {
+        throw new ModelProviderError('Model provider returned an unsupported tool call.');
+      }
+      return Object.freeze({
+        kind: 'tool_calls',
+        content: output,
+        calls: Object.freeze(parsedCalls.map((call, index) => Object.freeze({
+          id: call.id.length > 0 ? call.id : `call_${index}`,
+          name: call.name,
+          arguments: parseToolArguments(call.arguments),
+        }))),
+      });
     }
     if (observation) {
       if (input.signal?.aborted) {

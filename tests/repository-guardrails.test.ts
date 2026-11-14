@@ -738,7 +738,10 @@ test('decision records separate accepted phase-1 direction from proposals', () =
 test('target-mode status and Chinese objective brief are machine-checkable entry artifacts', () => {
   assertProjectStatus(read('docs/PROJECT_STATUS.json'), 'docs/PROJECT_STATUS.json');
   const currentStatus = JSON.parse(read('docs/PROJECT_STATUS.json')) as ProjectStatus;
-  assert.ok(currentStatus.nextBoundedSlices.some((slice) => slice.id === 'agent-loop-v1-read-tools'));
+  assert.ok(currentStatus.implemented.some((record) => record.id === 'agent-loop-v1'));
+  assert.ok(currentStatus.validationEvidence.some(
+    (record) => record.id === 'agent-loop-fixture' && record.executableFixture === true,
+  ));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-domain-kernel'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-store'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-persistence'));

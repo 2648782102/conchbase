@@ -13,6 +13,7 @@ import {
   createOpenAiCompatibleBossConversationParser,
   createOpenAiCompatibleOrganizationIntentParser,
 } from './runtime/organization-intent-parser.js';
+import { createBuiltinReadTools } from './runtime/tool-provider.js';
 
 function usage(): string {
   return `Conchbase 1.0.0
@@ -88,7 +89,7 @@ async function main(argv: readonly string[]): Promise<void> {
       magpieBaseUrl: config.magpieBaseUrl,
       ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
       defaultModel: config.defaultModel,
-    });
+      }, { tools: createBuiltinReadTools({ root: process.cwd() }) });
     const conversationService = new PrimaryConversationService();
     const bossMode = createBossModeService(service, config, conversationService);
     const executionService = new ControlledExecutionService();
@@ -125,7 +126,7 @@ async function main(argv: readonly string[]): Promise<void> {
     magpieBaseUrl: config.magpieBaseUrl,
     ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
     defaultModel: config.defaultModel,
-  });
+    }, { tools: createBuiltinReadTools({ root: process.cwd() }) });
   const conversationService = new PrimaryConversationService();
   const controller = new AbortController();
   process.once('SIGINT', () => controller.abort());

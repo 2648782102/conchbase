@@ -217,6 +217,11 @@
       "id": "agent-loop-architecture",
       "summary": "ADR 0052 accepts a Runtime-owned bounded Agent loop, capability-provider seam, explicit approval state, durable per-iteration events, and bounded multi-turn provider context without changing Runtime authority.",
       "evidence": "docs/decisions/0052-agent-loop-architecture.md"
+    },
+    {
+      "id": "agent-loop-v1",
+      "summary": "ADR 0053 implements a Runtime-owned bounded Agent loop for Agent-backed tasks with read-only built-in tools (workspace_list, workspace_read, text_search), multi-turn provider context, durable agent_loop events, iteration and time budgets, and path-escape rejection.",
+      "evidence": "src/runtime/task-service.ts"
     }
   ],
   "validationEvidence": [
@@ -365,6 +370,12 @@
       "summary": "Executable fixtures cover pure-chat no organization writes, readable organization facts, SSE progress, identity/capability normalization, durable Agent Chat reopen, and in-flight restart recovery.",
       "evidence": "tests/agent-chat-store.test.ts",
       "executableFixture": true
+    },
+    {
+      "id": "agent-loop-fixture",
+      "summary": "Executable fixtures cover loop continuation after a tool result, iteration-budget termination, out-of-root rejection, read-only provider surface, and streamed tool-call accumulation.",
+      "evidence": "tests/agent-loop.test.ts",
+      "executableFixture": true
     }
   ],
   "blockedDirections": [
@@ -402,13 +413,6 @@
     }
   ],
   "nextBoundedSlices": [
-    {
-      "id": "agent-loop-v1-read-tools",
-      "summary": "Implement ADR 0053: bounded Agent loop, read-only built-in tools behind a capability provider, multi-turn provider context, and durable tool events.",
-      "publicContractChange": false,
-      "requiresAcceptedAdr": false,
-      "status": "ready"
-    },
     {
       "id": "mcp-provider",
       "summary": "Add an MCP capability provider through the ADR 0052 seam, with lifecycle, timeout, isolation, and authorization.",

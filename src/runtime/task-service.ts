@@ -53,12 +53,29 @@ import {
   toolRequestIdempotencyKey,
   type ToolRequestRecord,
 } from './tool-request.js';
+import { createBuiltinReadTools, ToolRejectedError, type ToolProvider } from './tool-provider.js';
+import type { ProviderMessage } from './model-adapter.js';
+
+function digestArguments(args: Readonly<Record<string, string | number | boolean | null>>): string {
+  const canonical = Object.keys(args).sort().map((key) => `${key}=${String(args[key])}`).join('&');
+  let hash = 0;
+  for (let index = 0; index < canonical.length; index += 1) {
+    hash = (hash * 31 + canonical.charCodeAt(index)) >>> 0;
+  }
+  return `arg_${hash.toString(16).padStart(8, '0')}`;
+}
 
 export interface TaskServiceConfig {
   readonly magpieBaseUrl: string;
   readonly magpieAppKey?: string;
   readonly defaultModel: string;
   readonly fetch?: typeof globalThis.fetch;
+}
+
+export interface AgentLoopOptions {
+  readonly tools?: ToolProvider;
+  readonly maxIterations?: number;
+  readonly deadlineMs?: number;
 }
 
 export interface CreateTaskInput {
@@ -104,6 +121,7 @@ function validatePrompt(prompt: unknown): string {
 export function createTaskService(
   filename: string,
   config: TaskServiceConfig,
+  loopOptions?: AgentLoopOptions,
 ): TaskService {
   const store = new SqliteTaskStore(filename);
   const catalog = new MagpieModelCatalog({
@@ -111,7 +129,7 @@ export function createTaskService(
     ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
     ...(config.fetch ? { fetch: config.fetch } : {}),
   });
-  return new TaskService(store, config, catalog);
+  return new TaskService(store, config, catalog, loopOptions);
 }
 
 export class TaskService {
@@ -121,14 +139,17 @@ export class TaskService {
   private stopping = false;
   private readonly config: TaskServiceConfig;
   private readonly catalog: ModelCatalogClient;
+  private readonly loopOptions: AgentLoopOptions;
 
   constructor(
     store: TaskStore,
     config: TaskServiceConfig,
     catalog?: ModelCatalogClient,
+    loopOptions: AgentLoopOptions = {},
   ) {
     this.store = store;
     this.config = config;
+    this.loopOptions = loopOptions;
     this.catalog = catalog ?? new MagpieModelCatalog({
       baseUrl: config.magpieBaseUrl,
       ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
@@ -544,6 +565,8 @@ export class TaskService {
       if (!revision) throw new Error('Pinned configuration revision is missing.');
       if (!task.agentId && isConfigurationDocumentV2(revision.document)) {
         await this.executeComposition(task, revision.document, signal);
+      } else if (task.agentId && this.loopOptions.tools) {
+        await this.executeAgentLoop(task, signal);
       } else {
         await this.executeSingleTurn(task, signal);
       }
@@ -564,7 +587,7 @@ export class TaskService {
     }
   }
 
-  private async executeSingleTurn(task: TaskSnapshot, signal: AbortSignal): Promise<void> {
+  private async executeAgentLoop(task: TaskSnapshot, signal: AbortSignal): Promise<void> {
     if (task.providerId !== undefined && task.providerId !== 'magpie') {
       throw new Error(`Model provider '${task.providerId}' is not available in this runtime.`);
     }
@@ -575,6 +598,142 @@ export class TaskService {
       ...(this.config.fetch ? { fetch: this.config.fetch } : {}),
     });
 
+    const instructions = task.agentId
+      ? this.store.getAgentRevision(task.agentId, task.agentRevisionId!)?.instructions ?? ''
+      : '';
+    const tools = this.loopOptions.tools;
+    const messages: ProviderMessage[] = [
+      ...(instructions.length > 0 ? [{ role: 'system' as const, content: instructions }] : []),
+      ...(tools
+        ? [{
+          role: 'system' as const,
+          content: [
+            'You can use these read-only tools:',
+            ...tools.list().map((tool) => `- ${tool.id}: ${tool.description}`),
+            'Emit exactly one tool call per turn when you need information. Do not invent tool names.',
+            'All paths are relative to the workspace root; paths outside it are rejected.',
+          ].join('\n'),
+        }]
+        : []),
+      { role: 'user' as const, content: task.prompt },
+    ];
+    const maxIterations = Math.max(1, Math.min(this.loopOptions.maxIterations ?? 6, 12));
+    const deadline = Date.now() + Math.max(1_000, this.loopOptions.deadlineMs ?? 120_000);
+    let partialOutput = '';
+    let turn: Awaited<ReturnType<typeof provider.streamTurn>> = Object.freeze({ kind: 'final', output: '' });
+    let completed = false;
+
+    for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+      if (signal.aborted) break;
+      if (Date.now() > deadline) throw new Error('Agent loop exceeded its time budget.');
+      this.store.recordEvent(task.id, {
+        ...this.eventInput(task, 'agent_loop.turn_started', 'running', task.attempt),
+        data: { iteration },
+      });
+      partialOutput = '';
+      let deltaIndex = 0;
+      turn = await provider.streamTurn({
+        taskId: task.id,
+        prompt: task.prompt,
+        turnIndex: iteration,
+        messages,
+        ...(tools
+          ? {
+            tools: tools.list().map((tool) => ({
+              id: tool.id,
+              description: tool.description,
+              parameters: { type: 'object', additionalProperties: true },
+            })),
+          }
+          : {}),
+        signal,
+        onOutputDelta: (delta) => {
+          partialOutput += delta;
+          this.store.recordOutputDelta(task.id, {
+            ...this.eventInput(task, 'task.output_delta', 'running', task.attempt),
+            data: { delta, index: deltaIndex, outputLength: partialOutput.length },
+          }, partialOutput);
+          deltaIndex += 1;
+        },
+      });
+      if (signal.aborted) break;
+      if (turn.kind === 'final') {
+        completed = true;
+        this.store.recordEvent(task.id, {
+          ...this.eventInput(task, 'agent_loop.turn_completed', 'running', task.attempt),
+          data: { iteration, kind: 'final' },
+        });
+        break;
+      }
+      if (turn.kind === 'tool_call_observation') {
+        throw new Error('Provider tool-call observation is not actionable in this runtime slice.');
+      }
+      if (turn.kind !== 'tool_calls') throw new Error('Unsupported model turn.');
+      if (iteration === maxIterations - 1) {
+        throw new Error(`Agent loop exceeded ${maxIterations} iterations.`);
+      }
+      messages.push({
+        role: 'assistant',
+        content: turn.content,
+        toolCalls: turn.calls,
+      });
+      for (const call of turn.calls) {
+        this.store.recordEvent(task.id, {
+          ...this.eventInput(task, 'agent_loop.tool_requested', 'running', task.attempt),
+          data: { iteration, toolId: call.name, argumentsDigest: digestArguments(call.arguments) },
+        });
+        try {
+          if (!tools || !tools.has(call.name)) throw new ToolRejectedError('unknown_tool');
+          const result = tools.invoke(call.name, call.arguments);
+          this.store.recordEvent(task.id, {
+            ...this.eventInput(task, 'agent_loop.tool_executed', 'running', task.attempt),
+            data: {
+              iteration, toolId: call.name, resultDigest: result.digest, bytes: result.bytes,
+            },
+          });
+          messages.push({ role: 'tool', toolCallId: call.id, content: result.summary });
+          messages.push({
+            role: 'system',
+            content: 'You have a tool result. Answer the user now unless another tool is strictly required.',
+          });
+        } catch (cause) {
+          const code = cause instanceof ToolRejectedError ? cause.code : 'tool_failed';
+          this.store.recordEvent(task.id, {
+            ...this.eventInput(task, 'agent_loop.tool_failed', 'running', task.attempt),
+            data: { iteration, toolId: call.name, errorCode: code },
+          });
+          messages.push({ role: 'tool', toolCallId: call.id, content: `error: ${code}` });
+        }
+      }
+      if (messages.length > 200) throw new Error('Agent loop exceeded its context budget.');
+    }
+    if (!completed) {
+      throw new Error(`Agent loop exceeded ${maxIterations} iterations.`);
+    }
+    if (signal.aborted) {
+      if (this.stopping) return;
+      this.finishCancelled(task);
+      return;
+    }
+    if (turn.kind !== 'final') throw new Error('Unsupported model turn.');
+    this.store.transitionTask(
+      task.id,
+      'succeeded',
+      this.eventInput(task, 'task.completed', 'succeeded', task.attempt),
+      { output: turn.output },
+    );
+  }
+
+  private async executeSingleTurn(task: TaskSnapshot, signal: AbortSignal): Promise<void> {
+    if (task.providerId !== undefined && task.providerId !== 'magpie') {
+      throw new Error(`Model provider '${task.providerId}' is not available in this runtime.`);
+    }
+    const provider = new OpenAiChatCompletionsProvider({
+      baseUrl: this.config.magpieBaseUrl,
+      model: task.modelId ?? task.model,
+      ...(this.config.magpieAppKey ? { appKey: this.config.magpieAppKey } : {}),
+      ...(this.config.fetch ? { fetch: this.config.fetch } : {}),
+    });
     let partialOutput = '';
     let deltaIndex = 0;
     const turn = await provider.streamTurn({
@@ -586,19 +745,9 @@ export class TaskService {
       signal,
       onOutputDelta: (delta) => {
         partialOutput += delta;
-        const event = this.eventInput(
-          task,
-          'task.output_delta',
-          'running',
-          task.attempt,
-        );
         this.store.recordOutputDelta(task.id, {
-          ...event,
-          data: {
-            delta,
-            index: deltaIndex,
-            outputLength: partialOutput.length,
-          },
+          ...this.eventInput(task, 'task.output_delta', 'running', task.attempt),
+          data: { delta, index: deltaIndex, outputLength: partialOutput.length },
         }, partialOutput);
         deltaIndex += 1;
       },
@@ -611,9 +760,7 @@ export class TaskService {
     if (turn.kind === 'tool_call_observation') {
       throw new Error('Provider tool-call observation is not actionable in this runtime slice.');
     }
-    if (turn.kind !== 'final') {
-      throw new Error('Unsupported model turn.');
-    }
+    if (turn.kind !== 'final') throw new Error('Unsupported model turn.');
     this.store.transitionTask(
       task.id,
       'succeeded',
