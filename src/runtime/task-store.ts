@@ -146,6 +146,7 @@ export interface TaskStore {
   getToolRequest(requestId: string): ToolRequestRecord | null;
   decideToolRequest(requestId: string, input: ToolRequestDecisionInput): ToolRequestDecisionResult;
   listEvents(afterEventId: string | null): readonly RuntimeEvent[];
+  getEvent(eventId: string): RuntimeEvent | null;
   getConfigurationState(): ConfigurationState;
   getConfigurationRevision(id: string): ConfigurationRevision | null;
   applyConfiguration(document: ConfigurationDocument): ApplyConfigurationResult;
@@ -789,6 +790,12 @@ export class SqliteTaskStore implements TaskStore {
     const rows = this.database.prepare('SELECT * FROM events WHERE sequence > ? ORDER BY sequence')
       .all(afterSequence) as unknown as EventRow[];
     return Object.freeze(rows.map(toEvent));
+  }
+
+  getEvent(eventId: string): RuntimeEvent | null {
+    const row = this.database.prepare('SELECT * FROM events WHERE id = ?')
+      .get(eventId) as EventRow | undefined;
+    return row === undefined ? null : toEvent(row);
   }
 
   close(): void {

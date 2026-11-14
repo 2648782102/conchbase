@@ -537,6 +537,15 @@ export class AgentChatService {
       message.taskId === null ? [] : [message.taskId]))]);
   }
 
+  conversationRevision(conversationId: string): string {
+    const record = this.load(conversationId);
+    if (!record) throw new AgentChatServiceError('Agent Chat conversation not found.', 404);
+    const last = record.messages.at(-1);
+    if (!last) return 'rev_0_0';
+    const timestamp = Number.isFinite(Date.parse(last.updatedAt)) ? Date.parse(last.updatedAt) : 0;
+    return `rev_${timestamp}_${last.sequence}`;
+  }
+
   snapshotFrame(conversationId: string, cursor: string | null): AgentChatStreamFrame {
     return Object.freeze({
       version: AGENT_CHAT_CONTRACT_VERSION,
@@ -800,20 +809,18 @@ export class AgentChatService {
     const events = this.taskService.store.listEvents(null).filter((event) => event.taskId === taskId);
     const activity: AgentChatActivity[] = [];
     let lastTurn: AgentChatActivity | null = null;
-    const byTool = new Map<string, AgentChatActivity>();
+    const byTool = new Map<string, AgentChatActivity[]>();
     for (const event of events) {
       if (event.type === 'agent_loop.turn_started') {
         const iteration = typeof event.data.iteration === 'number' ? event.data.iteration : 0;
         const next: AgentChatActivity = Object.freeze({
-          id: `turn-${iteration}`,
+          id: `turn-${event.id}`,
           kind: 'turn',
           label: `第 ${iteration + 1} 轮`,
           state: 'running',
           detail: null,
         });
-        const index = activity.findIndex((entry) => entry.id === next.id);
-        if (index >= 0) activity[index] = next;
-        else activity.push(next);
+        activity.push(next);
         lastTurn = next;
       } else if (event.type === 'agent_loop.turn_completed') {
         if (lastTurn) {
@@ -835,20 +842,22 @@ export class AgentChatService {
           state: 'running',
           detail: toolId,
         });
-        byTool.set(toolId, next);
+        const pending = byTool.get(toolId) ?? [];
+        pending.push(next);
+        byTool.set(toolId, pending);
         activity.push(next);
       } else if (event.type === 'agent_loop.tool_executed') {
         const toolId = boundedString(event.data.toolId, 'unknown');
-        const current = byTool.get(toolId);
+        const current = byTool.get(toolId)?.shift();
         if (current) {
           const done = Object.freeze({ ...current, state: 'succeeded' as const });
           const index = activity.findIndex((entry) => entry.id === current.id);
           if (index >= 0) activity[index] = done;
-          byTool.delete(toolId);
+          if (byTool.get(toolId)?.length === 0) byTool.delete(toolId);
         }
       } else if (event.type === 'agent_loop.tool_failed') {
         const toolId = boundedString(event.data.toolId, 'unknown');
-        const current = byTool.get(toolId);
+        const current = byTool.get(toolId)?.shift();
         const failed: AgentChatActivity = Object.freeze({
           id: current?.id ?? `${event.id}:${toolId}`,
           kind: 'tool',
@@ -863,7 +872,7 @@ export class AgentChatService {
         } else {
           activity.push(failed);
         }
-        byTool.delete(toolId);
+        if (byTool.get(toolId)?.length === 0) byTool.delete(toolId);
       } else if (event.type === 'agent_loop.approval_requested') {
         activity.push(Object.freeze({
           id: `approval-${event.id}`,

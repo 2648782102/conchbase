@@ -7,6 +7,9 @@ import { createApp } from '../src/http/create-app.js';
 import { SqliteTaskStore } from '../src/runtime/task-store.js';
 import { TaskService } from '../src/runtime/task-service.js';
 import { AgentChatService } from '../src/runtime/agent-chat.js';
+import { BossModeService } from '../src/runtime/boss-mode-service.js';
+import { InMemoryOrganizationStore } from '../src/runtime/organization-store.js';
+import type { OrganizationIntentParser } from '../src/runtime/organization-intent-parser.js';
 import { createBuiltinReadTools } from '../src/runtime/tool-provider.js';
 import { createBuiltinWriteTools } from '../src/runtime/write-tools.js';
 import type { ModelCatalogClient } from '../src/runtime/model-catalog.js';
@@ -227,6 +230,64 @@ test('agent chat SSE picks up a task created after the stream opened', async () 
       frame.data.messageId === assistantId && frame.data.message?.state === 'replied'));
     assert.ok(frames.some((frame) => frame.data.messageId === assistantId));
     assert.equal(frames.find((frame) => frame.data.messageId === assistantId)?.data.message?.body, '稍后回复。');
+  } finally {
+    await app.close();
+    await service.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('agent chat SSE publishes Boss conversation updates without task ids', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-chat-stream-boss-'));
+  const service = new TaskService(
+    new SqliteTaskStore(path.join(directory, 'runtime.sqlite')),
+    {
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/model',
+      fetch: scripted([() => text('老板回复：先明确目标。')]),
+    },
+    catalog(),
+  );
+  const organization = new InMemoryOrganizationStore();
+  const parser: OrganizationIntentParser = {
+    async parse(input) {
+      return Object.freeze({ version: 1 as const, intentId: input.intentId, actions: Object.freeze([]), relay: '老板回复：先明确目标。' });
+    },
+  };
+  const bossMode = new BossModeService(organization, service, { parser, waitForTasks: false });
+  const agentChat = new AgentChatService(service, bossMode);
+  const app = createApp({
+    logger: false,
+    taskService: service,
+    organizationStore: organization,
+    bossModeService: bossMode,
+    agentChatService: agentChat,
+  });
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address();
+  assert.ok(address && typeof address === 'object');
+  const base = `http://127.0.0.1:${address.port}`;
+  try {
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: 'boss-agent' },
+    });
+    assert.equal(created.statusCode, 201, created.body);
+    const conversationId = created.json().id as string;
+    const response = await fetch(`${base}/v1/agent-chat/conversations/${conversationId}/events`, {
+      signal: AbortSignal.timeout(20_000),
+    });
+    assert.equal(response.status, 200);
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: { text: '你好', idempotencyKey: 'boss-stream-1' },
+    });
+    assert.equal(sent.statusCode, 202, sent.body);
+    const frames = await readFrames(response, (entries) => entries.some((frame) =>
+      frame.data.message?.state === 'replied'
+      && frame.data.message.body === '老板回复：先明确目标。'));
+    const replied = frames.find((frame) => frame.data.message?.state === 'replied');
+    assert.equal(replied?.data.message?.body, '老板回复：先明确目标。');
   } finally {
     await app.close();
     await service.stop();

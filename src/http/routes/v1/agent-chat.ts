@@ -134,8 +134,7 @@ export function registerAgentChatRoutes(
       }
       if (after !== undefined) {
         try {
-          const known = service.taskService.store.listEvents(null)
-            .find((event) => event.id === after);
+          const known = service.taskService.store.getEvent(after);
           if (!known || !taskIds.includes(known.taskId)) {
             return errorResponse(reply, new AgentChatServiceError('after must belong to this conversation.'));
           }
@@ -157,6 +156,7 @@ export function registerAgentChatRoutes(
       });
       let closed = false;
       let cursor = after ?? null;
+      let revision = service.conversationRevision(conversationId);
       const sent = new Map<string, string>();
       let interval: NodeJS.Timeout | null = null;
       let heartbeat: NodeJS.Timeout | null = null;
@@ -207,6 +207,23 @@ export function registerAgentChatRoutes(
           const latestTaskIds = service.conversationTaskIds(conversationId);
           const newTaskIds = latestTaskIds.filter((taskId) => !taskIds.includes(taskId));
           if (newTaskIds.length > 0) taskIds = latestTaskIds;
+          const latestRevision = service.conversationRevision(conversationId);
+          if (latestRevision !== revision) {
+            revision = latestRevision;
+            const current = service.view(conversationId);
+            const last = current.messages.at(-1);
+            if (last) {
+              write({
+                version: AGENT_CHAT_CONTRACT_VERSION,
+                conversationId,
+                kind: 'message',
+                eventId: cursor,
+                messageId: last.id,
+                message: last,
+                conversation: null,
+              });
+            }
+          }
           const next = service.taskService.store.listEvents(cursor)
             .filter((event) => taskIds.includes(event.taskId));
           for (const event of next) {

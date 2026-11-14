@@ -14,7 +14,7 @@
     "dist"
   ],
   "scripts": {
-    "dev": "tsx src/cli.ts serve",
+    "dev": "node scripts/dev.mjs",
     "cli": "tsx src/cli.ts",
     "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",

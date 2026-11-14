@@ -132,3 +132,65 @@ test('agent chat projects tool activity and can approve a write inside the conve
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('agent chat keeps separate activity entries for each turn and repeated tool', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-chat-tools-repeat-'));
+  const read = createBuiltinReadTools({ root: directory });
+  const service = new TaskService(
+    new SqliteTaskStore(path.join(directory, 'runtime.sqlite')),
+    {
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/model',
+      fetch: scripted([
+        () => toolCall('workspace_list', { path: '.' }),
+        () => toolCall('workspace_list', { path: '.' }),
+        () => text('完成'),
+      ]),
+    },
+    catalog(),
+    {
+      tools: {
+        list: () => Object.freeze([...read.list()]),
+        has: (id) => read.has(id),
+        invoke: (id, args) => read.invoke(id, args),
+      },
+    },
+  );
+  const agentChat = new AgentChatService(service);
+  const app = createApp({ logger: false, taskService: service, agentChatService: agentChat });
+  try {
+    const agent = await service.createAgent({
+      name: '重复助手', instructions: 'Use tools.', providerId: 'magpie', modelId: 'fixture/model',
+    });
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
+    });
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${created.json().id}/messages`,
+      payload: { text: '列两次', idempotencyKey: 'repeat-tools-1' },
+    });
+    assert.equal(sent.statusCode, 202, sent.body);
+    const taskId = sent.json().assistantMessage.taskId as string;
+    await waitForTask(service, taskId, 'succeeded');
+    const view = await app.inject({
+      method: 'GET', url: `/v1/agent-chat/conversations/${created.json().id}`,
+    });
+    const activity = view.json().messages[1].activity as readonly {
+      readonly kind: string;
+      readonly state: string;
+      readonly id: string;
+    }[];
+    const turns = activity.filter((entry) => entry.kind === 'turn');
+    const tools = activity.filter((entry) => entry.kind === 'tool');
+    assert.equal(turns.length, 3);
+    assert.equal(new Set(turns.map((entry) => entry.id)).size, 3);
+    assert.equal(tools.length, 2);
+    assert.equal(new Set(tools.map((entry) => entry.id)).size, 2);
+    assert.ok(tools.every((entry) => entry.state === 'succeeded'));
+  } finally {
+    await app.close();
+    await service.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
