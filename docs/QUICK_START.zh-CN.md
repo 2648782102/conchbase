@@ -114,6 +114,7 @@ Runtime 只读取每个子目录的 `SKILL.md` 正文，最多注入 8 个 Skill
 - [v1.3.0 中文发布说明](RELEASE_NOTES_1.3.0.zh-CN.md)
 - [v1.4.0 中文发布说明](RELEASE_NOTES_1.4.0.zh-CN.md)
 - [v1.5.0 中文发布说明](RELEASE_NOTES_1.5.0.zh-CN.md)
+- [v1.7.0 中文发布说明](RELEASE_NOTES_1.7.0.zh-CN.md)
 - [目标模式接手说明](OBJECTIVE_MODE.zh-CN.md)
 - [机器可读项目状态](PROJECT_STATUS.json)
 - [英文 README](../README.md)

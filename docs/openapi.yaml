@@ -1728,6 +1728,38 @@ paths:
           $ref: '#/components/responses/OrganizationConflictError'
         '503':
           $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/agent-chat/conversations/{conversationId}/approval:
+    post:
+      operationId: decideAgentChatApproval
+      summary: Approve or reject a pending write-tool approval inside an Agent Chat conversation.
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^chat_[0-9a-f]{24}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentChatApprovalRequest'
+      responses:
+        '200':
+          description: Decision recorded; approval resumes the Agent loop inside the conversation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentChatApprovalResult'
+        '400':
+          $ref: '#/components/responses/OrganizationValidationError'
+        '404':
+          $ref: '#/components/responses/OrganizationNotFoundError'
+        '409':
+          $ref: '#/components/responses/OrganizationConflictError'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
   /v1/execution/health:
     get:
       operationId: getExecutionHealth
@@ -2594,9 +2626,9 @@ components:
           const: 2
         agentChatContract:
           type: string
-          const: '1.6.0'
+          const: '1.7.0'
         agentChatPaths:
-          const: 4
+          const: 5
     Error:
       type: object
       additionalProperties: false
@@ -5109,7 +5141,7 @@ components:
           type: boolean
     AgentChatVersion:
       type: string
-      const: '1.6.0'
+      const: '1.7.0'
     AgentChatAgentView:
       type: object
       additionalProperties: false
@@ -5197,14 +5229,14 @@ components:
               maxLength: 300
     AgentChatMessageState:
       type: string
-      enum: [published, pending, succeeded, failed, cancelled, thinking, streaming, organizing, waiting_attention, replied, unavailable]
+      enum: [published, pending, succeeded, failed, cancelled, thinking, streaming, organizing, waiting_approval, waiting_attention, replied, unavailable]
     AgentChatMessagePhase:
       type: string
       enum: [accepted, preparing, model, organization, human, terminal]
     AgentChatMessage:
       type: object
       additionalProperties: false
-      required: [id, sequence, author, body, state, taskId, error, phase, progress, updatedAt, replyToId]
+      required: [id, sequence, author, body, state, taskId, error, phase, progress, updatedAt, replyToId, activity]
       properties:
         id:
           type: string
@@ -5234,6 +5266,35 @@ components:
           type: string
         replyToId:
           type: [string, 'null']
+        activity:
+          type: array
+          maxItems: 8
+          items:
+            $ref: '#/components/schemas/AgentChatActivity'
+    AgentChatActivityKind:
+      type: string
+      enum: [turn, tool, approval, output]
+    AgentChatActivityState:
+      type: string
+      enum: [running, succeeded, failed, waiting_approval]
+    AgentChatActivity:
+      type: object
+      additionalProperties: false
+      required: [id, kind, label, state, detail]
+      properties:
+        id:
+          type: string
+          maxLength: 300
+        kind:
+          $ref: '#/components/schemas/AgentChatActivityKind'
+        label:
+          type: string
+          maxLength: 200
+        state:
+          $ref: '#/components/schemas/AgentChatActivityState'
+        detail:
+          type: [string, 'null']
+          maxLength: 200
     AgentChatConversationView:
       type: object
       additionalProperties: false
@@ -5285,5 +5346,27 @@ components:
           type: string
         userMessage:
           $ref: '#/components/schemas/AgentChatMessage'
+        assistantMessage:
+          $ref: '#/components/schemas/AgentChatMessage'
+    AgentChatApprovalRequest:
+      type: object
+      additionalProperties: false
+      required: [assistantMessageId, decision]
+      properties:
+        assistantMessageId:
+          type: string
+          pattern: '^amsg_[0-9a-f]{24}$'
+        decision:
+          type: string
+          enum: [approved, rejected]
+    AgentChatApprovalResult:
+      type: object
+      additionalProperties: false
+      required: [version, conversationId, assistantMessage]
+      properties:
+        version:
+          $ref: '#/components/schemas/AgentChatVersion'
+        conversationId:
+          type: string
         assistantMessage:
           $ref: '#/components/schemas/AgentChatMessage'

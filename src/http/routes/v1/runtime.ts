@@ -30,8 +30,8 @@ export function registerRuntimeRoute(
       conversationPaths: 2,
     } : {}),
     ...(agentChatEnabled ? {
-      agentChatContract: '1.6.0' as const,
-      agentChatPaths: 4,
+      agentChatContract: '1.7.0' as const,
+      agentChatPaths: 5,
     } : {}),
     capabilities: tasksEnabled
       ? [

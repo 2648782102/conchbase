@@ -83,4 +83,17 @@ export function registerAgentChatRoutes(
       }
     },
   );
+
+  app.post<{ Params: { conversationId: string } }>(
+    '/v1/agent-chat/conversations/:conversationId/approval',
+    async (request, reply) => {
+      if (!service) return unavailable(reply);
+      try {
+        const result = service.decideApproval(request.params.conversationId, request.body);
+        return reply.send(result);
+      } catch (cause) {
+        return errorResponse(reply, cause);
+      }
+    },
+  );
 }

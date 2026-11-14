@@ -4,7 +4,7 @@
   "pairedRepository": "pagurus",
   "project": "Conchbase / 海螺",
   "release": "1.0.0",
-  "statusUpdatedAt": "2026-11-14",
+  "statusUpdatedAt": "2026-11-15",
   "objectiveMode": "target-mode",
   "developmentBoundaryAdr": "0026-ai-handoff-readiness-development-boundary.md",
   "publicContract": {
@@ -33,8 +33,8 @@
       "frozen": true
     },
     "agentChat": {
-      "version": "1.6.0",
-      "pathCount": 4,
+      "version": "1.7.0",
+      "pathCount": 5,
       "frozen": true
     },
     "workContractVersion": 2,
@@ -247,6 +247,11 @@
       "id": "multi-tool-turns",
       "summary": "ADR 0058 allows up to maxToolCallsPerTurn tool calls per model turn (default 4, cap 8), executes them in order, requires one approval per write, and rejects turns above the cap.",
       "evidence": "src/runtime/task-service.ts"
+    },
+    {
+      "id": "agent-chat-tool-projection",
+      "summary": "ADR 0059 projects bounded tool/approval activity into Agent Chat messages, maps waiting_approval to the human phase, and adds POST /v1/agent-chat/conversations/{conversationId}/approval. The Agent Chat contract is 1.7.0 with five paths.",
+      "evidence": "src/runtime/agent-chat.ts"
     }
   ],
   "validationEvidence": [
@@ -430,6 +435,12 @@
       "id": "multi-tool-fixture",
       "summary": "Executable fixtures cover multiple reads in one turn, two writes requiring two approvals, and cap rejection.",
       "evidence": "tests/agent-multi-tool.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "agent-chat-tool-projection-fixture",
+      "summary": "Executable fixtures cover projected tool/approval activity, waiting_approval, in-conversation approval, the resulting write, terminal reply, and duplicate-decision 409.",
+      "evidence": "tests/agent-chat-tools.test.ts",
       "executableFixture": true
     }
   ],

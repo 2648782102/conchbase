@@ -124,6 +124,7 @@ function messageFromRow(row: MessageRow): AgentChatMessage {
     progress: row.progress,
     updatedAt: row.updated_at,
     replyToId: row.reply_to_id,
+    activity: Object.freeze([]),
   });
 }
 

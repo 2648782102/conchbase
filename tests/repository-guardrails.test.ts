@@ -159,6 +159,7 @@ const acceptedPaths = [
   '/v1/agent-chat/conversations',
   '/v1/agent-chat/conversations/{conversationId}',
   '/v1/agent-chat/conversations/{conversationId}/messages',
+  '/v1/agent-chat/conversations/{conversationId}/approval',
   '/v1/execution/health',
   '/v1/execution/capabilities',
   '/v1/execution/grants',
@@ -181,7 +182,7 @@ const organizationPathCount = 18;
 const executionPathCount = 8;
 const executionRunPathCount = 8;
 const conversationPathCount = 2;
-const agentChatPathCount = 4;
+const agentChatPathCount = 5;
 
 function read(relativePath: string): string {
   return readFileSync(path.join(repositoryRoot, relativePath), 'utf8');
@@ -328,7 +329,7 @@ function assertProjectStatus(source: string, label: string): void {
     frozen: true,
   });
   assert.deepEqual(status.publicContract.agentChat, {
-    version: '1.6.0',
+    version: '1.7.0',
     pathCount: agentChatPathCount,
     frozen: true,
   });
@@ -434,7 +435,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /ADR 0021/);
   assert.match(handoff, /ADR 0022/);
   assert.match(handoff, /ADR 0023/);
-  assert.match(handoff, /ADRs `0030`–`0058`/);
+  assert.match(handoff, /ADRs `0030`–`0059`/);
   assert.match(handoff, /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-contract\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-store\.ts/);
@@ -515,7 +516,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('README.zh-CN.md'), /仍在最终本地优先目标之外/);
   assert.match(read('README.zh-CN.md'), /ADR 0018/);
   assert.match(read('README.zh-CN.md'), /ADR 0019/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0058\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0059\]/);
   assert.match(read('README.md'), /1\.4\.0/);
   assert.match(read('README.md'), /ADR 0021 adds an opt-in live loopback acceptance test/);
   assert.match(read('README.zh-CN.md'), /ADR 0021/);
@@ -547,6 +548,9 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('tests/agent-chat.test.ts'), /boss agent appears in Agent Chat/);
   assert.match(read('docs/RELEASE_NOTES_1.4.0.zh-CN.md'), /主会话对话投影/);
   assert.match(read('docs/RELEASE_NOTES_1.5.0.zh-CN.md'), /独立 Agent 对话/);
+  assert.match(read('docs/decisions/0059-agent-chat-tool-projection.md'), /accepted and implemented Agent Chat tool projection and approval slice/);
+  assert.match(read('tests/agent-chat-tools.test.ts'), /can approve a write inside the conversation/);
+  assert.match(read('docs/RELEASE_NOTES_1.7.0.zh-CN.md'), /对话内审批/);
   const validationPlan = read('docs/VALIDATION_PLAN.md');
   assert.match(validationPlan, /ADR 0021's opt-in paired-runtime acceptance/);
   assert.match(validationPlan, /Live real-provider conformance, real-browser accessibility validation/);
@@ -889,7 +893,7 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
     assert.match(read(file), /OBJECTIVE_MODE\.zh-CN\.md/, `${file} must link the Chinese objective brief`);
   }
   assert.match(read('docs/AI_TASK_QUEUE.md'), /Target-mode entry/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0058\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0059\]/);
   assert.match(read('README.md'), /Organization Runtime target/);
   assert.match(read('README.zh-CN.md'), /完整组织运行时目标/);
   assert.match(read('docs/QUICK_START.zh-CN.md'), /ADR 0030–0034/);
@@ -1191,7 +1195,7 @@ test('guardrail helpers reject representative boundary violations', () => {
       execution: { version: '1.2.0', pathCount: executionPathCount, frozen: true },
       executionRun: { version: '1.3.0', pathCount: executionRunPathCount, frozen: true },
       conversation: { version: '1.4.0', pathCount: conversationPathCount, frozen: true },
-      agentChat: { version: '1.6.0', pathCount: agentChatPathCount, frozen: true },
+      agentChat: { version: '1.7.0', pathCount: agentChatPathCount, frozen: true },
     },
     aiEntry: {
       requiredOrder: [
