@@ -271,10 +271,43 @@ export class AgentChatService {
         expectedAgentRevisionId: record.agentRevisionId,
       });
     } catch (cause) {
-      throw new AgentChatServiceError(
-        cause instanceof Error ? cause.message.slice(0, 240) : 'Agent task creation failed.',
-        cause instanceof Error && cause.name.includes('NotFound') ? 404 : 409,
-      );
+      const errorText = cause instanceof Error ? cause.message.slice(0, 240) : 'Agent task creation failed.';
+      if (cause instanceof Error && cause.name.includes('NotFound')) {
+        throw new AgentChatServiceError(errorText, 404);
+      }
+      const userMessage = message({
+        id: reference('amsg', `${record.id}:${idempotencyKey}:failed-user`),
+        sequence: record.messages.length + 1,
+        author: 'user',
+        body: text,
+        state: 'published',
+        taskId: null,
+        error: null,
+        phase: 'accepted',
+        updatedAt: this.now(),
+      }, this.now);
+      const assistantMessage = message({
+        id: reference('amsg', `${record.id}:${idempotencyKey}:failed-assistant`),
+        sequence: record.messages.length + 2,
+        author: 'assistant',
+        body: unavailableError(errorText)
+          ? '模型目录暂不可用，请检查 Magpie 配置。'
+          : 'Agent 任务创建失败。',
+        state: unavailableError(errorText) ? 'unavailable' : 'failed',
+        taskId: null,
+        error: errorText,
+        phase: 'terminal',
+        replyToId: userMessage.id,
+        updatedAt: this.now(),
+      }, this.now);
+      record.messages.push(userMessage, assistantMessage);
+      record.idempotency.set(idempotencyKey, userMessage.id);
+      return Object.freeze({
+        version: AGENT_CHAT_CONTRACT_VERSION,
+        conversationId: record.id,
+        userMessage,
+        assistantMessage,
+      });
     }
     const userMessage = message({
       id: reference('amsg', `${conversationId}:${task.id}:user`),
@@ -411,7 +444,9 @@ export class AgentChatService {
         text,
         idempotencyKey: `agent-chat:${record.id}:${idempotencyKey}`,
       }).then((submitted) => {
-        const waiting = submitted.relays.some((relay) => relay.kind === 'attention');
+        const waiting = submitted.relays.some((relay) => relay.kind === 'attention')
+          || this.bossMode?.snapshot().attentionRequests.some((request) => request.state === 'open')
+          || false;
         const failed = submitted.executions.some((execution) => execution.status === 'failed');
         this.replaceMessage(record, assistantMessage.id, {
           ...assistantMessage,

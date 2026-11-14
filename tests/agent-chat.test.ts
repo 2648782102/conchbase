@@ -218,3 +218,51 @@ test('agent chat publishes thinking, streaming, and replied states', async () =>
     assert.equal(view.json().messages[1]?.replyToId, sent.json().userMessage.id);
   });
 });
+
+test('agent chat publishes unavailable state when the model catalog fails', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-agent-chat-unavailable-'));
+  let catalogCalls = 0;
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/v1/models')) {
+        catalogCalls += 1;
+        if (catalogCalls > 1) return new Response('{}', { status: 503 });
+        return new Response(JSON.stringify({
+          data: [{ id: 'fixture/chat-model', display_name: 'Fixture Chat Model' }],
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response('{}', { status: 503 });
+    }) as typeof globalThis.fetch,
+  });
+  const agent = await taskService.createAgent({
+    name: '临时助手',
+    instructions: '请简洁回答。',
+    providerId: 'magpie',
+    modelId: 'fixture/chat-model',
+  });
+  const agentChat = new AgentChatService(taskService);
+  const app = createApp({ logger: false, taskService, agentChatService: agentChat });
+  try {
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
+    });
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${created.json().id}/messages`,
+      payload: { text: '你好', idempotencyKey: 'unavailable-fixture-1' },
+    });
+    assert.equal(sent.statusCode, 202);
+    assert.equal(sent.json().assistantMessage.state, 'unavailable');
+    assert.match(sent.json().assistantMessage.error ?? '', /catalog/i);
+    const view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${created.json().id}` });
+    assert.equal(view.json().messages.length, 2);
+    assert.equal(view.json().messages[1]?.state, 'unavailable');
+  } finally {
+    await app.close();
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
