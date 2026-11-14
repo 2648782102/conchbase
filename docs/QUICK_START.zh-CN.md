@@ -44,7 +44,7 @@ npm run cli -- events
 
 `conchbase boss` 会调用同一个 Runtime 主会话入口并等待当前执行链完成；`conchbase organization` 打印已发布组织状态。`conchbase serve` 活跃时，不要运行其他读写任务状态数据库的 CLI 命令；并发查看任务应使用 Runtime API。单进程 SQLite 所有权是当前开发边界，不是生产多进程支持。
 
-配置写操作、工作控制、能力目录和 SecretHandle 通过 `docs/openapi.yaml` 描述的 47 条 `1.0.0` 路径完成；组织状态与主会话意图使用 18 条 `1.1.0` additive 路径；授权、审批、假执行与审计使用 8 条 `1.2.0` additive 路径；隔离执行 run 使用 8 条 `1.3.0` additive 路径；主会话对话投影使用 2 条 `1.4.0` additive 路径；独立 Agent 对话使用 4 条 `1.5.0` additive 路径。UI 不读取私有数据库。
+配置写操作、工作控制、能力目录和 SecretHandle 通过 `docs/openapi.yaml` 描述的 47 条 `1.0.0` 路径完成；组织状态与主会话意图使用 18 条 `1.1.0` additive 路径；授权、审批、假执行与审计使用 8 条 `1.2.0` additive 路径；隔离执行 run 使用 8 条 `1.3.0` additive 路径；主会话对话投影使用 2 条 `1.4.0` additive 路径；独立 Agent 对话使用 6 条 `1.8.0` additive 路径（含可续传 SSE 实时流）。UI 不读取私有数据库。
 
 真实模型解析主会话意图时设置：
 
@@ -84,6 +84,21 @@ Runtime 只读取每个子目录的 `SKILL.md` 正文，最多注入 8 个 Skill
 
 独立 Agent 对话不需要在 Conchbase 配置供应商凭证；请在 Magpie 中配置模型、供应商、凭证、路由与 app key，Conchbase 只通过 OpenAI 兼容协议接口访问本机 Magpie。
 
+Agent 对话 `1.8.0` 提供可续传的 SSE 实时流。先建立流再发消息即可实时看到思考、工具活动与回复：
+
+```sh
+curl -N http://127.0.0.1:4318/v1/agent-chat/conversations/<conversationId>/events
+```
+
+断线后可用最后收到的事件 id 续传；服务端会先补一帧 `snapshot`，再从该 id 之后回放，最后转为实时推送：
+
+```sh
+curl -N -H 'Last-Event-ID: evt_000000000042' \
+  http://127.0.0.1:4318/v1/agent-chat/conversations/<conversationId>/events
+```
+
+未知游标或不属于当前会话的游标会在建立流之前返回 `400`。SSE 只读；批准或拒绝写工具仍走 `POST /v1/agent-chat/conversations/{conversationId}/approval`。
+
 ## 架构边界
 
 - Conchbase 是执行权威；Pagurus 和其他界面只提交意图并消费公开响应。
@@ -121,4 +136,4 @@ Runtime 只读取每个子目录的 `SKILL.md` 正文，最多注入 8 个 Skill
 - [英文 README](../README.md)
 - [Pagurus 中文快速开始](https://github.com/2648782102/pagurus/blob/main/docs/QUICK_START.zh-CN.md)
 
-`v1.0.0` 是历史发布快照；`v1.1.0` 描述 Boss Mode，`v1.2.0` 描述受控执行 v1，`v1.3.0` 描述隔离执行 v2，`v1.4.0` 描述主会话对话投影，`v1.5.0` 描述独立 Agent 对话模块。仓库内的中文文档与 Release notes 保持一致。
+`v1.0.0` 是历史发布快照；`v1.1.0` 描述 Boss Mode，`v1.2.0` 描述受控执行 v1，`v1.3.0` 描述隔离执行 v2，`v1.4.0` 描述主会话对话投影，`v1.5.0` 描述独立 Agent 对话模块，`v1.7.0` 增加工具活动与对话内审批，`v1.8.0` 增加可续传实时流。仓库内的中文文档与 Release notes 保持一致。
