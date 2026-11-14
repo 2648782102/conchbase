@@ -223,7 +223,9 @@ export function registerAgentChatRoutes(
           const newTaskIds = latestTaskIds.filter((taskId) => !taskIds.includes(taskId));
           if (newTaskIds.length > 0) taskIds = latestTaskIds;
           const latestRevision = service.conversationRevision(conversationId);
-          if (latestRevision !== revision) {
+          const next = service.taskService.store.listEvents(cursor)
+            .filter((event) => taskIds.includes(event.taskId));
+          if (latestRevision !== revision || next.length > 0) {
             revision = latestRevision;
             const current = service.view(conversationId);
             for (const changed of current.messages) {
@@ -242,8 +244,6 @@ export function registerAgentChatRoutes(
               });
             }
           }
-          const next = service.taskService.store.listEvents(cursor)
-            .filter((event) => taskIds.includes(event.taskId));
           const lastEventIdByTask = new Map<string, string>();
           for (const event of next) lastEventIdByTask.set(event.taskId, event.id);
           for (const event of next) {
