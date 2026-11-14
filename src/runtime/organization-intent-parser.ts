@@ -5,6 +5,7 @@ import {
   type OrganizationAction,
   type OrganizationSnapshot,
 } from './organization-contract.js';
+import { chineseAgentDisplayName } from './agent-name.js';
 
 export const ORGANIZATION_INTENT_PARSER_VERSION = 1;
 
@@ -175,7 +176,7 @@ export function createDeterministicOrganizationIntentParser(): OrganizationInten
           workerId,
           delegationId: `del_${reference(`delegation:${workerId}`)}`,
           agentRevisionId: `agr_${reference(`revision:${workerId}`)}`,
-          displayName: worker.slice(0, 80),
+          displayName: chineseAgentDisplayName(worker),
           instructionsDigest: boundedDigest(`dynamic instructions for ${worker} on ${name}`),
           scope: [`project:${name}`],
           capabilities: ['cap_read_context'],

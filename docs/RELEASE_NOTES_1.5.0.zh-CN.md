@@ -13,10 +13,12 @@
 - 用户消息与模型回复以 Runtime-published messages 展示，包含 `pending`、`succeeded`、`failed`、`cancelled` 状态与 bounded error。
 - 组织主会话 `1.4.0` 仍保持 Boss 编排事实投影，不因本模块改变测试逻辑或产品语义。
 - Magpie 只承担协议接口：用户自行在 Magpie 配置模型、供应商、凭证、路由与 app key；Conchbase 不在本模块管理上游凭证或模型目录配置。
+- Agent 显示名统一使用中文：动态生成的员工 Agent 会获得中文角色名，已有的 `worker-validator` / `worker-scout` 等英文名在对话与项目视图中显示为中文别名，不改变 `agentId` 或 revision id。
 
 ## 验证
 
 - `tests/agent-chat.test.ts` 使用 credential-free fake provider 覆盖会话创建、真实 Agent task 回复、幂等重放、错误路径、发现字段与 no-private-state 边界。
+- `tests/agent-name.test.ts` 覆盖中文显示名与既有英文别名转换。
 - 双仓 `npm run check`、`npm test`、`npm run build` 通过；中文文档随发布一并更新。
 
 ## 边界

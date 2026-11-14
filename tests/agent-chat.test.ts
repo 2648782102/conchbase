@@ -33,7 +33,7 @@ async function withApp(run: (app: ReturnType<typeof createApp>, agentId: string)
     fetch: fakeFetch(),
   });
   const agent = await taskService.createAgent({
-    name: 'Chat Fixture',
+    name: '中文助手',
     instructions: 'You are a concise assistant.',
     providerId: 'magpie',
     modelId: 'fixture/chat-model',
@@ -58,6 +58,7 @@ test('agent chat starts a configured Agent conversation and publishes a real mod
     const agents = await app.inject({ method: 'GET', url: '/v1/agent-chat/agents' });
     assert.equal(agents.statusCode, 200);
     assert.equal(agents.json().agents.length, 1);
+    assert.equal(agents.json().agents[0].name, '中文助手');
 
     const created = await app.inject({
       method: 'POST',

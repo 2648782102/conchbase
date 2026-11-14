@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { OrganizationEvent, OrganizationSnapshot } from './organization-contract.js';
+import { chineseAgentDisplayName } from './agent-name.js';
 
 export const PRIMARY_CONVERSATION_CONTRACT_VERSION = '1.4.0';
 
@@ -144,7 +145,7 @@ function messageForEvent(
       ...base,
       kind: 'worker_activity',
       author: 'boss',
-      body: `已招聘员工${worker ? ` ${worker.displayName}` : ''}，等待 Runtime 授权。`,
+      body: `已招聘员工${worker ? ` ${chineseAgentDisplayName(worker.displayName)}` : ''}，等待 Runtime 授权。`,
       state: 'published',
       expectedVersion: null,
     });
@@ -155,7 +156,7 @@ function messageForEvent(
       ...base,
       kind: 'worker_activity',
       author: 'worker',
-      body: `员工${worker ? ` ${worker.displayName}` : ''}已开始处理工作。`,
+      body: `员工${worker ? ` ${chineseAgentDisplayName(worker.displayName)}` : ''}已开始处理工作。`,
       state: 'running',
       expectedVersion: null,
     });

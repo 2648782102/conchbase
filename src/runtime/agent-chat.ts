@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { AgentDetail } from './agent-profile.js';
 import type { TaskService } from './task-service.js';
 import type { TaskSnapshot } from './task-store.js';
+import { chineseAgentDisplayName } from './agent-name.js';
 
 export const AGENT_CHAT_CONTRACT_VERSION = '1.5.0';
 
@@ -118,7 +119,7 @@ export class AgentChatService {
   listAgents(): readonly AgentChatAgentView[] {
     return Object.freeze(this.taskService.listAgents().map((agent) => Object.freeze({
       id: agent.id,
-      name: agent.current.name,
+      name: chineseAgentDisplayName(agent.current.name),
       currentRevisionId: agent.currentRevisionId,
       providerId: agent.current.providerId,
       modelId: agent.current.modelId,

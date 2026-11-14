@@ -13,6 +13,7 @@ import {
   type OrganizationIntentParser,
   type OrganizationIntentParseResult,
 } from './organization-intent-parser.js';
+import { chineseAgentDisplayName } from './agent-name.js';
 import { OrganizationCoordinator } from './organization-coordinator.js';
 import type { OrganizationRelay } from './organization-execution.js';
 import type { OrganizationStore } from './organization-store.js';
@@ -386,13 +387,14 @@ export class BossModeService {
     const taskService = this.taskService;
     if (!taskService) return Object.freeze({ action, status: 'failed' as const, detail: 'Task service is unavailable.' });
     try {
+      const displayName = chineseAgentDisplayName(action.displayName);
       const instructions = [
-        `You are ${action.displayName}.`,
+        `你是${displayName}。`,
         `Work only within project scope: ${action.scope.join(', ')}.`,
         'Return a concise bounded result. Prefix output with ATTENTION: only when human input is required.',
       ].join(' ');
       const agent = await taskService.createAgent({
-        name: action.displayName,
+        name: displayName,
         instructions,
         providerId: modelReference.providerId,
         modelId: modelReference.modelId,
@@ -438,7 +440,7 @@ export class BossModeService {
   ): WorkerExecutionRecord {
     const taskService = this.taskService!;
     const snapshot = this.store.get();
-    const prompt = `Execute the bounded project task for ${action.displayName}. Return a concise result or ATTENTION: when input is required.`;
+      const prompt = `请执行${chineseAgentDisplayName(action.displayName)}的限定项目任务。返回简洁结果；需要人工输入时以 ATTENTION: 开头。`;
     const task = taskService.store.createAgentTask({
       id: `task_${reference(`${action.workerId}:${snapshot.events.length}`)}`,
       prompt,
