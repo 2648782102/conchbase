@@ -170,4 +170,17 @@ export function registerTaskRoutes(
       return { task: toTaskResponse(task), retried: true };
     },
   );
+
+  app.post<{ Params: { taskId: string } }>(
+    '/v1/tasks/:taskId/approval',
+    async (request, reply) => {
+      if (!taskService) return unavailable(reply);
+      const body = request.body as { readonly decision?: unknown } | undefined;
+      if (body?.decision !== 'approved' && body?.decision !== 'rejected') {
+        return reply.code(400).send({ error: 'decision must be approved or rejected.' });
+      }
+      const task = taskService.decideApproval(request.params.taskId, body.decision);
+      return { task: toTaskResponse(task) };
+    },
+  );
 }

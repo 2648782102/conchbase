@@ -20,6 +20,7 @@ const toolRuntime = await createToolRuntime({
   root: process.cwd(),
   ...(config.mcpConfigPath ? { mcpConfigPath: config.mcpConfigPath } : {}),
   ...(config.skillsDirectory ? { skillsDirectory: config.skillsDirectory } : {}),
+  ...(config.allowToolWrites ? { allowWrites: true } : {}),
 });
 const taskService = createTaskService(config.databasePath, {
   magpieBaseUrl: config.magpieBaseUrl,

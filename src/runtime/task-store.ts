@@ -154,6 +154,8 @@ export interface TaskStore {
   readonly platform: PlatformStore;
   readonly organization: OrganizationStore;
   readonly agentChat: AgentChatStore;
+  saveLoopState(taskId: string, state: string | null): void;
+  getLoopState(taskId: string): string | null;
   close(): void;
 }
 
@@ -482,10 +484,16 @@ export class SqliteTaskStore implements TaskStore {
       migratePlatformSchema(this.database);
       migrateOrganizationSchema(this.database);
       migrateAgentChatSchema(this.database);
+      this.database.exec(`
+        CREATE TABLE IF NOT EXISTS agent_loop_state (
+          task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
+          state TEXT NOT NULL
+        ) STRICT;
+      `);
       this.organization.initialize('primary_conversation');
       this.agentChat.initialize();
       this.database.exec('INSERT OR IGNORE INTO agent_state (singleton, default_agent_id) VALUES (1, NULL)');
-      this.database.exec('PRAGMA user_version = 6; COMMIT;');
+      this.database.exec('PRAGMA user_version = 7; COMMIT;');
       this.isOrganizationBootstrapTransaction = false;
       this.bootstrapConfiguration();
     } catch (cause) {
@@ -787,6 +795,23 @@ export class SqliteTaskStore implements TaskStore {
     this.database.close();
   }
 
+  saveLoopState(taskId: string, state: string | null): void {
+    if (state === null) {
+      this.database.prepare('DELETE FROM agent_loop_state WHERE task_id = ?').run(taskId);
+      return;
+    }
+    this.database.prepare(`
+      INSERT INTO agent_loop_state (task_id, state) VALUES (?, ?)
+      ON CONFLICT(task_id) DO UPDATE SET state = excluded.state
+    `).run(taskId, state);
+  }
+
+  getLoopState(taskId: string): string | null {
+    const row = this.database.prepare('SELECT state FROM agent_loop_state WHERE task_id = ?')
+      .get(taskId) as { readonly state: string } | undefined;
+    return row?.state ?? null;
+  }
+
   getConfigurationState(): ConfigurationState {
     const row = this.database.prepare(
       'SELECT revision_id FROM configuration_state WHERE singleton = 1',
@@ -1007,7 +1032,7 @@ export class SqliteTaskStore implements TaskStore {
 
   private migrateAgentSchema(): void {
     const versionRow = this.database.prepare('PRAGMA user_version').get() as { user_version: number };
-    if (versionRow.user_version > 6) {
+    if (versionRow.user_version > 7) {
       throw new Error(`Database schema version ${versionRow.user_version} is newer than this runtime supports.`);
     }
     for (const [table, column] of [

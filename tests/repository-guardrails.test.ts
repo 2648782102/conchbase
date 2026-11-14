@@ -102,6 +102,7 @@ const acceptedPaths = [
   '/v1/tasks/{taskId}',
   '/v1/tasks/{taskId}/cancel',
   '/v1/tasks/{taskId}/retry',
+  '/v1/tasks/{taskId}/approval',
   '/v1/events',
   '/v1/configuration',
   '/v1/configuration/revisions',
@@ -175,7 +176,7 @@ const acceptedPaths = [
   '/v1/execution/runs/{runId}/recover',
   '/v1/execution/runs/{runId}/events',
 ];
-const frozenPathCount = 47;
+const frozenPathCount = 48;
 const organizationPathCount = 18;
 const executionPathCount = 8;
 const executionRunPathCount = 8;
@@ -219,7 +220,7 @@ function assertAcceptedOpenApi(spec: string, label: string): void {
   assert.doesNotMatch(spec, nonLoopbackAddress, `${label} must not bind beyond loopback`);
   assert.match(spec, /requestBody:/, `${label} must document the accepted task request`);
   assert.match(spec, /interrupted/, `${label} must document interrupted tasks`);
-  assert.match(spec, /^  version: 1\.0\.0$/m, `${label} must record the durable-work contract version`);
+  assert.match(spec, /^  version: 1\.1\.0$/m, `${label} must record the durable-work contract version`);
   assert.match(spec, /provider-neutral-model-catalog/);
   assert.match(spec, /AgentRevision/);
   assert.match(spec, /partialOutput/, `${label} must document partial output`);
@@ -304,7 +305,7 @@ function assertProjectStatus(source: string, label: string): void {
   assert.equal(status.objectiveMode, 'target-mode', `${label} must record target mode`);
   assert.equal(status.developmentBoundaryAdr, '0026-ai-handoff-readiness-development-boundary.md');
   assert.equal(status.publicContract.version, '1.0.0');
-  assert.equal(status.publicContract.pathCount, 47);
+  assert.equal(status.publicContract.pathCount, 48);
   assert.equal(status.publicContract.frozen, true);
   assert.deepEqual(status.publicContract.additive, {
     version: '1.1.0',
@@ -433,7 +434,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /ADR 0021/);
   assert.match(handoff, /ADR 0022/);
   assert.match(handoff, /ADR 0023/);
-  assert.match(handoff, /ADRs `0030`–`0056`/);
+  assert.match(handoff, /ADRs `0030`–`0057`/);
   assert.match(handoff, /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-contract\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-store\.ts/);
@@ -514,7 +515,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('README.zh-CN.md'), /仍在最终本地优先目标之外/);
   assert.match(read('README.zh-CN.md'), /ADR 0018/);
   assert.match(read('README.zh-CN.md'), /ADR 0019/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0056\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0057\]/);
   assert.match(read('README.md'), /1\.4\.0/);
   assert.match(read('README.md'), /ADR 0021 adds an opt-in live loopback acceptance test/);
   assert.match(read('README.zh-CN.md'), /ADR 0021/);
@@ -888,7 +889,7 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
     assert.match(read(file), /OBJECTIVE_MODE\.zh-CN\.md/, `${file} must link the Chinese objective brief`);
   }
   assert.match(read('docs/AI_TASK_QUEUE.md'), /Target-mode entry/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0056\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0057\]/);
   assert.match(read('README.md'), /Organization Runtime target/);
   assert.match(read('README.zh-CN.md'), /完整组织运行时目标/);
   assert.match(read('docs/QUICK_START.zh-CN.md'), /ADR 0030–0034/);
@@ -1044,7 +1045,7 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
   const workRouteSource = read('src/http/routes/v1/work.ts');
   assert.doesNotMatch(workRouteSource, /fetch\(|exec|spawn|writeFile|readFile/i);
   assert.doesNotMatch(workRouteSource, /Router|Worker|three-layer|layered|hierarchy/i);
-  assert.match(read('src/runtime/task-store.ts'), /PRAGMA user_version = 6/);
+  assert.match(read('src/runtime/task-store.ts'), /PRAGMA user_version = 7/);
   const ledgerSource = read('src/runtime/tool-request.ts');
   assert.doesNotMatch(ledgerSource, /ToolCapabilityKernel|tool-capability/);
   assert.doesNotMatch(ledgerSource, /tool\.executed|tool\.replayed|tool\.denied|tool\.failed/);

@@ -10,7 +10,7 @@
   "publicContract": {
     "openApi": "docs/openapi.yaml",
     "version": "1.0.0",
-    "pathCount": 47,
+    "pathCount": 48,
     "frozen": true,
     "additive": {
       "version": "1.1.0",
@@ -39,7 +39,7 @@
     },
     "workContractVersion": 2,
     "databaseUserVersion": 3,
-    "currentPrivateDatabaseUserVersion": 6,
+    "currentPrivateDatabaseUserVersion": 7,
     "sourceOfTruth": [
       "docs/openapi.yaml",
       "docs/API.md",
@@ -237,6 +237,11 @@
       "id": "skill-provider",
       "summary": "ADR 0056 implements an administrator-configured read-only Skill provider: SKILL.md front matter and body parsing, bounded count and bytes, traversal and symlink rejection, ignored allowed-tools, and non-authoritative system injection into the Agent loop.",
       "evidence": "src/runtime/skill-provider.ts"
+    },
+    {
+      "id": "tool-approval-write-tools",
+      "summary": "ADR 0057 implements Runtime-owned write-tool approval: waiting_approval checkpoints persist across restart, POST /v1/tasks/{taskId}/approval resumes the loop after approved execution, rejection fails without writing, and CONCHBASE_ALLOW_TOOL_WRITES gates the bounded workspace_write tool.",
+      "evidence": "src/runtime/task-service.ts"
     }
   ],
   "validationEvidence": [
@@ -408,6 +413,12 @@
       "id": "skill-provider-fixture",
       "summary": "Executable fixtures cover front-matter parsing, missing front matter, empty-body skipping, allowed-tools being ignored, size and count bounds, symlink rejection, and Agent loop injection.",
       "evidence": "tests/skill-provider.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "tool-approval-fixture",
+      "summary": "Executable fixtures cover pause-before-write, approve-and-continue, reject-without-write, restart survival, duplicate-decision conflict, and the approval route.",
+      "evidence": "tests/agent-approval.test.ts",
       "executableFixture": true
     }
   ],

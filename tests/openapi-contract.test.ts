@@ -75,6 +75,7 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
       '/v1/tasks/{taskId}',
       '/v1/tasks/{taskId}/cancel',
       '/v1/tasks/{taskId}/retry',
+      '/v1/tasks/{taskId}/approval',
       '/v1/events',
       '/v1/configuration',
       '/v1/configuration/revisions',
@@ -193,7 +194,7 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
   assert.match(spec, /enum: \[inline, file, registry, env\]/);
   assert.doesNotMatch(spec, /enum: \[[^\]]*\burl\b/);
   assert.match(spec, /ApplyConfigurationRequest:[\s\S]*?oneOf:/);
-  assert.match(spec, /^  version: 1\.0\.0$/m);
+  assert.match(spec, /^  version: 1\.1\.0$/m);
   assert.match(spec, /compositionDocumentId/);
   assert.match(spec, /compositionNodeId/);
   assertSchemaFields('CreateProviderToolCallObservation', ['version', 'provider', 'payload']);
@@ -259,7 +260,7 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
     'approval',
   ]);
   assertSchemaFields('ToolRequestDecisionRequest', ['decision', 'reason']);
-  assert.match(spec, /^  version: 1\.0\.0$/m);
+  assert.match(spec, /^  version: 1\.1\.0$/m);
   assert.match(spec, /tool-approval-ledger/);
   assert.match(spec, /write-only-secret-handles/);
   assert.match(spec, /write-only-secret-handles/);

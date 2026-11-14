@@ -112,7 +112,7 @@ test('organization actions migrate from user_version 3 and replay after reopen',
     try {
       assert.equal(
         (migrated.prepare('PRAGMA user_version').get() as { user_version: number }).user_version,
-        6,
+        7,
       );
       assert.deepEqual(
         (migrated.prepare('SELECT sequence FROM organization_actions ORDER BY sequence').all() as unknown[]).map(
@@ -143,7 +143,7 @@ test('organization actions migrate from user_version 3 and replay after reopen',
 
 test('organization persistence keeps the published contract frozen', () => {
   const spec = readFileSync(path.join(repositoryRoot, 'docs/openapi.yaml'), 'utf8');
-  assert.equal([...spec.matchAll(/^  (\/v1\/[^:]+):$/gm)].length, 87);
-  assert.match(spec, /^  version: 1\.0\.0$/m);
+  assert.equal([...spec.matchAll(/^  (\/v1\/[^:]+):$/gm)].length, 88);
+  assert.match(spec, /^  version: 1\.1\.0$/m);
   assert.match(spec, /\/v1\/organization\/session/);
 });

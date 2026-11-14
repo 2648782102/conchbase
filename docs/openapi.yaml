@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Conchbase Runtime API
-  version: 1.0.0
+  version: 1.1.0
   description: Local, versioned API for Conchbase Agent profiles and revisions, provider-neutral model references, pinned tasks, bounded composition execution, ordered progress events, versioned runtime configuration, durable tool request/approval records without execution, durable asynchronous work control, reviewed authenticated pairing, one local Source, a capability directory, and write-only SecretHandles with digest-only use receipts. Runtime capabilities include agents, provider-neutral-model-catalog, tool-approval-ledger, provider-tool-call-observation records, durable-work-contract, authenticated-pairing, asynchronous-work-control, local-source-policy, capability-directory, and write-only-secret-handles.
 servers:
   - url: http://127.0.0.1:4318
@@ -334,6 +334,54 @@ paths:
                 $ref: '#/components/schemas/Error'
         '409':
           description: Task is not in a terminal state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/tasks/{taskId}/approval:
+    post:
+      operationId: decideTaskApproval
+      summary: Approve or reject a pending write-tool approval for a task.
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [decision]
+              properties:
+                decision:
+                  type: string
+                  enum: [approved, rejected]
+      responses:
+        '200':
+          description: Decision recorded; an approval resumes the agent loop.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [task]
+                properties:
+                  task:
+                    $ref: '#/components/schemas/Task'
+        '400':
+          description: decision must be approved or rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Task not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Task is not waiting for approval.
           content:
             application/json:
               schema:

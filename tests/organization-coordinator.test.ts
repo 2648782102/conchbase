@@ -97,6 +97,6 @@ test('coordinator has no HTTP, Agent store, model, tool, or public contract depe
   );
   assert.doesNotMatch(source, /fastify|createAgent\(|fetch\(|spawn|exec\(|readFile/);
   const spec = readFileSync(path.join(repositoryRoot, 'docs/openapi.yaml'), 'utf8');
-  assert.equal([...spec.matchAll(/^  (\/v1\/[^:]+):$/gm)].length, 87);
+  assert.equal([...spec.matchAll(/^  (\/v1\/[^:]+):$/gm)].length, 88);
   assert.doesNotMatch(source, /organization\/session/);
 });

@@ -465,6 +465,193 @@ export class TaskService {
     this.inFlight.add(execution);
   }
 
+  decideApproval(taskId: string, decision: 'approved' | 'rejected'): TaskSnapshot {
+    const task = this.store.getTask(taskId);
+    if (!task) throw new TaskNotFoundError();
+    if (task.state !== 'waiting_approval') {
+      throw new TaskConflictError('Task is not waiting for approval.');
+    }
+    if (decision === 'rejected') {
+      this.store.saveLoopState(taskId, null);
+      this.store.transitionTask(
+        taskId,
+        'failed',
+        this.eventInput(task, 'task.failed', 'failed', task.attempt),
+        { error: 'Tool call was rejected by the operator.' },
+      );
+      return this.store.getTask(taskId)!;
+    }
+    this.store.transitionTask(
+      taskId,
+      'running',
+      this.eventInput(task, 'agent_loop.approval_decided', 'running', task.attempt),
+    );
+    const controller = new AbortController();
+    this.active.set(taskId, controller);
+    const execution = this.resumeApprovedTool(task, controller.signal).finally(() => {
+      this.active.delete(taskId);
+      this.inFlight.delete(execution);
+    });
+    this.inFlight.add(execution);
+    return this.store.getTask(taskId)!;
+  }
+
+  private async resumeApprovedTool(task: TaskSnapshot, signal: AbortSignal): Promise<void> {
+    try {
+      const raw = this.store.getLoopState(task.id);
+      if (!raw) throw new Error('Approval checkpoint is missing.');
+      const checkpoint = JSON.parse(raw) as {
+        readonly iteration: number;
+        readonly toolId: string;
+        readonly toolCallId: string;
+        readonly arguments: Readonly<Record<string, string | number | boolean | null>>;
+        readonly messages: readonly ProviderMessage[];
+      };
+      const tools = this.loopOptions.tools;
+      if (!tools?.has(checkpoint.toolId)) throw new Error('Approved tool is no longer available.');
+      const result = await tools.invoke(checkpoint.toolId, checkpoint.arguments);
+      this.store.recordEvent(task.id, {
+        ...this.eventInput(task, 'agent_loop.tool_executed', 'running', task.attempt),
+        data: {
+          toolId: checkpoint.toolId, toolVersion: 1, resultDigest: result.digest, bytes: result.bytes,
+        },
+      });
+      if (signal.aborted) return;
+      const messages: ProviderMessage[] = [
+        ...checkpoint.messages,
+        { role: 'tool', toolCallId: checkpoint.toolCallId, content: result.summary },
+      ];
+      const provider = new OpenAiChatCompletionsProvider({
+        baseUrl: this.config.magpieBaseUrl,
+        model: task.modelId ?? task.model,
+        ...(this.config.magpieAppKey ? { appKey: this.config.magpieAppKey } : {}),
+        ...(this.config.fetch ? { fetch: this.config.fetch } : {}),
+      });
+      const turn = await provider.streamTurn({
+        taskId: task.id,
+        prompt: task.prompt,
+        turnIndex: checkpoint.iteration + 1,
+        messages,
+        signal,
+        ...(tools
+          ? {
+            tools: tools.list().map((tool) => ({
+              id: tool.id,
+              description: tool.description,
+              parameters: { type: 'object', additionalProperties: true },
+            })),
+          }
+          : {}),
+        onOutputDelta: () => undefined,
+      });
+      this.store.saveLoopState(task.id, null);
+      if (signal.aborted) return;
+      if (turn.kind === 'tool_calls') {
+        const feedback = await this.continueLoopAfterApproval(
+          task,
+          messages,
+          checkpoint.iteration + 1,
+          turn.calls,
+          signal,
+        );
+        if (feedback === null) return;
+        this.store.transitionTask(
+          task.id,
+          'succeeded',
+          this.eventInput(task, 'task.completed', 'succeeded', task.attempt),
+          { output: feedback },
+        );
+        return;
+      }
+      if (turn.kind !== 'final') {
+        throw new Error('Unsupported model turn after approval.');
+      }
+      this.store.transitionTask(
+        task.id,
+        'succeeded',
+        this.eventInput(task, 'task.completed', 'succeeded', task.attempt),
+        { output: turn.output },
+      );
+    } catch (cause) {
+      if (signal.aborted) return;
+      this.store.saveLoopState(task.id, null);
+      this.store.transitionTask(
+        task.id,
+        'failed',
+        this.eventInput(task, 'task.failed', 'failed', task.attempt),
+        { error: cause instanceof Error ? cause.message.slice(0, 500) : 'Approved tool failed.' },
+      );
+    }
+  }
+
+  private async continueLoopAfterApproval(
+    task: TaskSnapshot,
+    messages: readonly ProviderMessage[],
+    startIteration: number,
+    initialCalls: readonly { readonly id: string; readonly name: string; readonly arguments: Readonly<Record<string, string | number | boolean | null>> }[],
+    signal: AbortSignal,
+  ): Promise<string | null> {
+    const tools = this.loopOptions.tools;
+    if (!tools) throw new Error('Tool runtime is unavailable.');
+    const provider = new OpenAiChatCompletionsProvider({
+      baseUrl: this.config.magpieBaseUrl,
+      model: task.modelId ?? task.model,
+      ...(this.config.magpieAppKey ? { appKey: this.config.magpieAppKey } : {}),
+      ...(this.config.fetch ? { fetch: this.config.fetch } : {}),
+    });
+    const maxIterations = Math.max(1, Math.min(this.loopOptions.maxIterations ?? 6, 12));
+    let current: readonly { readonly id: string; readonly name: string; readonly arguments: Readonly<Record<string, string | number | boolean | null>> }[] = initialCalls;
+    let conversation: ProviderMessage[] = [...messages];
+    for (let iteration = startIteration; iteration < maxIterations; iteration += 1) {
+      if (current.length !== 1) throw new Error('Agent loop v1 accepts exactly one tool call per turn.');
+      const call = current[0]!;
+      conversation = [...conversation, { role: 'assistant', content: '', toolCalls: current }];
+      const definition = tools.list().find((entry) => entry.id === call.name);
+      if (!definition) {
+        conversation = [...conversation, { role: 'tool', toolCallId: call.id, content: 'error: unknown_tool' }];
+      } else if (definition.sideEffect === 'write') {
+        this.store.saveLoopState(task.id, JSON.stringify({
+          iteration,
+          toolId: call.name,
+          arguments: call.arguments,
+          toolCallId: call.id,
+          messages: conversation,
+        }));
+        this.store.transitionTask(
+          task.id,
+          'waiting_approval',
+          this.eventInput(task, 'agent_loop.approval_requested', 'waiting_approval', task.attempt),
+        );
+        return null;
+      } else {
+        const result = await tools.invoke(call.name, call.arguments);
+        this.store.recordEvent(task.id, {
+          ...this.eventInput(task, 'agent_loop.tool_executed', 'running', task.attempt),
+          data: { toolId: call.name, toolVersion: 1, resultDigest: result.digest, bytes: result.bytes },
+        });
+        conversation = [...conversation, { role: 'tool', toolCallId: call.id, content: result.summary }];
+      }
+      if (signal.aborted) throw new Error('Task was cancelled.');
+      const next = await provider.streamTurn({
+        taskId: task.id,
+        prompt: task.prompt,
+        turnIndex: iteration + 1,
+        messages: conversation,
+        tools: tools.list().map((tool) => ({
+          id: tool.id,
+          description: tool.description,
+          parameters: { type: 'object', additionalProperties: true },
+        })),
+        signal,
+        onOutputDelta: () => undefined,
+      });
+      if (next.kind === 'final') return next.output;
+      if (next.kind !== 'tool_calls') throw new Error('Unsupported model turn after approval.');
+      current = next.calls;
+    }
+    throw new Error(`Agent loop exceeded ${maxIterations} iterations.`);
+  }
+
   cancelTask(taskId: string): TaskSnapshot {
     const task = this.store.getTask(taskId);
     if (!task) throw new TaskNotFoundError();
@@ -723,6 +910,22 @@ export class TaskService {
         });
         try {
           if (!tools || !tools.has(call.name)) throw new ToolRejectedError('unknown_tool');
+          const definition = tools.list().find((entry) => entry.id === call.name);
+          if (definition?.sideEffect === 'write') {
+            this.store.saveLoopState(task.id, JSON.stringify({
+              iteration,
+              toolId: call.name,
+              arguments: call.arguments,
+              toolCallId: call.id,
+              messages,
+            }));
+            this.store.transitionTask(
+              task.id,
+              'waiting_approval',
+              this.eventInput(task, 'agent_loop.approval_requested', 'waiting_approval', task.attempt),
+            );
+            return;
+          }
           const result = await tools.invoke(call.name, call.arguments);
           this.store.recordEvent(task.id, {
             ...this.eventInput(task, 'agent_loop.tool_executed', 'running', task.attempt),
@@ -956,6 +1159,7 @@ export class TaskService {
   private interruptIncompleteTasks(): void {
     for (const task of this.store.listTasks()) {
       if (isTerminalTaskState(task.state)) continue;
+      if (task.state === 'waiting_approval') continue;
       this.store.transitionTask(
         task.id,
         'interrupted',

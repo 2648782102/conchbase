@@ -15,7 +15,8 @@ ADR 0052 accepts the Agent-loop architecture and ADR 0053 fixes its first slice.
 1. **Ready:** implement the bounded Agent loop with read-only built-in tools, multi-turn provider context, and durable per-iteration events. Preserve task pins, cancellation, restart interruption, and the frozen public path set.
 2. **Implemented:** ADR 0054 adds an administrator-configured MCP stdio provider with a read-only tool allowlist, sanitized environment, timeouts, and bounded results. Write-capable MCP tools and remote transports remain blocked.
 3. **Implemented:** ADR 0056 adds a read-only Skill provider that injects bounded `SKILL.md` guidance and never grants capability.
-4. **Blocked:** write-capable tools, network tools, external writes, arbitrary shell, plugin hosts, and secret injection. These require their own accepted ADRs and must not be smuggled in as "read" tools.
+4. **Implemented:** ADR 0057 adds Runtime-owned write-tool approval with a durable checkpoint and `POST /v1/tasks/{taskId}/approval`.
+5. **Blocked:** network tools, external writes, arbitrary shell, plugin hosts, and secret injection. These require their own accepted ADRs and must not be smuggled in as "read" tools.
 
 Superseded proposal records `0002`–`0008` now live in `docs/decisions/archive/`. They are historical context, not open contracts. Do not re-open them or cite them as current direction; use ADR 0052/0053 and the target documents instead.
 

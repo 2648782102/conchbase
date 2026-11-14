@@ -12,6 +12,7 @@ export interface RuntimeConfig {
   bossModel?: string;
   mcpConfigPath?: string;
   skillsDirectory?: string;
+  allowToolWrites?: boolean;
   allowAuthenticatedRemoteBinding: boolean;
   authTokenDigest?: string;
 }
@@ -70,6 +71,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     ...(env.CONCHBASE_BOSS_MODEL ? { bossModel: env.CONCHBASE_BOSS_MODEL } : {}),
     ...(env.CONCHBASE_MCP_CONFIG ? { mcpConfigPath: env.CONCHBASE_MCP_CONFIG } : {}),
     ...(env.CONCHBASE_SKILLS_DIR ? { skillsDirectory: env.CONCHBASE_SKILLS_DIR } : {}),
+    ...(env.CONCHBASE_ALLOW_TOOL_WRITES === '1' ? { allowToolWrites: true } : {}),
     allowAuthenticatedRemoteBinding,
     ...(authTokenDigest ? { authTokenDigest } : {}),
   };
