@@ -82,6 +82,10 @@ The service listens on `127.0.0.1:4318` by default. The machine-readable source 
 | `GET /v1/organization/events?after=<eventId>&limit=<n>` | Read immutable organization events in strict ascending sequence, default limit `100`, maximum `1000`; unknown cursors return `400`. |
 | `GET /v1/organization/conversation?limit=<n>` | Read the bounded ordered primary-conversation projection; `1.4.0` additive contract, no raw transcript or private state. |
 | `GET /v1/organization/conversation/messages?after=<messageId>&limit=<n>` | Read published primary-conversation messages with bounded cursors; `1.4.0` additive contract. |
+| `GET /v1/agent-chat/agents` | List configured Agents for direct Agent Chat; `1.5.0` additive contract. |
+| `POST /v1/agent-chat/conversations` | Create a direct Agent Chat conversation pinned to a selected Agent revision; `201`. |
+| `GET /v1/agent-chat/conversations/{conversationId}` | Read one Agent Chat conversation with bounded user, assistant, pending, and terminal state. |
+| `POST /v1/agent-chat/conversations/{conversationId}/messages` | Send one bounded user message and start a real Agent-backed model task; `202`. |
 | `GET /v1/execution/health` | Read controlled-execution `1.2.0` availability and exact published paths. |
 | `GET /v1/execution/capabilities` | List published capability facts; recorded data never grants execution. |
 | `GET /v1/execution/grants` | List explicit Runtime-owned grants. |
@@ -132,5 +136,6 @@ Durable work documents are deterministic, topology-neutral state from [ADR 0024]
 - The additive `1.2.0` controlled-execution contract adds explicit grants, pending requests, approval/rejection, deterministic fake execution, revocation, and bounded audit. It does not install MCP servers, load Skills/plugins, execute host tools, write external systems, or expose plaintext secrets. Capability records are data; only an active explicit grant plus an approved request can reach the fake executor.
 - The additive `1.3.0` isolated execution contract adds a Runtime-owned fixed Node child-process executor, closed deterministic operations, durable run state, explicit start/cancel/recover, restart interruption, and digest-only run audit. It performs no file, network, credential, package, shell, or external write operation.
 - The additive `1.4.0` primary-conversation contract publishes a deterministic read model over Runtime-owned organization facts. It includes bounded user messages, Boss acknowledgements, worker activity, structured reports, Attention, and task status. It is not a durable writeable chat table, raw model transcript, draft stream, multi-session chat, or generic secret resolver.
+- The additive `1.5.0` Agent Chat contract is a separate direct-conversation module. It reuses configured Agent identities, immutable revisions, and Agent-backed tasks; model, provider, credential, routing, and app-key configuration remain in the user's Magpie/OpenAI-compatible gateway. It does not modify organization state and does not publish raw provider envelopes, private paths, or SecretHandle plaintext.
 
 > Final local-first target: Conchbase `1.0.0` and ADR 0025 close the exact 47-path platform contract. Write-only SecretHandle values are sealed at rest with a process-scoped AES-256-GCM key, exposed only to one runtime-owned fixed adapter, and never returned, logged, or sent to a model, client, event, or UI. Restart invalidates previously sealed values; cross-process key sources, real external adapters, executors, Sources, external writes, and tools require separate ADRs.

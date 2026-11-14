@@ -6,7 +6,7 @@
 
 海螺 Conchbase 是本地优先、可独立运行的个人 Agent Runtime。它拥有 Agent 身份与版本、任务执行、模型调用、持久状态、事件、策略和权限；不依赖图形界面。寄居蟹 Pagurus 是可选控制客户端，通过版本化 Runtime API 管理 Agent、配置、工作、能力和 SecretHandle。CLI、IDE 与第三方界面同样可以作为客户端接入。
 
-当前已包含 Boss Mode `1.1.0` 主会话闭环、受控执行 `1.2.0` v1、隔离执行 `1.3.0` v2 与主会话对话投影 `1.4.0`：前者从唯一主会话生成动态员工、工作、报告与 Attention；`1.2.0` 证明完整授权/审批/审计路径；`1.3.0` 用 Runtime 拥有的隔离子进程执行封闭确定性操作并提供 durable run、中断与恢复；`1.4.0` 把用户消息、Boss 回执、员工活动、报告与 Attention 组织成有序对话流，不暴露原始模型 transcript。
+当前已包含 Boss Mode `1.1.0` 主会话闭环、受控执行 `1.2.0` v1、隔离执行 `1.3.0` v2、主会话对话投影 `1.4.0` 与独立 Agent 对话 `1.5.0`：前者从唯一主会话生成动态员工、工作、报告与 Attention；`1.2.0` 证明完整授权/审批/审计路径；`1.3.0` 用 Runtime 拥有的隔离子进程执行封闭确定性操作并提供 durable run、中断与恢复；`1.4.0` 把用户消息、Boss 回执、员工活动、报告与 Attention 组织成有序编排事件流；`1.5.0` 让用户选择配置好的 Agent，通过 Runtime 调用真实模型并正常一问一答。
 
 用户可高度定制自己的 Agent，例如设计多角色协作。但产品不内置三层结构、Router/Worker、固定层级或调度规则；组合数据保持拓扑中立，示例不等于 schema。
 
@@ -44,7 +44,7 @@ npm run cli -- events
 
 `conchbase boss` 会调用同一个 Runtime 主会话入口并等待当前执行链完成；`conchbase organization` 打印已发布组织状态。`conchbase serve` 活跃时，不要运行其他读写任务状态数据库的 CLI 命令；并发查看任务应使用 Runtime API。单进程 SQLite 所有权是当前开发边界，不是生产多进程支持。
 
-配置写操作、工作控制、能力目录和 SecretHandle 通过 `docs/openapi.yaml` 描述的 47 条 `1.0.0` 路径完成；组织状态与主会话意图使用 18 条 `1.1.0` additive 路径；授权、审批、假执行与审计使用 8 条 `1.2.0` additive 路径；隔离执行 run 使用 8 条 `1.3.0` additive 路径；主会话对话投影使用 2 条 `1.4.0` additive 路径。UI 不读取私有数据库。
+配置写操作、工作控制、能力目录和 SecretHandle 通过 `docs/openapi.yaml` 描述的 47 条 `1.0.0` 路径完成；组织状态与主会话意图使用 18 条 `1.1.0` additive 路径；授权、审批、假执行与审计使用 8 条 `1.2.0` additive 路径；隔离执行 run 使用 8 条 `1.3.0` additive 路径；主会话对话投影使用 2 条 `1.4.0` additive 路径；独立 Agent 对话使用 4 条 `1.5.0` additive 路径。UI 不读取私有数据库。
 
 真实模型解析主会话意图时设置：
 
@@ -54,6 +54,8 @@ npm run dev
 ```
 
 未设置时使用确定性离线解析器。模型或解析器输出只是不可信提案，所有组织动作都由 Conchbase 重新校验和授权。
+
+独立 Agent 对话不需要在 Conchbase 配置供应商凭证；请在 Magpie 中配置模型、供应商、凭证、路由与 app key，Conchbase 只通过 OpenAI 兼容协议接口访问本机 Magpie。
 
 ## 架构边界
 
@@ -84,9 +86,10 @@ npm run dev
 - [v1.2.0 中文发布说明](RELEASE_NOTES_1.2.0.zh-CN.md)
 - [v1.3.0 中文发布说明](RELEASE_NOTES_1.3.0.zh-CN.md)
 - [v1.4.0 中文发布说明](RELEASE_NOTES_1.4.0.zh-CN.md)
+- [v1.5.0 中文发布说明](RELEASE_NOTES_1.5.0.zh-CN.md)
 - [目标模式接手说明](OBJECTIVE_MODE.zh-CN.md)
 - [机器可读项目状态](PROJECT_STATUS.json)
 - [英文 README](../README.md)
 - [Pagurus 中文快速开始](https://github.com/2648782102/pagurus/blob/main/docs/QUICK_START.zh-CN.md)
 
-`v1.0.0` 是历史发布快照；`v1.1.0` 描述 Boss Mode，`v1.2.0` 描述受控执行 v1，`v1.3.0` 描述隔离执行 v2，`v1.4.0` 描述主会话对话投影。仓库内的中文文档与 Release notes 保持一致。
+`v1.0.0` 是历史发布快照；`v1.1.0` 描述 Boss Mode，`v1.2.0` 描述受控执行 v1，`v1.3.0` 描述隔离执行 v2，`v1.4.0` 描述主会话对话投影，`v1.5.0` 描述独立 Agent 对话模块。仓库内的中文文档与 Release notes 保持一致。

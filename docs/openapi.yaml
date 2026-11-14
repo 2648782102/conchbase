@@ -1566,6 +1566,98 @@ paths:
           $ref: '#/components/responses/OrganizationValidationError'
         '503':
           $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/agent-chat/agents:
+    get:
+      operationId: listAgentChatAgents
+      summary: List configured Agents available for a direct Agent Chat conversation.
+      responses:
+        '200':
+          description: Configured Agents and their pinned public identity.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentChatAgentList'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/agent-chat/conversations:
+    post:
+      operationId: createAgentChatConversation
+      summary: Create one direct Agent Chat conversation pinned to a configured Agent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentChatConversationCreateRequest'
+      responses:
+        '201':
+          description: Created Agent Chat conversation with pinned Agent and model identity.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentChatConversationView'
+        '400':
+          $ref: '#/components/responses/OrganizationValidationError'
+        '404':
+          $ref: '#/components/responses/OrganizationNotFoundError'
+        '409':
+          $ref: '#/components/responses/OrganizationConflictError'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/agent-chat/conversations/{conversationId}:
+    get:
+      operationId: getAgentChatConversation
+      summary: Read one direct Agent Chat conversation and its published messages.
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^chat_[0-9a-f]{24}$'
+      responses:
+        '200':
+          description: Agent Chat conversation with bounded user and assistant messages.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentChatConversationView'
+        '404':
+          $ref: '#/components/responses/OrganizationNotFoundError'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/agent-chat/conversations/{conversationId}/messages:
+    post:
+      operationId: postAgentChatMessage
+      summary: Send one bounded user message to a configured Agent and start a real Agent-backed model task.
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^chat_[0-9a-f]{24}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentChatMessageRequest'
+      responses:
+        '202':
+          description: User message accepted and assistant reply task started.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentChatMessageResult'
+        '400':
+          $ref: '#/components/responses/OrganizationValidationError'
+        '404':
+          $ref: '#/components/responses/OrganizationNotFoundError'
+        '409':
+          $ref: '#/components/responses/OrganizationConflictError'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
   /v1/execution/health:
     get:
       operationId: getExecutionHealth
@@ -2430,6 +2522,11 @@ components:
           const: '1.4.0'
         conversationPaths:
           const: 2
+        agentChatContract:
+          type: string
+          const: '1.5.0'
+        agentChatPaths:
+          const: 4
     Error:
       type: object
       additionalProperties: false
@@ -4935,3 +5032,121 @@ components:
           type: [string, 'null']
         hasMore:
           type: boolean
+    AgentChatVersion:
+      type: string
+      const: '1.5.0'
+    AgentChatAgentView:
+      type: object
+      additionalProperties: false
+      required: [id, name, currentRevisionId, providerId, modelId, isDefault, archived]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        currentRevisionId:
+          type: string
+        providerId:
+          type: string
+        modelId:
+          type: string
+        isDefault:
+          type: boolean
+        archived:
+          type: boolean
+    AgentChatAgentList:
+      type: object
+      additionalProperties: false
+      required: [version, agents]
+      properties:
+        version:
+          $ref: '#/components/schemas/AgentChatVersion'
+        agents:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentChatAgentView'
+    AgentChatConversationCreateRequest:
+      type: object
+      additionalProperties: false
+      required: []
+      properties:
+        agentId:
+          type: string
+          minLength: 1
+          maxLength: 200
+    AgentChatMessageState:
+      type: string
+      enum: [published, pending, succeeded, failed, cancelled]
+    AgentChatMessage:
+      type: object
+      additionalProperties: false
+      required: [id, sequence, author, body, state, taskId, error]
+      properties:
+        id:
+          type: string
+          pattern: '^amsg_[0-9a-f]{24}$'
+        sequence:
+          type: integer
+          minimum: 1
+        author:
+          type: string
+          enum: [user, assistant, runtime]
+        body:
+          type: string
+          maxLength: 12000
+        state:
+          $ref: '#/components/schemas/AgentChatMessageState'
+        taskId:
+          type: [string, 'null']
+        error:
+          type: [string, 'null']
+    AgentChatConversationView:
+      type: object
+      additionalProperties: false
+      required: [version, id, agentId, agentRevisionId, providerId, modelId, configurationRevisionId, messages]
+      properties:
+        version:
+          $ref: '#/components/schemas/AgentChatVersion'
+        id:
+          type: string
+          pattern: '^chat_[0-9a-f]{24}$'
+        agentId:
+          type: string
+        agentRevisionId:
+          type: string
+        providerId:
+          type: string
+        modelId:
+          type: string
+        configurationRevisionId:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentChatMessage'
+    AgentChatMessageRequest:
+      type: object
+      additionalProperties: false
+      required: [text, idempotencyKey]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 6000
+        idempotencyKey:
+          type: string
+          minLength: 1
+          maxLength: 200
+    AgentChatMessageResult:
+      type: object
+      additionalProperties: false
+      required: [version, conversationId, userMessage, assistantMessage]
+      properties:
+        version:
+          $ref: '#/components/schemas/AgentChatVersion'
+        conversationId:
+          type: string
+        userMessage:
+          $ref: '#/components/schemas/AgentChatMessage'
+        assistantMessage:
+          $ref: '#/components/schemas/AgentChatMessage'

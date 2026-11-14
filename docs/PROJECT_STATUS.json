@@ -32,6 +32,11 @@
       "pathCount": 2,
       "frozen": true
     },
+    "agentChat": {
+      "version": "1.5.0",
+      "pathCount": 4,
+      "frozen": true
+    },
     "workContractVersion": 2,
     "databaseUserVersion": 3,
     "currentPrivateDatabaseUserVersion": 4,
@@ -177,6 +182,11 @@
       "id": "primary-conversation-projection",
       "summary": "ADR 0045 implements an additive 1.4.0 primary-conversation read model over Runtime-owned organization facts, with bounded user messages, Boss acknowledgements, worker activity, reports, Attention, system status, cursors, and no raw transcripts or private state.",
       "evidence": "src/runtime/primary-conversation.ts"
+    },
+    {
+      "id": "agent-chat-module",
+      "summary": "ADR 0046 implements an additive 1.5.0 Agent Chat module that reuses configured Agent revisions and Agent-backed tasks over the user-configured Magpie OpenAI-compatible protocol endpoint.",
+      "evidence": "src/runtime/agent-chat.ts"
     }
   ],
   "validationEvidence": [
@@ -294,6 +304,12 @@
       "id": "primary-conversation-projection-fixture",
       "summary": "An executable fixture covers ordered primary-conversation messages, bounded cursors, duplicate suppression, no private-state leakage, 1.4.0 discovery, and HTTP error paths.",
       "evidence": "tests/primary-conversation.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "agent-chat-fixture",
+      "summary": "An executable fixture covers configured Agent conversation creation, real Agent-backed model reply, idempotent replay, bounded errors, 1.5.0 discovery, and no private-state leakage.",
+      "evidence": "tests/agent-chat.test.ts",
       "executableFixture": true
     }
   ],

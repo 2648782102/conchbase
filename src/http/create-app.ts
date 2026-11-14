@@ -6,8 +6,10 @@ import { BossModeService } from '../runtime/boss-mode-service.js';
 import { ControlledExecutionService } from '../runtime/controlled-execution.js';
 import { IsolatedExecutionService } from '../runtime/isolated-execution.js';
 import { PrimaryConversationService } from '../runtime/primary-conversation.js';
+import { AgentChatService } from '../runtime/agent-chat.js';
 import { installAuthHook } from './auth.js';
 import { registerConfigurationRoutes } from './routes/v1/configuration.js';
+import { registerAgentChatRoutes } from './routes/v1/agent-chat.js';
 import { registerConversationRoutes } from './routes/v1/conversation.js';
 import { registerExecutionRoutes } from './routes/v1/execution.js';
 import { registerExecutionRunRoutes } from './routes/v1/execution-runs.js';
@@ -31,6 +33,7 @@ export interface CreateAppOptions {
   executionService?: ControlledExecutionService;
   executionRunService?: IsolatedExecutionService;
   conversationService?: PrimaryConversationService;
+  agentChatService?: AgentChatService;
   config?: RuntimeConfig;
 }
 
@@ -43,6 +46,8 @@ export function createApp(options: CreateAppOptions = {}) {
     ?? options.taskService?.store?.organization;
   const conversation = options.conversationService
     ?? (organization ? new PrimaryConversationService() : undefined);
+  const agentChat = options.agentChatService
+    ?? (options.taskService ? new AgentChatService(options.taskService) : undefined);
   const bossMode = options.bossModeService
     ?? (options.taskService && organization
       ? new BossModeService(organization, options.taskService, conversation
@@ -69,6 +74,7 @@ export function createApp(options: CreateAppOptions = {}) {
     Boolean(execution),
     Boolean(executionRuns),
     Boolean(conversation),
+    Boolean(agentChat),
   );
   registerConfigurationRoutes(app, options.taskService);
   registerEventRoutes(app, options.taskService);
@@ -86,6 +92,7 @@ export function createApp(options: CreateAppOptions = {}) {
       attempt: task.attempt,
     }))
     : undefined);
+  registerAgentChatRoutes(app, agentChat);
   registerExecutionRoutes(app, execution);
   registerExecutionRunRoutes(app, executionRuns);
 
