@@ -170,6 +170,10 @@ export function registerAgentChatRoutes(
       };
       const write = (frame: AgentChatStreamFrame) => {
         if (closed) return;
+        if (response.writableLength > 1_000_000) {
+          close();
+          return;
+        }
         if (frame.eventId !== null) cursor = frame.eventId;
         if (frame.kind === 'message' && frame.messageId !== null) {
           const fingerprint = JSON.stringify(frame.message);
@@ -242,7 +246,16 @@ export function registerAgentChatRoutes(
       interval.unref?.();
 
       heartbeat = setInterval(() => {
-        if (!closed) response.write(': ping\n\n');
+        if (closed) return;
+        write({
+          version: AGENT_CHAT_CONTRACT_VERSION,
+          conversationId,
+          kind: 'health',
+          eventId: cursor,
+          messageId: null,
+          message: null,
+          conversation: null,
+        });
       }, HEARTBEAT_MS);
       heartbeat.unref?.();
     },

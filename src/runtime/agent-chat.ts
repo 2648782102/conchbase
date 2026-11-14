@@ -139,7 +139,7 @@ export interface AgentChatApprovalResult {
 export interface AgentChatStreamFrame {
   readonly version: typeof AGENT_CHAT_CONTRACT_VERSION;
   readonly conversationId: string;
-  readonly kind: 'snapshot' | 'message';
+  readonly kind: 'snapshot' | 'message' | 'health';
   readonly eventId: string | null;
   readonly messageId: string | null;
   readonly message: AgentChatMessage | null;

@@ -153,8 +153,11 @@ test('agent chat SSE streams projected tool updates and resumes from a cursor', 
     assert.ok(approvalFrame?.data.message);
 
     const resumed = await fetch(
-      `${base}/v1/agent-chat/conversations/${conversationId}/events?after=${approvalFrame.id}`,
-      { signal: AbortSignal.timeout(20_000) },
+      `${base}/v1/agent-chat/conversations/${conversationId}/events`,
+      {
+        headers: { 'Last-Event-ID': approvalFrame.id },
+        signal: AbortSignal.timeout(20_000),
+      },
     );
     assert.equal(resumed.status, 200);
     const approved = await app.inject({

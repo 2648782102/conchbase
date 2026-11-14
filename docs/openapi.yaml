@@ -5417,7 +5417,7 @@ components:
           type: string
         kind:
           type: string
-          enum: [snapshot, message]
+          enum: [snapshot, message, health]
         eventId:
           type: [string, 'null']
         messageId:
