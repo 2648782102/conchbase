@@ -168,3 +168,63 @@ test('a write-capable tool is not registered in v1', async () => {
     space.cleanup();
   }
 });
+
+test('restarting during a loop interrupts the task without replaying the tool', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-loop-restart-'));
+  const filename = path.join(directory, 'runtime.sqlite');
+  const space = workspace();
+  const stalled = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const signal = init?.signal;
+    return new Promise<Response>((_resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new Error('aborted'));
+        return;
+      }
+      signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+    });
+  }) as typeof globalThis.fetch;
+  const first = new TaskService(
+    new SqliteTaskStore(filename),
+    { magpieBaseUrl: 'http://127.0.0.1:3425', defaultModel: 'fixture/model', fetch: stalled },
+    catalogStub(),
+    { tools: createBuiltinReadTools({ root: space.root }) },
+  );
+  let taskId: string;
+  try {
+    const agent = await first.createAgent({
+      name: '重启测试员',
+      instructions: 'Use tools.',
+      providerId: 'magpie',
+      modelId: 'fixture/model',
+    });
+    const created = await first.createAgentTask({ prompt: 'loop', agentId: agent.id });
+    taskId = created.id;
+    first.startTask(taskId);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  } finally {
+    await first.stop();
+  }
+  const second = new TaskService(
+    new SqliteTaskStore(filename),
+    { magpieBaseUrl: 'http://127.0.0.1:3425', defaultModel: 'fixture/model', fetch: stubFetch() },
+    catalogStub(),
+    { tools: createBuiltinReadTools({ root: space.root }) },
+  );
+  try {
+    const task = second.store.getTask(taskId);
+    assert.equal(task?.state, 'interrupted');
+    const events = second.store.listEvents(null).filter((event) => event.taskId === taskId);
+    assert.equal(events.some((event) => event.type === ('agent_loop.tool_executed' as never)), false);
+  } finally {
+    second.close();
+    space.cleanup();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+function stubFetch(): typeof globalThis.fetch {
+  return (async () => new Response(sse('done'), {
+    status: 200,
+    headers: { 'content-type': 'text/event-stream' },
+  })) as typeof globalThis.fetch;
+}
