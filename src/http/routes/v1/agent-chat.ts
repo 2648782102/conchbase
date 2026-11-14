@@ -208,6 +208,7 @@ export function registerAgentChatRoutes(
         for (const event of replayed) {
           const frame = service.eventFrame(conversationId, event.id, event.taskId);
           if (frame) write(frame);
+          else cursor = event.id;
         }
       } catch (cause) {
         close();
