@@ -23,6 +23,10 @@ export interface OrganizationIntentParserInput {
   readonly signal?: AbortSignal;
   readonly snapshot?: OrganizationSnapshot;
   readonly modelReference?: { readonly providerId: string; readonly modelId: string };
+  readonly conversation?: readonly {
+    readonly author: 'user' | 'assistant';
+    readonly body: string;
+  }[];
 }
 
 export interface OrganizationIntentParseResult {
@@ -66,8 +70,13 @@ export function parseStructuredOrganizationResult(
     throw new OrganizationIntentParseError('Structured adapter must return at most 16 actions.');
   }
   const baseSequence = input.snapshot?.events.length ?? input.expectedSequence;
-  const actions = rawActions.map((candidate, index) =>
-    actionAt(parseOrganizationAction(candidate), baseSequence + index));
+  const actions = rawActions.map((candidate, index) => {
+    const normalized = Boolean(candidate) && typeof candidate === 'object' && !Array.isArray(candidate)
+      && (candidate as Record<string, unknown>).type === 'open_project'
+      ? { ...(candidate as Record<string, unknown>), originTriggerId: input.intentId }
+      : candidate;
+    return actionAt(parseOrganizationAction(normalized), baseSequence + index);
+  });
   const relay = value.relay === null || value.relay === undefined ? null : value.relay;
   if (relay !== null && (typeof relay !== 'string' || relay.length > 2000)) {
     throw new OrganizationIntentParseError('Structured adapter relay is not bounded.');
@@ -80,6 +89,43 @@ export function parseStructuredOrganizationResult(
     intentId: input.intentId,
     actions: Object.freeze(actions),
     relay,
+  });
+}
+
+export function parseBossConversationResult(
+  input: OrganizationIntentParserInput,
+  value: unknown,
+): OrganizationIntentParseResult {
+  if (!isRecord(value)) throw new OrganizationIntentParseError('Boss conversation output must be an object.');
+  const unknown = Object.keys(value).filter((key) => !['reply', 'actions'].includes(key));
+  if (unknown.length > 0) {
+    throw new OrganizationIntentParseError(`Boss conversation output has unknown fields: ${unknown.sort().join(', ')}.`);
+  }
+  const reply = value.reply;
+  if (typeof reply !== 'string' || reply.trim().length === 0 || reply.length > 12_000) {
+    throw new OrganizationIntentParseError('Boss conversation reply is not bounded.');
+  }
+  const boundedReply = reply.replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+  if (/sk-|Bearer|ghp_|github_pat_|password|apiKey|privateKey|\.conchbase\/|runtime\.sqlite/i.test(boundedReply)) {
+    throw new OrganizationIntentParseError('Boss conversation reply contains secret-like content.');
+  }
+  const rawActions = value.actions;
+  if (!Array.isArray(rawActions) || rawActions.length > 16) {
+    throw new OrganizationIntentParseError('Boss conversation must return at most 16 actions.');
+  }
+  const baseSequence = input.snapshot?.events.length ?? input.expectedSequence;
+  const actions = rawActions.map((candidate, index) => {
+    const normalized = Boolean(candidate) && typeof candidate === 'object' && !Array.isArray(candidate)
+      && (candidate as Record<string, unknown>).type === 'open_project'
+      ? { ...(candidate as Record<string, unknown>), originTriggerId: input.intentId }
+      : candidate;
+    return actionAt(parseOrganizationAction(normalized), baseSequence + index);
+  });
+  return Object.freeze({
+    version: ORGANIZATION_INTENT_PARSER_VERSION,
+    intentId: input.intentId,
+    actions: Object.freeze(actions),
+    relay: boundedReply,
   });
 }
 
@@ -233,6 +279,19 @@ const OPENAI_COMPATIBLE_PARSER_INSTRUCTIONS = [
   'If the user text cannot be represented exactly by accepted actions, return {"actions":[],"relay":"No safe structured action."}.',
 ].join(' ');
 
+const BOSS_CONVERSATION_INSTRUCTIONS = [
+  '你是 Conchbase 的老板 Agent，和用户进行自然、清楚、有帮助的中文对话。',
+  '你拥有组织项目、招聘员工、汇报、归档、恢复等能力，但只有在用户目标确实需要时才主动使用；普通聊天、分析、建议和追问不要产生动作。',
+  '能力提升来自 Runtime；你只能提出建议动作，不能直接执行、不能授权、不能读取密钥或文件。',
+  'Return only strict JSON with exactly two fields: {"reply":string,"actions":[]}.',
+  'reply 是面向用户的自然语言回复，可以解释建议、说明已准备的动作或提出下一步问题，不要暴露内部推理。',
+  'actions 中的每项必须是受支持的组织动作对象；type 使用 snake_case，且必须包含 expectedSequence 与 projectId。',
+  '动作类型只允许 open_project, activate_project, create_agent, authorize_worker, start_worker, report_worker, request_attention, answer_attention, withdraw_attention, quiet_project, archive_project, resume_project, offboard_worker, record_intent, activate_delegation, record_worker_execution, resume_worker。',
+  'For create_agent include workerId, delegationId, agentRevisionId, displayName, instructionsDigest, scope, capabilities, model, maxDelegationDepth, ttlEvents. Runtime replaces expectedSequence and model references.',
+  'Never invent capabilities, secret values, private paths, URLs, role enums, or extra top-level fields.',
+  'If no organization action is useful, return {"reply":"你的自然回复","actions":[]}.',
+].join(' ');
+
 export function createOpenAiCompatibleOrganizationIntentParser(options: {
   readonly baseUrl: string;
   readonly model: string;
@@ -305,6 +364,88 @@ export function createOpenAiCompatibleOrganizationIntentParser(options: {
         throw new OrganizationIntentParseError('Model output is not valid JSON.');
       }
       return parseStructuredResult(input, structured);
+    },
+  };
+}
+
+export function createOpenAiCompatibleBossConversationParser(options: {
+  readonly baseUrl: string;
+  readonly model: string;
+  readonly appKey?: string;
+  readonly fetch?: typeof globalThis.fetch;
+  readonly timeoutMs?: number;
+}): OrganizationIntentParser {
+  const base = options.baseUrl.replace(/\/+$/, '');
+  const endpoint = `${base}/v1/chat/completions`;
+  const fetchImpl = options.fetch ?? globalThis.fetch;
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    'User-Agent': 'Conchbase/1.0.0',
+  };
+  if (options.appKey) headers.Authorization = `Bearer ${options.appKey}`;
+
+  return {
+    async parse(input) {
+      const timeout = AbortSignal.timeout(options.timeoutMs ?? 120_000);
+      const signal = input.signal ? AbortSignal.any([input.signal, timeout]) : timeout;
+      let response: Response;
+      try {
+        response = await fetchImpl(endpoint, {
+          method: 'POST',
+          headers,
+          signal,
+          body: JSON.stringify({
+            model: options.model,
+            stream: false,
+            messages: [
+              { role: 'system', content: BOSS_CONVERSATION_INSTRUCTIONS },
+              {
+                role: 'user',
+                content: JSON.stringify({
+                  intentId: input.intentId,
+                  text: input.text,
+                  expectedSequence: input.expectedSequence,
+                  最近对话: (input.conversation ?? []).slice(-8).map((message) => ({
+                    author: message.author,
+                    body: message.body.slice(0, 2000),
+                  })),
+                  projectIds: (input.snapshot?.projects ?? []).map((project) => project.id),
+                  workerIds: (input.snapshot?.workers ?? []).map((worker) => worker.id),
+                  openAttentionIds: (input.snapshot?.attentionRequests ?? [])
+                    .filter((request) => request.state === 'open')
+                    .map((request) => request.id),
+                }),
+              },
+            ],
+          }),
+        });
+      } catch (cause) {
+        if (input.signal?.aborted) throw cause;
+        throw new OrganizationIntentParseError('Boss model provider request failed; upstream is unavailable.');
+      }
+      if (!response.ok) {
+        throw new OrganizationIntentParseError(`Boss model provider returned HTTP ${response.status}; upstream is unavailable.`);
+      }
+      let payload: unknown;
+      try {
+        payload = await response.json();
+      } catch {
+        throw new OrganizationIntentParseError('Boss model provider returned invalid JSON.');
+      }
+      const content = (payload as {
+        choices?: readonly { message?: { content?: unknown } }[];
+      })?.choices?.[0]?.message?.content;
+      if (typeof content !== 'string' || content.trim().length === 0) {
+        throw new OrganizationIntentParseError('Boss model provider returned an empty completion.');
+      }
+      let structured: unknown;
+      try {
+        structured = JSON.parse(content);
+      } catch {
+        throw new OrganizationIntentParseError('Boss model output is not valid JSON.');
+      }
+      return parseBossConversationResult(input, structured);
     },
   };
 }

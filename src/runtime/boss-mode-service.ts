@@ -32,6 +32,10 @@ export class BossModeServiceError extends Error {
 export interface BossModeSubmitInput {
   readonly text: string;
   readonly idempotencyKey: string;
+  readonly conversation?: readonly {
+    readonly author: 'user' | 'assistant';
+    readonly body: string;
+  }[];
 }
 
 export interface BossModeExecution {
@@ -90,7 +94,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function validateSubmission(input: unknown): BossModeSubmitInput {
   if (!isRecord(input)) throw new BossModeServiceError('Boss mode intent must be an object.');
   const allowed = new Set(['text', 'idempotencyKey']);
-  const unknown = Object.keys(input).filter((key) => !allowed.has(key));
+  const conversation = isRecord(input.conversation) || Array.isArray(input.conversation)
+    ? input.conversation
+    : undefined;
+  const unknown = Object.keys(input).filter((key) => !allowed.has(key) && key !== 'conversation');
   if (unknown.length > 0) throw new BossModeServiceError(`Unknown fields: ${unknown.sort().join(', ')}.`);
   if (typeof input.text !== 'string' || input.text.trim().length === 0 || input.text.length > 20_000) {
     throw new BossModeServiceError('text must be a non-empty string of at most 20000 characters.');
@@ -101,7 +108,25 @@ function validateSubmission(input: unknown): BossModeSubmitInput {
   if (/sk-|Bearer|ghp_|github_pat_|password|apiKey|privateKey/i.test(`${input.text} ${input.idempotencyKey}`)) {
     throw new BossModeServiceError('Boss mode intent contains secret-like content.');
   }
-  return Object.freeze({ text: input.text, idempotencyKey: input.idempotencyKey });
+  let boundedConversation: readonly { readonly author: 'user' | 'assistant'; readonly body: string }[] | undefined;
+  if (conversation !== undefined) {
+    if (!Array.isArray(conversation) || conversation.length > 8) {
+      throw new BossModeServiceError('conversation must contain at most 8 bounded messages.');
+    }
+    boundedConversation = Object.freeze(conversation.map((item, index) => {
+      if (!isRecord(item) || (item.author !== 'user' && item.author !== 'assistant')
+        || typeof item.body !== 'string' || item.body.length === 0 || item.body.length > 6000
+        || /sk-|Bearer|ghp_|github_pat_|password|apiKey|privateKey/i.test(item.body)) {
+        throw new BossModeServiceError(`conversation[${index}] is not a bounded safe message.`);
+      }
+      return Object.freeze({ author: item.author, body: item.body });
+    }));
+  }
+  return Object.freeze({
+    text: input.text,
+    idempotencyKey: input.idempotencyKey,
+    ...(boundedConversation ? { conversation: boundedConversation } : {}),
+  });
 }
 
 function boundedError(cause: unknown): string {
@@ -168,6 +193,7 @@ export class BossModeService {
       text: submission.text,
       expectedSequence: snapshot.events.length,
       snapshot,
+      ...(submission.conversation ? { conversation: submission.conversation } : {}),
     };
     const modelReference = await this.resolveModelReference();
     const parsed = await this.prepareParsedActions({ ...parseInput, modelReference }, modelReference);

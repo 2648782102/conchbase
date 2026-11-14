@@ -8,7 +8,10 @@ import { createTaskService } from '../src/runtime/task-service.js';
 import { AgentChatService } from '../src/runtime/agent-chat.js';
 import { BossModeService } from '../src/runtime/boss-mode-service.js';
 import { InMemoryOrganizationStore } from '../src/runtime/organization-store.js';
-import type { OrganizationIntentParser } from '../src/runtime/organization-intent-parser.js';
+import {
+  createOpenAiCompatibleBossConversationParser,
+  type OrganizationIntentParser,
+} from '../src/runtime/organization-intent-parser.js';
 import { parseOrganizationAction, type OrganizationAction } from '../src/runtime/organization-contract.js';
 
 function fakeFetch(): typeof globalThis.fetch {
@@ -24,6 +27,46 @@ function fakeFetch(): typeof globalThis.fetch {
         'data: {"choices":[{"delta":{"content":"你好，我是配置好的 Agent。"},"finish_reason":null}]}\n\ndata: [DONE]\n\n',
         { status: 200, headers: { 'content-type': 'text/event-stream' } },
       );
+    }
+    return new Response(JSON.stringify({ error: 'not found' }), { status: 404 });
+  }) as typeof globalThis.fetch;
+}
+
+function bossConversationFetch(): typeof globalThis.fetch {
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith('/v1/models')) {
+      return new Response(JSON.stringify({
+        data: [{ id: 'fixture/chat-model', display_name: 'Fixture Chat Model' }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    if (url.endsWith('/v1/chat/completions')) {
+      const body = JSON.parse(String(init?.body)) as {
+        messages: readonly { role: string; content: string }[];
+      };
+      const context = body.messages[1]?.content ?? '';
+      const action = /建立|项目|招聘|归档|恢复/.test(context);
+      return new Response(JSON.stringify({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              reply: action
+                ? '我已经把这件事整理成项目，后续会在这里同步进展。'
+                : '我建议先明确目标和验收标准，再决定要不要拆项目与招聘员工。',
+              actions: action ? [{
+                type: 'open_project',
+                expectedSequence: 0,
+                projectId: 'project_boss_conversation',
+                originTriggerId: 'int_boss_conversation',
+              }, {
+                type: 'activate_project',
+                expectedSequence: 1,
+                projectId: 'project_boss_conversation',
+              }] : [],
+            }),
+          },
+        }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
     }
     return new Response(JSON.stringify({ error: 'not found' }), { status: 404 });
   }) as typeof globalThis.fetch;
@@ -299,6 +342,137 @@ test('boss mode invokes the accepted callback before returning its final result'
     assert.equal(accepted, true);
     assert.equal(result.reply, '老板已接受。');
   } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('boss agent publishes a natural model reply for ordinary conversation', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-natural-chat-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: bossConversationFetch(),
+  });
+  const organization = new InMemoryOrganizationStore();
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/chat-model',
+    fetch: bossConversationFetch(),
+  });
+  const bossMode = new BossModeService(organization, taskService, { parser, waitForTasks: false });
+  const agentChat = new AgentChatService(taskService, bossMode);
+  const app = createApp({ logger: false, taskService, organizationStore: organization, bossModeService: bossMode, agentChatService: agentChat });
+  try {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/v1/agent-chat/conversations',
+      payload: { agentId: 'boss-agent' },
+    });
+    const conversationId = created.json().id as string;
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: { text: '请帮我分析一下今天的工作安排，并给出建议', idempotencyKey: 'boss-natural-1' },
+    });
+    assert.equal(sent.statusCode, 202);
+    assert.equal(sent.json().assistantMessage.taskId, null);
+    let view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+    for (let attempt = 0; attempt < 50 && view.json().messages[1]?.phase !== 'terminal'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+    }
+    assert.equal(view.json().messages[1]?.state, 'replied');
+    assert.match(view.json().messages[1]?.body ?? '', /明确目标和验收标准/);
+    assert.doesNotMatch(view.json().messages[1]?.body ?? '', /意图已收到|已形成|模型未返回内容/);
+    assert.equal(organization.get().projects.length, 0);
+    assert.equal(taskService.store.listTasks().length, 0);
+  } finally {
+    await app.close();
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('boss agent uses an organization capability and still replies naturally', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-action-chat-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: bossConversationFetch(),
+  });
+  const organization = new InMemoryOrganizationStore();
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/chat-model',
+    fetch: bossConversationFetch(),
+  });
+  const bossMode = new BossModeService(organization, taskService, { parser, waitForTasks: false });
+  const agentChat = new AgentChatService(taskService, bossMode);
+  const app = createApp({ logger: false, taskService, organizationStore: organization, bossModeService: bossMode, agentChatService: agentChat });
+  try {
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: 'boss-agent' },
+    });
+    const conversationId = created.json().id as string;
+    await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: { text: '请建立项目 Alpha 并安排后续跟进', idempotencyKey: 'boss-action-1' },
+    });
+    let view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+    for (let attempt = 0; attempt < 50 && view.json().messages[1]?.phase !== 'terminal'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+    }
+    assert.match(view.json().messages[1]?.body ?? '', /整理成项目/);
+    assert.equal(view.json().messages[1]?.state, 'replied');
+    assert.equal(organization.get().projects.length, 1);
+    assert.equal(organization.get().projects[0]?.state, 'active');
+  } finally {
+    await app.close();
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('boss agent classifies malformed conversational model output as unavailable', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-unavailable-chat-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: bossConversationFetch(),
+  });
+  const organization = new InMemoryOrganizationStore();
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/chat-model',
+    fetch: (async () => new Response(JSON.stringify({
+      choices: [{ message: { content: '我只是一段普通文本' } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof globalThis.fetch,
+  });
+  const bossMode = new BossModeService(organization, taskService, { parser, waitForTasks: false });
+  const agentChat = new AgentChatService(taskService, bossMode);
+  const app = createApp({ logger: false, taskService, organizationStore: organization, bossModeService: bossMode, agentChatService: agentChat });
+  try {
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: 'boss-agent' },
+    });
+    const conversationId = created.json().id as string;
+    await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: { text: '你好', idempotencyKey: 'boss-unavailable-1' },
+    });
+    let view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+    for (let attempt = 0; attempt < 50 && view.json().messages[1]?.phase !== 'terminal'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+    }
+    assert.equal(view.json().messages[1]?.state, 'unavailable');
+    assert.doesNotMatch(view.json().messages[1]?.body ?? '', /意图已收到|已形成/);
+  } finally {
+    await app.close();
     await taskService.stop();
     rmSync(directory, { recursive: true, force: true });
   }

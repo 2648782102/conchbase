@@ -9,7 +9,10 @@ import { IsolatedExecutionService } from './runtime/isolated-execution.js';
 import { PrimaryConversationService } from './runtime/primary-conversation.js';
 import { MagpieModelCatalog } from './runtime/model-catalog.js';
 import { createTaskService } from './runtime/task-service.js';
-import { createOpenAiCompatibleOrganizationIntentParser } from './runtime/organization-intent-parser.js';
+import {
+  createOpenAiCompatibleBossConversationParser,
+  createOpenAiCompatibleOrganizationIntentParser,
+} from './runtime/organization-intent-parser.js';
 
 function usage(): string {
   return `Conchbase 1.0.0
@@ -32,6 +35,7 @@ Configuration:
   CONCHBASE_MAGPIE_APP_KEY       Optional app-naming key (magpie-<app-id>)
   CONCHBASE_MODEL                Model id; run and models do not require it
   CONCHBASE_ORGANIZATION_INTENT_MODEL   Optional structured model for Boss-mode intents
+  CONCHBASE_BOSS_MODEL                  Optional model for natural 老板 Agent conversation
   CONCHBASE_DB                   Runtime SQLite path (default .conchbase/runtime.sqlite)
   CONCHBASE_ALLOW_AUTHENTICATED_REMOTE_BINDING=1   Enable reviewed non-loopback binding
   CONCHBASE_AUTH_TOKEN_DIGEST    sha256 digest of an approved bearer token
@@ -56,7 +60,13 @@ function createBossModeService(
       model: config.organizationIntentModel,
       ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
     })
-    : undefined;
+    : config.bossModel ?? config.defaultModel
+      ? createOpenAiCompatibleBossConversationParser({
+        baseUrl: config.magpieBaseUrl,
+        model: config.bossModel ?? config.defaultModel,
+        ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
+      })
+      : undefined;
   return new BossModeService(service.store.organization, service, {
     ...(parser ? { parser } : {}),
     conversation: { recordIntentText: (intentId, text) => conversation.recordIntentText(intentId, text) },

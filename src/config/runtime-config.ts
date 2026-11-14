@@ -9,6 +9,7 @@ export interface RuntimeConfig {
   magpieAppKey?: string;
   defaultModel: string;
   organizationIntentModel?: string;
+  bossModel?: string;
   allowAuthenticatedRemoteBinding: boolean;
   authTokenDigest?: string;
 }
@@ -64,6 +65,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     ...(env.CONCHBASE_ORGANIZATION_INTENT_MODEL
       ? { organizationIntentModel: env.CONCHBASE_ORGANIZATION_INTENT_MODEL }
       : {}),
+    ...(env.CONCHBASE_BOSS_MODEL ? { bossModel: env.CONCHBASE_BOSS_MODEL } : {}),
     allowAuthenticatedRemoteBinding,
     ...(authTokenDigest ? { authTokenDigest } : {}),
   };

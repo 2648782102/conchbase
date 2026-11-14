@@ -53,11 +53,19 @@ test('accepts configured local provider and database values', () => {
     CONCHBASE_MAGPIE_APP_KEY: 'magpie-conchbase',
     CONCHBASE_MODEL: 'fixture/model',
     CONCHBASE_ORGANIZATION_INTENT_MODEL: 'fixture/organization-parser',
+    CONCHBASE_BOSS_MODEL: 'fixture/boss-chat',
   });
   assert.equal(config.databasePath, '/tmp/conchbase-test.sqlite');
   assert.equal(config.magpieAppKey, 'magpie-conchbase');
   assert.equal(config.defaultModel, 'fixture/model');
   assert.equal(config.organizationIntentModel, 'fixture/organization-parser');
+  assert.equal(config.bossModel, 'fixture/boss-chat');
+});
+
+test('uses the configured default model for Boss conversation when no override is set', () => {
+  const config = loadRuntimeConfig({ CONCHBASE_MODEL: 'fixture/model' });
+  assert.equal(config.defaultModel, 'fixture/model');
+  assert.equal(config.bossModel, undefined);
 });
 
 test('rejects non-loopback provider URLs and malformed app keys', () => {

@@ -53,7 +53,9 @@ export CONCHBASE_ORGANIZATION_INTENT_MODEL='deepseek/deepseek-flash'
 npm run dev
 ```
 
-未设置时使用确定性离线解析器。模型或解析器输出只是不可信提案，所有组织动作都由 Conchbase 重新校验和授权。
+未设置时使用 `CONCHBASE_MODEL` 或 `CONCHBASE_BOSS_MODEL` 指定的老板自然对话解析器；两者都未设置时才回退到确定性离线解析器。模型或解析器输出只是不可信提案，所有组织动作都由 Conchbase 重新校验和授权。
+
+设置 `CONCHBASE_MODEL` 后，老板 Agent 会默认通过同一个协议端点进行自然对话；可用 `CONCHBASE_BOSS_MODEL` 单独覆盖模型。用户只和老板对话，是否使用组织能力由老板判断；所有动作仍由 Runtime 校验。
 
 独立 Agent 对话不需要在 Conchbase 配置供应商凭证；请在 Magpie 中配置模型、供应商、凭证、路由与 app key，Conchbase 只通过 OpenAI 兼容协议接口访问本机 Magpie。
 

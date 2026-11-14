@@ -14,6 +14,7 @@
 - 组织主会话 `1.4.0` 仍保持 Boss 编排事实投影，不因本模块改变测试逻辑或产品语义。
 - Magpie 只承担协议接口：用户自行在 Magpie 配置模型、供应商、凭证、路由与 app key；Conchbase 不在本模块管理上游凭证或模型目录配置。
 - Agent 显示名统一使用中文：动态生成的员工 Agent 会获得中文角色名，已有的 `worker-validator` / `worker-scout` 等英文名在对话与项目视图中显示为中文别名，不改变 `agentId` 或 revision id。
+- [ADR 0049](decisions/0049-boss-conversation.md) 让 Runtime 拥有的「老板 Agent」通过同一个用户配置协议端点进行自然对话；老板自行判断何时使用组织能力，Runtime 校验全部动作，公开路径与 schema 不变。`CONCHBASE_MODEL` 作为默认模型，`CONCHBASE_BOSS_MODEL` 可选覆盖。
 
 ## 验证
 

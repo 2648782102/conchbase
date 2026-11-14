@@ -151,7 +151,7 @@ function taskStateToMessageState(task: TaskSnapshot): AgentChatMessageState {
 }
 
 function unavailableError(message: string | null): boolean {
-  return /model catalog is unavailable|provider model catalog is unavailable|upstream/i.test(message ?? '');
+  return /model catalog is unavailable|provider model catalog is unavailable|upstream|not valid JSON|empty completion|invalid JSON|not bounded|unknown fields|secret-like/i.test(message ?? '');
 }
 
 function phaseForState(state: AgentChatMessageState): AgentChatMessagePhase {
@@ -409,6 +409,10 @@ export class AgentChatService {
   ): Promise<AgentChatMessageResult> {
     const bossMode = this.bossMode;
     if (!bossMode) throw new AgentChatServiceError('Boss Agent is not configured.', 503);
+    const conversation = record.messages.slice(-8).map((message) => ({
+      author: message.author === 'user' ? 'user' as const : 'assistant' as const,
+      body: message.body,
+    }));
     const userMessage = message({
       id: reference('amsg', `${record.id}:${idempotencyKey}:user`),
       sequence: record.messages.length + 1,
@@ -459,6 +463,7 @@ export class AgentChatService {
     void bossMode.submit({
         text,
         idempotencyKey: `agent-chat:${record.id}:${idempotencyKey}`,
+        conversation,
       }, onAccepted).catch((cause: unknown) => {
         const textError = cause instanceof Error ? cause.message.slice(0, 240) : 'Boss Agent submit failed.';
         this.replaceMessage(record, assistantMessage.id, {

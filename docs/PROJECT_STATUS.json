@@ -197,6 +197,11 @@
       "id": "agent-chat-conversation-states",
       "summary": "ADR 0048 implements a Runtime-published Agent Chat conversation state model with thinking, streaming, organizing, waiting_attention, replied, failed, unavailable, and cancelled states.",
       "evidence": "src/runtime/agent-chat.ts"
+    },
+    {
+      "id": "boss-natural-conversation",
+      "summary": "ADR 0049 implements natural Boss Agent conversation through the user-configured OpenAI-compatible protocol endpoint, with bounded context, optional Runtime-adjudicated actions, and no new public path or schema.",
+      "evidence": "src/runtime/organization-intent-parser.ts"
     }
   ],
   "validationEvidence": [
@@ -331,6 +336,12 @@
     {
       "id": "agent-chat-conversation-states-fixture",
       "summary": "An executable fixture covers normal Agent thinking/streaming/replied states and Runtime-owned conversation fields without private-state leakage.",
+      "evidence": "tests/agent-chat.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "boss-natural-conversation-fixture",
+      "summary": "An executable fixture covers natural Boss replies, optional organization action proposals, strict output rejection, unavailable classification, no fixed fallback phrase, and no normal Agent task creation.",
       "evidence": "tests/agent-chat.test.ts",
       "executableFixture": true
     }

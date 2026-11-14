@@ -8,7 +8,10 @@ import { BossModeService } from './runtime/boss-mode-service.js';
 import { ControlledExecutionService } from './runtime/controlled-execution.js';
 import { IsolatedExecutionService } from './runtime/isolated-execution.js';
 import { PrimaryConversationService } from './runtime/primary-conversation.js';
-import { createOpenAiCompatibleOrganizationIntentParser } from './runtime/organization-intent-parser.js';
+import {
+  createOpenAiCompatibleBossConversationParser,
+  createOpenAiCompatibleOrganizationIntentParser,
+} from './runtime/organization-intent-parser.js';
 
 const config = loadRuntimeConfig();
 mkdirSync(path.dirname(config.databasePath), { recursive: true });
@@ -28,12 +31,18 @@ let servingApp = createApp({
   conversationService,
 });
 
-if (config.organizationIntentModel) {
-  const parser = createOpenAiCompatibleOrganizationIntentParser({
-    baseUrl: config.magpieBaseUrl,
-    model: config.organizationIntentModel,
-    ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
-  });
+if (config.organizationIntentModel || config.bossModel || config.defaultModel) {
+  const parser = config.organizationIntentModel
+    ? createOpenAiCompatibleOrganizationIntentParser({
+      baseUrl: config.magpieBaseUrl,
+      model: config.organizationIntentModel,
+      ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
+    })
+    : createOpenAiCompatibleBossConversationParser({
+      baseUrl: config.magpieBaseUrl,
+      model: config.bossModel ?? config.defaultModel,
+      ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
+    });
   const bossMode = new BossModeService(taskService.store.organization, taskService, {
     parser,
     conversation: { recordIntentText: (intentId, text) => conversationService.recordIntentText(intentId, text) },
