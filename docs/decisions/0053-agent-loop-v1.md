@@ -23,6 +23,8 @@ ADR 0052 accepts a Runtime-owned bounded loop. This ADR fixes the first implemen
 7. Restart during a loop marks the task `interrupted`. No tool side effect is replayed. Retry starts a new attempt from the original prompt.
 8. Write-capable tools, network tools, MCP, Skills, plugins, arbitrary shell, and secret injection remain blocked and require further accepted ADRs.
 
+Because every v1 tool is side-effect class `read`, this slice never enters `waiting_approval`. The approval path accepted by ADR 0052 remains the required path for the first `write` tool, which needs its own accepted ADR.
+
 ## Validation
 
 The following fixtures are implemented and passing:
