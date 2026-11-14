@@ -170,6 +170,9 @@ test('organization reads, attention decisions, and events expose only bounded pu
     const next = await request(app, 'GET', `/v1/organization/events?after=${page.json().nextCursor}&limit=2`);
     assert.equal(next.statusCode, 200);
     assert.equal(next.json().events[0].sequence, 3);
+    const replayFromCursor = await request(app, 'GET', `/v1/organization/events?after=${page.json().nextCursor}`);
+    assert.equal(replayFromCursor.statusCode, 200);
+    assert.equal(replayFromCursor.json().events[0].sequence, 3);
 
     const unknown = await request(app, 'GET', '/v1/organization/events?after=evt_unknown');
     assert.equal(unknown.statusCode, 400);

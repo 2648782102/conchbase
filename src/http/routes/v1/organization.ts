@@ -384,10 +384,11 @@ export function registerOrganizationRoutes(
           const after = organizationEventCursor(request.query.after);
           const limit = organizationEventLimit(request.query.limit);
           const events = organizationStore.events(1000);
-          const start = after === undefined ? 0 : events.findIndex((event) => event.id === after) + 1;
-          if (after !== undefined && start === 0) {
+          const cursorIndex = after === undefined ? -1 : events.findIndex((event) => event.id === after);
+          if (after !== undefined && cursorIndex < 0) {
             return reply.code(400).send({ error: 'Unknown organization event cursor.' });
           }
+          const start = cursorIndex + 1;
           const page = events.slice(start, start + limit);
           const hasMore = start + page.length < events.length;
           return {
