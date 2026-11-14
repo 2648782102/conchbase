@@ -545,7 +545,7 @@ test('a cursor from a different conversation is rejected', async () => {
     );
     assert.equal(response.status, 400);
     const body = await response.json() as { error?: string };
-    assert.match(body.error ?? '', /belong/i);
+    assert.match(body.error ?? '', /Invalid stream cursor/i);
   } finally {
     await app.close();
     await service.stop();

@@ -125,7 +125,7 @@ export function registerAgentChatRoutes(
         ? headerCursor
         : request.query.after;
       if (after !== undefined && !/^evt_[0-9]{12}$/.test(after)) {
-        return errorResponse(reply, new AgentChatServiceError('after must be an event id.'));
+        return errorResponse(reply, new AgentChatServiceError('Invalid stream cursor.'));
       }
       if (activeStreams >= MAX_STREAM_CONNECTIONS) {
         return reply.code(503).send({ error: 'Too many active Agent Chat streams.' });
@@ -141,11 +141,11 @@ export function registerAgentChatRoutes(
         try {
           const known = service.taskService.store.getEvent(after);
           if (!known || !taskIds.includes(known.taskId)) {
-            return errorResponse(reply, new AgentChatServiceError('after must belong to this conversation.'));
+            return errorResponse(reply, new AgentChatServiceError('Invalid stream cursor.'));
           }
         } catch (cause) {
           if (cause instanceof EventOrderError) {
-            return errorResponse(reply, new AgentChatServiceError('Unknown event cursor.'));
+            return errorResponse(reply, new AgentChatServiceError('Invalid stream cursor.'));
           }
           return errorResponse(reply, cause);
         }
