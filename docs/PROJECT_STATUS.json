@@ -192,6 +192,11 @@
       "id": "boss-agent-adapter",
       "summary": "ADR 0047 exposes Boss Mode as a Runtime-owned virtual 老板 Agent inside Agent Chat, routing messages through BossModeService while preserving Runtime authority and one primary conversation.",
       "evidence": "src/runtime/agent-chat.ts"
+    },
+    {
+      "id": "agent-chat-conversation-states",
+      "summary": "ADR 0048 implements a Runtime-published Agent Chat conversation state model with thinking, streaming, organizing, waiting_attention, replied, failed, unavailable, and cancelled states.",
+      "evidence": "src/runtime/agent-chat.ts"
     }
   ],
   "validationEvidence": [
@@ -320,6 +325,12 @@
     {
       "id": "boss-agent-adapter-fixture",
       "summary": "An executable fixture covers virtual Boss Agent listing, conversation routing through BossModeService, bounded Runtime reply, organization session projection, and no normal Agent task creation.",
+      "evidence": "tests/agent-chat.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "agent-chat-conversation-states-fixture",
+      "summary": "An executable fixture covers normal Agent thinking/streaming/replied states and Runtime-owned conversation fields without private-state leakage.",
       "evidence": "tests/agent-chat.test.ts",
       "executableFixture": true
     }

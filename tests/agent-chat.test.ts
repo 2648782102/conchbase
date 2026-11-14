@@ -80,13 +80,13 @@ test('agent chat starts a configured Agent conversation and publishes a real mod
     });
     assert.equal(sent.statusCode, 202);
     assert.equal(sent.json().userMessage.body, '你好');
-    assert.equal(sent.json().assistantMessage.state, 'pending');
+    assert.match(sent.json().assistantMessage.state, /thinking|streaming|replied/);
 
     let conversation = await app.inject({
       method: 'GET',
       url: `/v1/agent-chat/conversations/${conversationId}`,
     });
-    for (let attempt = 0; attempt < 50 && conversation.json().messages[1]?.state === 'pending'; attempt += 1) {
+    for (let attempt = 0; attempt < 50 && conversation.json().messages[1]?.phase !== 'terminal'; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 10));
       conversation = await app.inject({
         method: 'GET',
@@ -94,7 +94,7 @@ test('agent chat starts a configured Agent conversation and publishes a real mod
       });
     }
     assert.equal(conversation.json().messages.length, 2);
-    assert.equal(conversation.json().messages[1]?.state, 'succeeded');
+    assert.equal(conversation.json().messages[1]?.state, 'replied');
     assert.match(conversation.json().messages[1]?.body ?? '', /配置好的 Agent/);
     assert.doesNotMatch(JSON.stringify(conversation.json()), /runtime\.sqlite|\.conchbase\/|sk-|Bearer/i);
 
@@ -170,9 +170,20 @@ test('boss agent appears in Agent Chat and routes messages through Boss Mode', a
     });
     assert.equal(sent.statusCode, 202);
     assert.equal(sent.json().assistantMessage.author, 'assistant');
-    assert.equal(sent.json().assistantMessage.body, '老板已建立项目。');
-    assert.equal(sent.json().assistantMessage.state, 'succeeded');
-    assert.equal(sent.json().assistantMessage.taskId, null);
+    let bossView = await app.inject({
+      method: 'GET',
+      url: `/v1/agent-chat/conversations/${created.json().id}`,
+    });
+    for (let attempt = 0; attempt < 50 && bossView.json().messages[1]?.phase !== 'terminal'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      bossView = await app.inject({
+        method: 'GET',
+        url: `/v1/agent-chat/conversations/${created.json().id}`,
+      });
+    }
+    assert.equal(bossView.json().messages[1]?.body, '老板已建立项目。');
+    assert.equal(bossView.json().messages[1]?.state, 'replied');
+    assert.equal(bossView.json().messages[1]?.taskId, null);
     const session = await app.inject({ method: 'GET', url: '/v1/organization/session' });
     assert.equal(session.json().projects.some((project: { id: string }) => project.id === 'project_boss_chat'), true);
   } finally {
@@ -180,4 +191,30 @@ test('boss agent appears in Agent Chat and routes messages through Boss Mode', a
     await taskService.stop();
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test('agent chat publishes thinking, streaming, and replied states', async () => {
+  await withApp(async (app, agentId) => {
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId },
+    });
+    const conversationId = created.json().id as string;
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: { text: '请回复你好', idempotencyKey: 'chat-state-fixture-1' },
+    });
+    assert.equal(sent.statusCode, 202);
+    assert.equal(sent.json().assistantMessage.author, 'assistant');
+    assert.match(sent.json().assistantMessage.state, /thinking|streaming|replied/);
+    let view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+    for (let attempt = 0; attempt < 50 && view.json().messages[1]?.phase !== 'terminal'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+    }
+    assert.equal(view.json().messages[1]?.state, 'replied');
+    assert.equal(view.json().messages[1]?.phase, 'terminal');
+    assert.match(view.json().messages[1]?.body ?? '', /配置好的 Agent/);
+    assert.equal(view.json().messages[1]?.replyToId, sent.json().userMessage.id);
+  });
 });

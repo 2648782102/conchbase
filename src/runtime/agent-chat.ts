@@ -23,7 +23,26 @@ export const BOSS_AGENT_PROVIDER_ID = 'runtime';
 export const BOSS_AGENT_MODEL_ID = '组织编排';
 
 export type AgentChatMessageAuthor = 'user' | 'assistant' | 'runtime';
-export type AgentChatMessageState = 'published' | 'pending' | 'succeeded' | 'failed' | 'cancelled';
+export type AgentChatMessageState =
+  | 'published'
+  | 'pending'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  | 'thinking'
+  | 'streaming'
+  | 'organizing'
+  | 'waiting_attention'
+  | 'replied'
+  | 'unavailable';
+
+export type AgentChatMessagePhase =
+  | 'accepted'
+  | 'preparing'
+  | 'model'
+  | 'organization'
+  | 'human'
+  | 'terminal';
 
 export interface AgentChatAgentView {
   readonly id: string;
@@ -43,7 +62,15 @@ export interface AgentChatMessage {
   readonly state: AgentChatMessageState;
   readonly taskId: string | null;
   readonly error: string | null;
+  readonly phase: AgentChatMessagePhase;
+  readonly progress: number | null;
+  readonly updatedAt: string;
+  readonly replyToId: string | null;
 }
+
+const NONTERMINAL_STATES: readonly AgentChatMessageState[] = Object.freeze([
+  'pending', 'thinking', 'streaming', 'organizing',
+]);
 
 export interface AgentChatConversationView {
   readonly version: typeof AGENT_CHAT_CONTRACT_VERSION;
@@ -108,15 +135,45 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function terminalState(state: TaskSnapshot['state']): boolean {
+function terminalTaskState(state: TaskSnapshot['state']): boolean {
   return ['succeeded', 'failed', 'cancelled', 'interrupted'].includes(state);
 }
 
+function nonterminalMessageState(state: AgentChatMessageState): boolean {
+  return NONTERMINAL_STATES.includes(state);
+}
+
 function taskStateToMessageState(task: TaskSnapshot): AgentChatMessageState {
-  if (task.state === 'succeeded') return 'succeeded';
+  if (task.state === 'succeeded') return 'replied';
   if (task.state === 'failed' || task.state === 'interrupted') return 'failed';
   if (task.state === 'cancelled') return 'cancelled';
-  return 'pending';
+  return task.partialOutput && task.partialOutput.length > 0 ? 'streaming' : 'thinking';
+}
+
+function unavailableError(message: string | null): boolean {
+  return /model catalog is unavailable|provider model catalog is unavailable|upstream/i.test(message ?? '');
+}
+
+function phaseForState(state: AgentChatMessageState): AgentChatMessagePhase {
+  if (state === 'thinking' || state === 'streaming' || state === 'pending') return 'preparing';
+  if (state === 'organizing') return 'organization';
+  if (state === 'waiting_attention') return 'human';
+  if (state === 'replied' || state === 'failed' || state === 'cancelled' || state === 'unavailable' || state === 'succeeded') return 'terminal';
+  return 'accepted';
+}
+
+function message(
+  input: Omit<AgentChatMessage, 'phase' | 'progress' | 'updatedAt' | 'replyToId'>
+    & Partial<Pick<AgentChatMessage, 'phase' | 'progress' | 'updatedAt' | 'replyToId'>>,
+  now = () => new Date().toISOString(),
+): AgentChatMessage {
+  return Object.freeze({
+    phase: phaseForState(input.state),
+    progress: null,
+    updatedAt: now(),
+    replyToId: null,
+    ...input,
+  });
 }
 
 export class AgentChatService {
@@ -125,6 +182,7 @@ export class AgentChatService {
   constructor(
     private readonly taskService: TaskService,
     private readonly bossMode?: BossModeService,
+    private readonly now: () => string = () => new Date().toISOString(),
   ) {}
 
   listAgents(): readonly AgentChatAgentView[] {
@@ -188,7 +246,7 @@ export class AgentChatService {
     if (replayKey) {
       const replayedUser = record.messages.find((message) => message.id === replayKey);
       const replayedAssistant = replayedUser
-        ? record.messages.find((message) => message.taskId !== null
+        ? record.messages.find((message) => message.author === 'assistant'
           && message.sequence === replayedUser.sequence + 1)
         : undefined;
       if (replayedUser && replayedAssistant) {
@@ -218,7 +276,7 @@ export class AgentChatService {
         cause instanceof Error && cause.name.includes('NotFound') ? 404 : 409,
       );
     }
-    const userMessage: AgentChatMessage = Object.freeze({
+    const userMessage = message({
       id: reference('amsg', `${conversationId}:${task.id}:user`),
       sequence: record.messages.length + 1,
       author: 'user',
@@ -226,16 +284,21 @@ export class AgentChatService {
       state: 'published',
       taskId: null,
       error: null,
-    });
-    const assistantMessage: AgentChatMessage = Object.freeze({
+      phase: 'accepted',
+      updatedAt: this.now(),
+    }, this.now);
+    const assistantMessage = message({
       id: reference('amsg', `${conversationId}:${task.id}:assistant`),
       sequence: record.messages.length + 2,
       author: 'assistant',
       body: '',
-      state: 'pending',
+      state: 'thinking',
       taskId: task.id,
       error: null,
-    });
+      phase: 'preparing',
+      replyToId: userMessage.id,
+      updatedAt: this.now(),
+    }, this.now);
     record.messages.push(userMessage, assistantMessage);
     record.idempotency.set(idempotencyKey, userMessage.id);
     try {
@@ -243,9 +306,10 @@ export class AgentChatService {
     } catch (cause) {
       this.replaceMessage(record, assistantMessage.id, {
         ...assistantMessage,
-        body: 'Runtime could not start the Agent task.',
+        body: 'Runtime 无法启动 Agent 任务。',
         state: 'failed',
         error: cause instanceof Error ? cause.message.slice(0, 240) : 'Task start failed.',
+        updatedAt: this.now(),
       });
     }
     this.refreshConversation(record);
@@ -312,78 +376,122 @@ export class AgentChatService {
   ): Promise<AgentChatMessageResult> {
     const bossMode = this.bossMode;
     if (!bossMode) throw new AgentChatServiceError('Boss Agent is not configured.', 503);
-    let submitted;
-    try {
-      submitted = await bossMode.submit({
-        text,
-        idempotencyKey: `agent-chat:${record.id}:${idempotencyKey}`,
-      });
-    } catch (cause) {
-      throw new AgentChatServiceError(
-        cause instanceof Error ? cause.message.slice(0, 240) : 'Boss Agent submit failed.',
-        409,
-      );
-    }
-    const userMessage: AgentChatMessage = Object.freeze({
-      id: reference('amsg', `${record.id}:${submitted.intentId}:user`),
+    const userMessage = message({
+      id: reference('amsg', `${record.id}:${idempotencyKey}:user`),
       sequence: record.messages.length + 1,
       author: 'user',
       body: text,
       state: 'published',
       taskId: null,
       error: null,
-    });
-    const assistantMessage: AgentChatMessage = Object.freeze({
-      id: reference('amsg', `${record.id}:${submitted.intentId}:assistant`),
+      phase: 'accepted',
+      updatedAt: this.now(),
+    }, this.now);
+    const assistantMessage = message({
+      id: reference('amsg', `${record.id}:${idempotencyKey}:assistant`),
       sequence: record.messages.length + 2,
       author: 'assistant',
-      body: submitted.reply ?? `已提交 ${submitted.actions.length} 个 Runtime 可验证动作。`,
-      state: submitted.executions.some((execution) => execution.status === 'failed') ? 'failed' : 'succeeded',
+      body: '',
+      state: 'thinking',
       taskId: null,
       error: null,
-    });
+      phase: 'preparing',
+      replyToId: userMessage.id,
+      updatedAt: this.now(),
+    }, this.now);
     record.messages.push(userMessage, assistantMessage);
     record.idempotency.set(idempotencyKey, userMessage.id);
+    this.replaceMessage(record, assistantMessage.id, {
+      ...assistantMessage,
+      state: 'organizing',
+      phase: 'organization',
+      updatedAt: this.now(),
+    });
+    void bossMode.submit({
+        text,
+        idempotencyKey: `agent-chat:${record.id}:${idempotencyKey}`,
+      }).then((submitted) => {
+        const waiting = submitted.relays.some((relay) => relay.kind === 'attention');
+        const failed = submitted.executions.some((execution) => execution.status === 'failed');
+        this.replaceMessage(record, assistantMessage.id, {
+          ...assistantMessage,
+          body: submitted.reply ?? (failed
+            ? 'Runtime 执行组织动作时失败。'
+            : `已提交 ${submitted.actions.length} 个 Runtime 可验证动作。`),
+          state: failed ? 'failed' : waiting ? 'waiting_attention' : 'replied',
+          phase: waiting ? 'human' : 'terminal',
+          error: failed ? 'Boss Agent execution failed.' : null,
+          updatedAt: this.now(),
+        });
+      }).catch((cause: unknown) => {
+        const textError = cause instanceof Error ? cause.message.slice(0, 240) : 'Boss Agent submit failed.';
+        this.replaceMessage(record, assistantMessage.id, {
+          ...assistantMessage,
+          body: unavailableError(textError) ? '模型目录暂不可用，请检查 Magpie 配置。' : '老板 Agent 提交失败。',
+          state: unavailableError(textError) ? 'unavailable' : 'failed',
+          phase: 'terminal',
+          error: textError,
+          updatedAt: this.now(),
+        });
+      });
     return Object.freeze({
       version: AGENT_CHAT_CONTRACT_VERSION,
       conversationId: record.id,
       userMessage,
-      assistantMessage,
+      assistantMessage: this.getMessage(record, assistantMessage.id)!,
     });
   }
 
   private refreshConversation(record: ConversationRecord): void {
     for (const message of record.messages) {
-      if (message.author !== 'assistant' || message.taskId === null || message.state !== 'pending') continue;
+      if (message.author !== 'assistant' || message.taskId === null || !nonterminalMessageState(message.state)) continue;
       const task = this.taskService.store.getTask(message.taskId);
       if (!task) {
         this.replaceMessage(record, message.id, {
           ...message,
-          body: 'Agent task is unavailable.',
+          body: 'Agent 任务不可用。',
           state: 'failed',
           error: 'Task not found.',
+          updatedAt: this.now(),
         });
         continue;
       }
-      if (!terminalState(task.state)) {
+      if (!terminalTaskState(task.state)) {
+        const state = taskStateToMessageState(task);
         if (task.partialOutput && task.partialOutput.length > 0) {
           this.replaceMessage(record, message.id, {
             ...message,
             body: boundedOutput(task.partialOutput),
+            state,
+            phase: 'model',
+            progress: Math.min(100, Math.max(5, task.partialOutput.length)),
+            updatedAt: this.now(),
+          });
+        } else if (message.state !== state) {
+          this.replaceMessage(record, message.id, {
+            ...message,
+            state,
+            phase: phaseForState(state),
+            updatedAt: this.now(),
           });
         }
         continue;
       }
       const state = taskStateToMessageState(task);
+      const error = state === 'failed' ? (task.error ?? 'Agent task failed.').slice(0, 500) : null;
+      const finalState = state === 'failed' && unavailableError(error) ? 'unavailable' : state;
       this.replaceMessage(record, message.id, {
         ...message,
-        body: state === 'succeeded'
+        body: state === 'replied'
           ? boundedOutput(task.output)
           : state === 'failed'
             ? '模型调用失败。'
             : '回复已取消。',
-        state,
-        error: state === 'failed' ? (task.error ?? 'Agent task failed.').slice(0, 500) : null,
+        state: finalState,
+        phase: 'terminal',
+        progress: state === 'replied' ? 100 : null,
+        error,
+        updatedAt: this.now(),
       });
     }
   }

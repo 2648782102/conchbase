@@ -5076,11 +5076,14 @@ components:
           maxLength: 200
     AgentChatMessageState:
       type: string
-      enum: [published, pending, succeeded, failed, cancelled]
+      enum: [published, pending, succeeded, failed, cancelled, thinking, streaming, organizing, waiting_attention, replied, unavailable]
+    AgentChatMessagePhase:
+      type: string
+      enum: [accepted, preparing, model, organization, human, terminal]
     AgentChatMessage:
       type: object
       additionalProperties: false
-      required: [id, sequence, author, body, state, taskId, error]
+      required: [id, sequence, author, body, state, taskId, error, phase, progress, updatedAt, replyToId]
       properties:
         id:
           type: string
@@ -5099,6 +5102,16 @@ components:
         taskId:
           type: [string, 'null']
         error:
+          type: [string, 'null']
+        phase:
+          $ref: '#/components/schemas/AgentChatMessagePhase'
+        progress:
+          type: [integer, 'null']
+          minimum: 0
+          maximum: 100
+        updatedAt:
+          type: string
+        replyToId:
           type: [string, 'null']
     AgentChatConversationView:
       type: object

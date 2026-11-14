@@ -432,7 +432,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /ADR 0021/);
   assert.match(handoff, /ADR 0022/);
   assert.match(handoff, /ADR 0023/);
-  assert.match(handoff, /ADRs `0030`–`0047`/);
+  assert.match(handoff, /ADRs `0030`–`0048`/);
   assert.match(handoff, /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-contract\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-store\.ts/);
@@ -513,7 +513,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('README.zh-CN.md'), /仍在最终本地优先目标之外/);
   assert.match(read('README.zh-CN.md'), /ADR 0018/);
   assert.match(read('README.zh-CN.md'), /ADR 0019/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0047\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0048\]/);
   assert.match(read('README.md'), /1\.4\.0/);
   assert.match(read('README.md'), /ADR 0021 adds an opt-in live loopback acceptance test/);
   assert.match(read('README.zh-CN.md'), /ADR 0021/);
@@ -535,6 +535,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('docs/decisions/0045-primary-conversation-projection.md'), /accepted and implemented primary conversation projection/);
   assert.match(read('docs/decisions/0046-agent-chat-module.md'), /accepted and implemented agent chat module/);
   assert.match(read('docs/decisions/0047-boss-agent-adapter.md'), /accepted and implemented boss agent adapter/);
+  assert.match(read('docs/decisions/0048-agent-chat-conversation-states.md'), /accepted and implemented Agent Chat conversation state model/);
   assert.match(read('tests/primary-conversation.test.ts'), /primary conversation projects/);
   assert.match(read('tests/agent-chat.test.ts'), /publishes a real model reply/);
   assert.match(read('tests/agent-chat.test.ts'), /boss agent appears in Agent Chat/);
@@ -745,6 +746,7 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
   assert.ok(currentStatus.implemented.some((record) => record.id === 'primary-conversation-projection'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'agent-chat-module'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'boss-agent-adapter'));
+  assert.ok(currentStatus.implemented.some((record) => record.id === 'agent-chat-conversation-states'));
   assert.ok(
     currentStatus.validationEvidence.some(
       (record) => record.id === 'organization-domain-fixture' && record.executableFixture === true,
@@ -825,6 +827,11 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
       (record) => record.id === 'boss-agent-adapter-fixture' && record.executableFixture === true,
     ),
   );
+  assert.ok(
+    currentStatus.validationEvidence.some(
+      (record) => record.id === 'agent-chat-conversation-states-fixture' && record.executableFixture === true,
+    ),
+  );
   assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /完整组织运行时/);
   assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /0041/);
   assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
@@ -853,7 +860,7 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
     assert.match(read(file), /OBJECTIVE_MODE\.zh-CN\.md/, `${file} must link the Chinese objective brief`);
   }
   assert.match(read('docs/AI_TASK_QUEUE.md'), /Target-mode entry/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0047\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0048\]/);
   assert.match(read('README.md'), /Organization Runtime target/);
   assert.match(read('README.zh-CN.md'), /完整组织运行时目标/);
   assert.match(read('docs/QUICK_START.zh-CN.md'), /ADR 0030–0034/);
