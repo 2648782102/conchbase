@@ -169,6 +169,7 @@ export function registerAgentChatRoutes(
       const sent = new Map<string, string>();
       let interval: NodeJS.Timeout | null = null;
       let heartbeat: NodeJS.Timeout | null = null;
+      let unsubscribe: (() => void) | null = null;
 
       const close = () => {
         if (closed) return;
@@ -177,6 +178,8 @@ export function registerAgentChatRoutes(
         request.log.debug({ conversationId, activeStreams }, 'agent chat stream closed');
         if (interval !== null) clearInterval(interval);
         if (heartbeat !== null) clearInterval(heartbeat);
+        unsubscribe?.();
+        unsubscribe = null;
         response.end();
       };
       const write = (frame: AgentChatStreamFrame) => {
@@ -217,7 +220,7 @@ export function registerAgentChatRoutes(
         return;
       }
 
-      interval = setInterval(() => {
+      const pump = () => {
         if (closed) return;
         try {
           const latestTaskIds = service.conversationTaskIds(conversationId);
@@ -263,7 +266,11 @@ export function registerAgentChatRoutes(
           }
           close();
         }
-      }, STREAM_INTERVAL_MS);
+      };
+      unsubscribe = service.taskService.onChange((changedTaskId) => {
+        if (!closed && taskIds.includes(changedTaskId)) pump();
+      });
+      interval = setInterval(pump, STREAM_INTERVAL_MS);
       interval.unref?.();
 
       heartbeat = setInterval(() => {

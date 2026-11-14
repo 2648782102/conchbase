@@ -552,3 +552,50 @@ test('a cursor from a different conversation is rejected', async () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('a task change wakes the stream before the polling interval', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-chat-stream-wake-'));
+  const service = new TaskService(
+    new SqliteTaskStore(path.join(directory, 'runtime.sqlite')),
+    {
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/model',
+      fetch: scripted([() => text('即时')]),
+    },
+    catalog(),
+  );
+  const agentChat = new AgentChatService(service);
+  const app = createApp({ logger: false, taskService: service, agentChatService: agentChat });
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address();
+  assert.ok(address && typeof address === 'object');
+  const base = `http://127.0.0.1:${address.port}`;
+  try {
+    const agent = await service.createAgent({
+      name: '唤醒助手', instructions: 'Reply.', providerId: 'magpie', modelId: 'fixture/model',
+    });
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
+    });
+    const conversationId = created.json().id as string;
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: { text: '即时', idempotencyKey: 'wake-1' },
+    });
+    const assistantId = sent.json().assistantMessage.id as string;
+    const startedAt = Date.now();
+    const response = await fetch(`${base}/v1/agent-chat/conversations/${conversationId}/events`, {
+      signal: AbortSignal.timeout(20_000),
+    });
+    const frames = await readFrames(response, (entries) => entries.some((frame) =>
+      frame.data.messageId === assistantId && frame.data.message?.state === 'replied'));
+    const elapsed = Date.now() - startedAt;
+    assert.ok(frames.some((frame) => frame.data.message?.state === 'replied'));
+    assert.ok(elapsed < 1_500, `stream should update promptly, took ${elapsed}ms`);
+  } finally {
+    await app.close();
+    await service.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

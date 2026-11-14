@@ -139,6 +139,7 @@ export function createTaskService(
 
 export class TaskService {
   readonly store: TaskStore;
+  private readonly eventListeners = new Set<(taskId: string) => void>();
   private readonly active = new Map<string, AbortController>();
   private readonly inFlight = new Set<Promise<void>>();
   private stopping = false;
@@ -638,7 +639,23 @@ export class TaskService {
   }
 
   close(): void {
+    this.eventListeners.clear();
     this.store.close();
+  }
+
+  onChange(listener: (taskId: string) => void): () => void {
+    this.eventListeners.add(listener);
+    return () => this.eventListeners.delete(listener);
+  }
+
+  private notifyChange(taskId: string): void {
+    for (const listener of this.eventListeners) {
+      try {
+        listener(taskId);
+      } catch {
+        // A subscriber failure must never break task execution.
+      }
+    }
   }
 
   async stop(): Promise<void> {
@@ -784,6 +801,7 @@ export class TaskService {
             data: { delta, index: deltaIndex, outputLength: partialOutput.length },
           }, partialOutput);
           deltaIndex += 1;
+          this.notifyChange(task.id);
         },
       });
       if (signal.aborted) break;
@@ -829,6 +847,7 @@ export class TaskService {
       this.eventInput(task, 'task.completed', 'succeeded', task.attempt),
       { output: turn.output },
     );
+    this.notifyChange(task.id);
   }
 
   private maxToolCallsPerTurn(): number {
@@ -964,6 +983,7 @@ export class TaskService {
           data: { delta, index: deltaIndex, outputLength: partialOutput.length },
         }, partialOutput);
         deltaIndex += 1;
+        this.notifyChange(task.id);
       },
     });
     if (signal.aborted) {
@@ -981,6 +1001,7 @@ export class TaskService {
       this.eventInput(task, 'task.completed', 'succeeded', task.attempt),
       { output: turn.output },
     );
+    this.notifyChange(task.id);
   }
 
   private async executeComposition(
