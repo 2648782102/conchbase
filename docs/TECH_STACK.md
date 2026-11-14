@@ -8,7 +8,7 @@
 | Model provider | Direct OpenAI Chat Completions-compatible streaming HTTP to local Magpie | In use for phase 1; no provider SDK |
 | Task, Agent, and event state | `node:sqlite` `DatabaseSync` behind `TaskStore`, with one exclusive owner and transactional additive schema migration | In use for local runtime; production platform matrix, WAL crash recovery, and multi-process protocol pending |
 | Model discovery | Provider-neutral `{ providerId, modelId }` catalog surface, currently translated by `MagpieModelCatalog` | In use; database-free; Magpie remains one compatibility adapter |
-| Runtime events | Global monotonic event IDs, durable `task.output_delta` progress, and polling cursor | In use; SSE and retention pending |
+| Runtime events | Global monotonic event IDs, durable `task.output_delta` progress, polling cursor, and an additive Agent Chat SSE projection | In use; retention and multi-process fan-out pending |
 | Configuration revisions | Versioned `schemaVersion: 1` and `schemaVersion: 2` documents, SHA-256 identity, SQLite history, active pointer, validation, apply, and rollback | In use as data only; portable files, secret resolution, installers, and grants deferred |
 | Composition identity and execution | Public topology-neutral graph section, internal canonical DAG validation, SHA-256 `cmp_` identity, deterministic topological node order, and node events | In use for bounded deterministic execution; model-driven node work, scheduling, and tool audits deferred |
 | Tool capability kernel | Internal fixture-only registry, exact approvals, per-attempt idempotency, and deterministic audit events | In use as an internal acceptance boundary; never imported by the public ledger |
