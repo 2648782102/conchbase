@@ -63,6 +63,14 @@ interface Frame {
   };
 }
 
+async function waitForTask(service: TaskService, taskId: string, state: string): Promise<void> {
+  for (let attempt = 0; attempt < 400; attempt += 1) {
+    if (service.store.getTask(taskId)?.state === state) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail(`task did not reach ${state}`);
+}
+
 async function readFrames(
   response: Response,
   accept: (frames: readonly Frame[]) => boolean,
@@ -433,6 +441,61 @@ test('Agent Chat SSE still publishes the final body after coalesced deltas', asy
       frame.data.messageId === assistantId && frame.data.message?.state === 'replied'));
     const replied = frames.find((frame) => frame.data.message?.state === 'replied');
     assert.equal(replied?.data.message?.body, '一二三四五');
+  } finally {
+    await app.close();
+    await service.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('a cursor from an earlier task in the same conversation can be resumed', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-chat-stream-multi-'));
+  const service = new TaskService(
+    new SqliteTaskStore(path.join(directory, 'runtime.sqlite')),
+    {
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/model',
+      fetch: scripted([() => text('第一次'), () => text('第二次')]),
+    },
+    catalog(),
+  );
+  const agentChat = new AgentChatService(service);
+  const app = createApp({ logger: false, taskService: service, agentChatService: agentChat });
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address();
+  assert.ok(address && typeof address === 'object');
+  const base = `http://127.0.0.1:${address.port}`;
+  try {
+    const agent = await service.createAgent({
+      name: '多轮助手', instructions: 'Reply.', providerId: 'magpie', modelId: 'fixture/model',
+    });
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
+    });
+    const conversationId = created.json().id as string;
+    const first = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: { text: '第一次', idempotencyKey: 'multi-1' },
+    });
+    await waitForTask(service, first.json().assistantMessage.taskId, 'succeeded');
+    const events = service.store.listEvents(null)
+      .filter((event) => event.taskId === first.json().assistantMessage.taskId);
+    const cursor = events.at(-1)!.id;
+    const second = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: { text: '第二次', idempotencyKey: 'multi-2' },
+    });
+    await waitForTask(service, second.json().assistantMessage.taskId, 'succeeded');
+    const resumed = await fetch(
+      `${base}/v1/agent-chat/conversations/${conversationId}/events?after=${cursor}`,
+      { signal: AbortSignal.timeout(10_000) },
+    );
+    assert.equal(resumed.status, 200);
+    const frames = await readFrames(resumed, (entries) => entries.some((frame) =>
+      frame.data.message?.body === '第二次'));
+    assert.ok(frames.some((frame) => frame.data.message?.body === '第二次'));
   } finally {
     await app.close();
     await service.stop();
