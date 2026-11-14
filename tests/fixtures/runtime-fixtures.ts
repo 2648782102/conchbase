@@ -22,8 +22,8 @@ interface RuntimeResponseFixture {
   readonly executionRunPaths?: 8;
   readonly conversationContract?: '1.4.0';
   readonly conversationPaths?: 2;
-  readonly agentChatContract?: '1.7.0';
-  readonly agentChatPaths?: 5;
+  readonly agentChatContract?: '1.8.0';
+  readonly agentChatPaths?: 6;
 }
 
 export const ORGANIZATION_PATHS_FIXTURE = Object.freeze([
@@ -80,6 +80,7 @@ export const AGENT_CHAT_PATHS_FIXTURE = Object.freeze([
   '/v1/agent-chat/conversations/{conversationId}',
   '/v1/agent-chat/conversations/{conversationId}/messages',
   '/v1/agent-chat/conversations/{conversationId}/approval',
+  '/v1/agent-chat/conversations/{conversationId}/events',
 ] as const);
 
 export const HEALTH_RESPONSE_FIXTURE: HealthResponseFixture = Object.freeze({

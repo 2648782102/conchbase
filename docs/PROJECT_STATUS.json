@@ -33,8 +33,8 @@
       "frozen": true
     },
     "agentChat": {
-      "version": "1.7.0",
-      "pathCount": 5,
+      "version": "1.8.0",
+      "pathCount": 6,
       "frozen": true
     },
     "workContractVersion": 2,
@@ -252,6 +252,11 @@
       "id": "agent-chat-tool-projection",
       "summary": "ADR 0059 projects bounded tool/approval activity into Agent Chat messages, maps waiting_approval to the human phase, and adds POST /v1/agent-chat/conversations/{conversationId}/approval. The Agent Chat contract is 1.7.0 with five paths.",
       "evidence": "src/runtime/agent-chat.ts"
+    },
+    {
+      "id": "agent-chat-live-stream",
+      "summary": "ADR 0060 adds GET /v1/agent-chat/conversations/{conversationId}/events as a resumable SSE projection with a snapshot first frame, bounded replay, heartbeats, and Last-Event-ID support. The Agent Chat contract is 1.8.0 with six paths.",
+      "evidence": "src/http/routes/v1/agent-chat.ts"
     }
   ],
   "validationEvidence": [
@@ -441,6 +446,12 @@
       "id": "agent-chat-tool-projection-fixture",
       "summary": "Executable fixtures cover projected tool/approval activity, waiting_approval, in-conversation approval, the resulting write, terminal reply, and duplicate-decision 409.",
       "evidence": "tests/agent-chat-tools.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "agent-chat-live-stream-fixture",
+      "summary": "Executable fixtures cover the snapshot frame, projected tool/approval updates, cursor resume, event-id dedup, and invalid cursor 400.",
+      "evidence": "tests/agent-chat-stream.test.ts",
       "executableFixture": true
     }
   ],

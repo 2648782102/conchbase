@@ -1760,6 +1760,42 @@ paths:
           $ref: '#/components/responses/OrganizationConflictError'
         '503':
           $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/agent-chat/conversations/{conversationId}/events:
+    get:
+      operationId: streamAgentChatConversation
+      summary: Stream projected Agent Chat updates over Server-Sent Events with resumable cursors.
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^chat_[0-9a-f]{24}$'
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^evt_[0-9]{12}$'
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema:
+            type: string
+            pattern: '^evt_[0-9]{12}$'
+      responses:
+        '200':
+          description: Server-Sent Events. The first frame is a snapshot; later frames carry projected Agent Chat messages with the Runtime event id.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/OrganizationValidationError'
+        '404':
+          $ref: '#/components/responses/OrganizationNotFoundError'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
   /v1/execution/health:
     get:
       operationId: getExecutionHealth
@@ -2626,9 +2662,9 @@ components:
           const: 2
         agentChatContract:
           type: string
-          const: '1.7.0'
+          const: '1.8.0'
         agentChatPaths:
-          const: 5
+          const: 6
     Error:
       type: object
       additionalProperties: false
@@ -5141,7 +5177,7 @@ components:
           type: boolean
     AgentChatVersion:
       type: string
-      const: '1.7.0'
+      const: '1.8.0'
     AgentChatAgentView:
       type: object
       additionalProperties: false
@@ -5370,3 +5406,27 @@ components:
           type: string
         assistantMessage:
           $ref: '#/components/schemas/AgentChatMessage'
+    AgentChatStreamFrame:
+      type: object
+      additionalProperties: false
+      required: [version, conversationId, kind, eventId, messageId, message, conversation]
+      properties:
+        version:
+          $ref: '#/components/schemas/AgentChatVersion'
+        conversationId:
+          type: string
+        kind:
+          type: string
+          enum: [snapshot, message]
+        eventId:
+          type: [string, 'null']
+        messageId:
+          type: [string, 'null']
+        message:
+          oneOf:
+            - $ref: '#/components/schemas/AgentChatMessage'
+            - type: 'null'
+        conversation:
+          oneOf:
+            - $ref: '#/components/schemas/AgentChatConversationView'
+            - type: 'null'

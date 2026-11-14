@@ -61,7 +61,7 @@ test('agent chat lists recent conversations and a default chat model', async () 
     const list = await app.inject({ method: 'GET', url: '/v1/agent-chat/conversations' });
     assert.equal(list.statusCode, 200);
     const body = list.json();
-    assert.equal(body.version, '1.7.0');
+    assert.equal(body.version, '1.8.0');
     assert.ok(body.conversations.some((entry: { id: string }) => entry.id === conversationId));
     assert.equal(body.defaultModelId, 'workbuddy/blind-model-h');
     assert.doesNotMatch(JSON.stringify(body), /runtime\.sqlite|sk-/);

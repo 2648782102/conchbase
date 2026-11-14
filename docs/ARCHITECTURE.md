@@ -12,6 +12,8 @@ The loop does not change Runtime authority. [ADR 0056](decisions/0056-skill-prov
 
 [ADR 0058](decisions/0058-multi-tool-calls-per-turn.md) allows a bounded batch of tool calls per model turn (default 4, hard cap 8). Calls run in order; each write pauses for its own approval. Resuming after approval re-enters the same bounded loop, so a later turn can call read and write tools again.
 
+[ADR 0060](decisions/0060-agent-chat-live-event-stream.md) adds a read-only Agent Chat SSE projection. A connection first receives a snapshot, then projected message frames keyed by the Runtime event id. The stream supports `Last-Event-ID` / `after` resume, bounded replay, and heartbeats; approval remains a separate write route and a dropped stream never cancels a task.
+
 The loop does not enable network tools, write-capable MCP tools, remote MCP transports, plugin hosts, arbitrary shell, or secret injection.
 
 [ADR 0022](decisions/0022-persistent-work-runtime-direction.md) accepts the direction of durable, event-driven, topology-neutral work. [ADR 0024](decisions/0024-durable-work-domain-and-public-api.md) is the historical first contract above the unchanged phase-1 `Task` resource. [ADR 0025](decisions/0025-local-first-v1-platform.md) completes the implemented `1.0.0` architecture: pure domain validation, `SqliteWorkStore` and `SqlitePlatformStore` behind one database owner, 47 published paths, work contract v2, authenticated pairing, durable control and restart recovery, one local Source, capability records, and process-scoped write-only SecretHandles with a runtime-owned fixed adapter. No plaintext crosses the model, UI, event, log, error, or generic resolver boundary. The diagram below is the current architecture, not a roadmap diagram.

@@ -12,7 +12,7 @@ import {
   type AgentChatStore,
 } from './agent-chat-store.js';
 
-export const AGENT_CHAT_CONTRACT_VERSION = '1.7.0';
+export const AGENT_CHAT_CONTRACT_VERSION = '1.8.0';
 
 export const AGENT_CHAT_PUBLIC_PATHS = Object.freeze([
   '/v1/agent-chat/agents',
@@ -20,6 +20,7 @@ export const AGENT_CHAT_PUBLIC_PATHS = Object.freeze([
   '/v1/agent-chat/conversations/{conversationId}',
   '/v1/agent-chat/conversations/{conversationId}/messages',
   '/v1/agent-chat/conversations/{conversationId}/approval',
+  '/v1/agent-chat/conversations/{conversationId}/events',
 ] as const);
 
 export const AGENT_CHAT_PUBLIC_PATH_COUNT = AGENT_CHAT_PUBLIC_PATHS.length;
@@ -133,6 +134,16 @@ export interface AgentChatApprovalResult {
   readonly version: typeof AGENT_CHAT_CONTRACT_VERSION;
   readonly conversationId: string;
   readonly assistantMessage: AgentChatMessage;
+}
+
+export interface AgentChatStreamFrame {
+  readonly version: typeof AGENT_CHAT_CONTRACT_VERSION;
+  readonly conversationId: string;
+  readonly kind: 'snapshot' | 'message';
+  readonly eventId: string | null;
+  readonly messageId: string | null;
+  readonly message: AgentChatMessage | null;
+  readonly conversation: AgentChatConversationView | null;
 }
 
 interface ConversationRecord extends Omit<AgentChatConversationRecord, 'idempotency'> {
@@ -253,7 +264,7 @@ export class AgentChatService {
   private readonly store: AgentChatStore;
 
   constructor(
-    private readonly taskService: TaskService,
+    readonly taskService: TaskService,
     private readonly bossMode?: BossModeService,
     private readonly now: () => string = () => new Date().toISOString(),
     store?: AgentChatStore,
@@ -516,6 +527,46 @@ export class AgentChatService {
       configurationRevisionId: record.configurationRevisionId,
       reasoningEffort: record.reasoningEffort,
       messages: Object.freeze(record.messages.map((message) => Object.freeze({ ...message }))),
+    });
+  }
+
+  conversationTaskIds(conversationId: string): readonly string[] {
+    const record = this.load(conversationId);
+    if (!record) throw new AgentChatServiceError('Agent Chat conversation not found.', 404);
+    return Object.freeze([...new Set(record.messages.flatMap((message) =>
+      message.taskId === null ? [] : [message.taskId]))]);
+  }
+
+  snapshotFrame(conversationId: string, cursor: string | null): AgentChatStreamFrame {
+    return Object.freeze({
+      version: AGENT_CHAT_CONTRACT_VERSION,
+      conversationId,
+      kind: 'snapshot',
+      eventId: cursor,
+      messageId: null,
+      message: null,
+      conversation: this.view(conversationId),
+    });
+  }
+
+  eventFrame(
+    conversationId: string,
+    eventId: string,
+    taskId: string,
+  ): AgentChatStreamFrame | null {
+    const record = this.load(conversationId);
+    if (!record) throw new AgentChatServiceError('Agent Chat conversation not found.', 404);
+    this.refreshConversation(record);
+    const message = record.messages.find((entry) => entry.taskId === taskId);
+    if (!message) return null;
+    return Object.freeze({
+      version: AGENT_CHAT_CONTRACT_VERSION,
+      conversationId,
+      kind: 'message',
+      eventId,
+      messageId: message.id,
+      message,
+      conversation: null,
     });
   }
 
