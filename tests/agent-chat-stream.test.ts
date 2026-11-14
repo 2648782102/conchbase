@@ -39,6 +39,14 @@ function text(value: string): Response {
   );
 }
 
+function textChunks(values: readonly string[]): Response {
+  return new Response(
+    `${values.map((value) =>
+      `data: ${JSON.stringify({ choices: [{ delta: { content: value } }] })}\n\n`).join('')}data: [DONE]\n\n`,
+    { status: 200, headers: { 'content-type': 'text/event-stream' } },
+  );
+}
+
 function scripted(turns: readonly (() => Response)[]): typeof globalThis.fetch {
   let index = 0;
   return (async () => turns[Math.min(index++, turns.length - 1)]!()) as typeof globalThis.fetch;
@@ -380,6 +388,51 @@ test('Agent Chat SSE never accepts a token in the query string', async () => {
       url: '/v1/agent-chat/conversations/chat_000000000000000000000000/events?token=secret',
     });
     assert.equal(injected.statusCode, 401);
+  } finally {
+    await app.close();
+    await service.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('Agent Chat SSE still publishes the final body after coalesced deltas', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-chat-stream-delta-'));
+  const service = new TaskService(
+    new SqliteTaskStore(path.join(directory, 'runtime.sqlite')),
+    {
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/model',
+      fetch: scripted([() => textChunks(['一', '二', '三', '四', '五'])]),
+    },
+    catalog(),
+  );
+  const agentChat = new AgentChatService(service);
+  const app = createApp({ logger: false, taskService: service, agentChatService: agentChat });
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address();
+  assert.ok(address && typeof address === 'object');
+  const base = `http://127.0.0.1:${address.port}`;
+  try {
+    const agent = await service.createAgent({
+      name: '增量助手', instructions: 'Reply.', providerId: 'magpie', modelId: 'fixture/model',
+    });
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
+    });
+    const conversationId = created.json().id as string;
+    const response = await fetch(`${base}/v1/agent-chat/conversations/${conversationId}/events`, {
+      signal: AbortSignal.timeout(20_000),
+    });
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: { text: '数数', idempotencyKey: 'delta-stream-1' },
+    });
+    const assistantId = sent.json().assistantMessage.id as string;
+    const frames = await readFrames(response, (entries) => entries.some((frame) =>
+      frame.data.messageId === assistantId && frame.data.message?.state === 'replied'));
+    const replied = frames.find((frame) => frame.data.message?.state === 'replied');
+    assert.equal(replied?.data.message?.body, '一二三四五');
   } finally {
     await app.close();
     await service.stop();

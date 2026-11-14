@@ -241,7 +241,13 @@ export function registerAgentChatRoutes(
           }
           const next = service.taskService.store.listEvents(cursor)
             .filter((event) => taskIds.includes(event.taskId));
+          const lastEventIdByTask = new Map<string, string>();
+          for (const event of next) lastEventIdByTask.set(event.taskId, event.id);
           for (const event of next) {
+            if (lastEventIdByTask.get(event.taskId) !== event.id) {
+              cursor = event.id;
+              continue;
+            }
             const frame = service.eventFrame(conversationId, event.id, event.taskId);
             if (frame) write(frame);
             else cursor = event.id;
