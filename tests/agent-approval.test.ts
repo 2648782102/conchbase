@@ -316,3 +316,43 @@ test('a second write request after approval pauses for approval again', async ()
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('repeating the same write after it already succeeded does not request approval again', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-approval-repeat-'));
+  const service = new TaskService(
+    new SqliteTaskStore(path.join(directory, 'runtime.sqlite')),
+    {
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/model',
+      fetch: scripted([
+        () => toolCall('workspace_write', { path: 'done.txt', content: 'payload' }),
+        () => toolCall('workspace_write', { path: 'done.txt', content: 'payload' }),
+        () => text('finished'),
+      ]),
+    },
+    catalog(),
+    { tools: tools(directory) },
+  );
+  try {
+    const agent = await service.createAgent({
+      name: '写入员', instructions: 'Write files.', providerId: 'magpie', modelId: 'fixture/model',
+    });
+    const created = await service.createAgentTask({ prompt: 'write once', agentId: agent.id });
+    service.startTask(created.id);
+    let task = service.store.getTask(created.id)!;
+    for (let attempt = 0; attempt < 100 && task.state !== 'waiting_approval'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      task = service.store.getTask(created.id)!;
+    }
+    service.decideApproval(created.id, 'approved');
+    task = await service.waitForTask(created.id);
+    assert.equal(task.state, 'succeeded');
+    assert.equal(task.output, 'finished');
+    const approvals = service.store.listEvents(null)
+      .filter((event) => event.taskId === created.id && event.type === ('agent_loop.approval_requested' as never));
+    assert.equal(approvals.length, 1);
+  } finally {
+    service.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

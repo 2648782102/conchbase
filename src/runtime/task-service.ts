@@ -513,7 +513,11 @@ export class TaskService {
       this.store.recordEvent(task.id, {
         ...this.eventInput(task, 'agent_loop.tool_executed', 'running', task.attempt),
         data: {
-          toolId: checkpoint.toolId, toolVersion: 1, resultDigest: result.digest, bytes: result.bytes,
+          toolId: checkpoint.toolId,
+          toolVersion: 1,
+          argumentsDigest: digestArguments(checkpoint.arguments),
+          resultDigest: result.digest,
+          bytes: result.bytes,
         },
       });
       if (signal.aborted) return;
@@ -610,6 +614,32 @@ export class TaskService {
       if (!definition) {
         conversation = [...conversation, { role: 'tool', toolCallId: call.id, content: 'error: unknown_tool' }];
       } else if (definition.sideEffect === 'write') {
+        const alreadyApplied = this.store.listEvents(null)
+          .some((event) => event.taskId === task.id
+            && event.type === 'agent_loop.tool_executed'
+            && event.data.toolId === call.name
+            && event.data.argumentsDigest === digestArguments(call.arguments));
+        if (alreadyApplied) {
+          conversation = [
+            ...conversation,
+            {
+              role: 'tool',
+              toolCallId: call.id,
+              content: 'This identical write already completed; do not repeat it. Summarize the result for the user.',
+            },
+          ];
+          const next = await provider.streamTurn({
+            taskId: task.id,
+            prompt: task.prompt,
+            turnIndex: iteration + 1,
+            messages: conversation,
+            signal,
+            onOutputDelta: () => undefined,
+          });
+          if (next.kind === 'final') return next.output;
+          current = next.kind === 'tool_calls' ? next.calls : current;
+          continue;
+        }
         this.store.saveLoopState(task.id, JSON.stringify({
           iteration,
           toolId: call.name,
@@ -627,7 +657,13 @@ export class TaskService {
         const result = await tools.invoke(call.name, call.arguments);
         this.store.recordEvent(task.id, {
           ...this.eventInput(task, 'agent_loop.tool_executed', 'running', task.attempt),
-          data: { toolId: call.name, toolVersion: 1, resultDigest: result.digest, bytes: result.bytes },
+          data: {
+            toolId: call.name,
+            toolVersion: 1,
+            argumentsDigest: digestArguments(call.arguments),
+            resultDigest: result.digest,
+            bytes: result.bytes,
+          },
         });
         conversation = [...conversation, { role: 'tool', toolCallId: call.id, content: result.summary }];
       }
@@ -930,7 +966,12 @@ export class TaskService {
           this.store.recordEvent(task.id, {
             ...this.eventInput(task, 'agent_loop.tool_executed', 'running', task.attempt),
             data: {
-              iteration, toolId: call.name, toolVersion: 1, resultDigest: result.digest, bytes: result.bytes,
+              iteration,
+              toolId: call.name,
+              toolVersion: 1,
+              argumentsDigest: digestArguments(call.arguments),
+              resultDigest: result.digest,
+              bytes: result.bytes,
             },
           });
           messages.push({ role: 'tool', toolCallId: call.id, content: result.summary });
