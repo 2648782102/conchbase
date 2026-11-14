@@ -1,0 +1,16 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { createApp } from '/Users/flowli/Documents/ChatGPT/Conchbase/src/http/create-app.js';
+import { SqliteTaskStore } from '/Users/flowli/Documents/ChatGPT/Conchbase/src/runtime/task-store.js';
+import { TaskService } from '/Users/flowli/Documents/ChatGPT/Conchbase/src/runtime/task-service.js';
+import { AgentChatService } from '/Users/flowli/Documents/ChatGPT/Conchbase/src/runtime/agent-chat.js';
+const dir = mkdtempSync(path.join(tmpdir(),'proj-'));
+const svc = new TaskService(new SqliteTaskStore(path.join(dir,'d.sqlite')), {magpieBaseUrl:'http://127.0.0.1:3425',defaultModel:'m',fetch:(async()=>new Response('')) as unknown as typeof fetch},{async listModels(){return [{id:'m',displayName:'M'}]}});
+const chat = new AgentChatService(svc);
+const agent = await svc.createAgent({name:'a',instructions:'i',providerId:'magpie',modelId:'m'});
+const c = await chat.createConversation({agentId: agent.id});
+const t0 = performance.now();
+for (let i=0;i<200;i++) chat.view(c.id);
+console.log('200 views', (performance.now()-t0).toFixed(1), 'ms');
+svc.close(); rmSync(dir,{recursive:true,force:true});

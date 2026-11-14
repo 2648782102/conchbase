@@ -348,3 +348,41 @@ test('closing an Agent Chat stream releases the connection slot', async () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('Agent Chat SSE never accepts a token in the query string', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-chat-stream-token-'));
+  const service = new TaskService(
+    new SqliteTaskStore(path.join(directory, 'runtime.sqlite')),
+    {
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/model',
+      fetch: scripted([() => text('ok')]),
+    },
+    catalog(),
+  );
+  const agentChat = new AgentChatService(service);
+  const app = createApp({
+    logger: false,
+    taskService: service,
+    agentChatService: agentChat,
+    config: {
+      host: '0.0.0.0',
+      port: 4318,
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/model',
+      databasePath: path.join(directory, 'runtime.sqlite'),
+      authTokenDigest: 'unused',
+    } as never,
+  });
+  try {
+    const injected = await app.inject({
+      method: 'GET',
+      url: '/v1/agent-chat/conversations/chat_000000000000000000000000/events?token=secret',
+    });
+    assert.equal(injected.statusCode, 401);
+  } finally {
+    await app.close();
+    await service.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
