@@ -27,7 +27,7 @@ export interface AgentChatStore {
   list(limit: number): readonly AgentChatConversationRecord[];
 }
 
-const RECOVERED_ERROR = 'Runtime restarted before this reply finished.';
+const RECOVERED_ERROR = 'Runtime 在本次回复完成前重启，未完成内容已丢弃。';
 const NONTERMINAL: readonly AgentChatMessageState[] = Object.freeze([
   'pending', 'thinking', 'streaming', 'organizing',
 ]);
@@ -36,7 +36,7 @@ function recoverMessages(messages: readonly AgentChatMessage[]): readonly AgentC
   return Object.freeze(messages.map((message) => NONTERMINAL.includes(message.state)
     ? Object.freeze({
       ...message,
-      state: 'unavailable' as const,
+      state: 'failed' as const,
       phase: 'terminal' as const,
       progress: null,
       error: RECOVERED_ERROR,
@@ -134,7 +134,7 @@ export class SqliteAgentChatStore implements AgentChatStore {
   initialize(): void {
     this.database.prepare(`
       UPDATE agent_chat_messages
-      SET state = 'unavailable', phase = 'terminal', progress = NULL, error = ?, updated_at = ?
+      SET state = 'failed', phase = 'terminal', progress = NULL, error = ?, updated_at = ?
       WHERE author = 'assistant' AND state IN ('pending', 'thinking', 'streaming', 'organizing')
     `).run(RECOVERED_ERROR, new Date().toISOString());
   }

@@ -598,7 +598,7 @@ test('a completed boss conversation survives restart', async () => {
   }
 });
 
-test('an in-flight boss reply becomes unavailable after restart without losing its conversation', async () => {
+test('an in-flight boss reply becomes failed after restart without losing its conversation', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-inflight-restart-'));
   const filename = path.join(directory, 'runtime.sqlite');
   let taskService = createTaskService(filename, {
@@ -658,9 +658,9 @@ test('an in-flight boss reply becomes unavailable after restart without losing i
     const reopened = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
     assert.equal(reopened.statusCode, 200);
     assert.equal(reopened.json().messages.length, 2);
-    assert.equal(reopened.json().messages[1]?.state, 'unavailable');
+    assert.equal(reopened.json().messages[1]?.state, 'failed');
     assert.equal(reopened.json().messages[1]?.phase, 'terminal');
-    assert.match(reopened.json().messages[1]?.error ?? '', /restart/i);
+    assert.match(reopened.json().messages[1]?.error ?? '', /重启|restart/i);
   } finally {
     await app.close();
     await taskService.stop();

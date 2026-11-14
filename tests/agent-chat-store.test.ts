@@ -49,7 +49,7 @@ test('in-memory agent chat store round-trips a conversation and idempotency keys
   assert.equal(loaded?.idempotency[0]?.[0], 'key-1');
 });
 
-test('SQLite agent chat store survives reopen and marks in-flight assistant messages unavailable', () => {
+test('SQLite agent chat store survives reopen and marks in-flight assistant messages failed', () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-agent-chat-store-'));
   const filename = path.join(directory, 'runtime.sqlite');
   try {
@@ -83,8 +83,8 @@ test('SQLite agent chat store survives reopen and marks in-flight assistant mess
     second.initialize();
     const loaded = second.get('chat_fixture');
     assert.equal(loaded?.messages.length, 2);
-    assert.equal(loaded?.messages[1]?.state, 'unavailable');
-    assert.match(loaded?.messages[1]?.error ?? '', /restart/i);
+    assert.equal(loaded?.messages[1]?.state, 'failed');
+    assert.match(loaded?.messages[1]?.error ?? '', /重启|restart/i);
     second.database.close();
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -119,10 +119,10 @@ test('SQLite agent chat store recovers an interrupted organizing message on init
     const second = new SqliteAgentChatStore(secondDatabase);
     second.initialize();
     const loaded = second.get('chat_fixture');
-    assert.equal(loaded?.messages[1]?.state, 'unavailable');
+    assert.equal(loaded?.messages[1]?.state, 'failed');
     assert.equal(loaded?.messages[1]?.phase, 'terminal');
     assert.equal(loaded?.messages[1]?.progress, null);
-    assert.match(loaded?.messages[1]?.error ?? '', /restart/i);
+    assert.match(loaded?.messages[1]?.error ?? '', /重启|restart/i);
     secondDatabase.close();
   } finally {
     rmSync(directory, { recursive: true, force: true });
