@@ -8,6 +8,7 @@ import { createTaskService } from '../src/runtime/task-service.js';
 import { AgentChatService } from '../src/runtime/agent-chat.js';
 import { BossModeService } from '../src/runtime/boss-mode-service.js';
 import { InMemoryOrganizationStore } from '../src/runtime/organization-store.js';
+import { PrimaryConversationService } from '../src/runtime/primary-conversation.js';
 import {
   createOpenAiCompatibleBossConversationParser,
   type OrganizationIntentParser,
@@ -362,9 +363,17 @@ test('boss agent publishes a natural model reply for ordinary conversation', asy
     model: 'fixture/chat-model',
     fetch: bossConversationFetch(),
   });
+  const conversation = new PrimaryConversationService();
   const bossMode = new BossModeService(organization, taskService, { parser, waitForTasks: false });
   const agentChat = new AgentChatService(taskService, bossMode);
-  const app = createApp({ logger: false, taskService, organizationStore: organization, bossModeService: bossMode, agentChatService: agentChat });
+  const app = createApp({
+    logger: false,
+    taskService,
+    organizationStore: organization,
+    bossModeService: bossMode,
+    agentChatService: agentChat,
+    conversationService: conversation,
+  });
   try {
     const created = await app.inject({
       method: 'POST',
@@ -493,9 +502,17 @@ test('pure boss conversation does not write organization intent state', async ()
     model: 'fixture/chat-model',
     fetch: bossConversationFetch(),
   });
+  const conversation = new PrimaryConversationService();
   const bossMode = new BossModeService(organization, taskService, { parser, waitForTasks: false });
   const agentChat = new AgentChatService(taskService, bossMode);
-  const app = createApp({ logger: false, taskService, organizationStore: organization, bossModeService: bossMode, agentChatService: agentChat });
+  const app = createApp({
+    logger: false,
+    taskService,
+    organizationStore: organization,
+    bossModeService: bossMode,
+    agentChatService: agentChat,
+    conversationService: conversation,
+  });
   try {
     const created = await app.inject({
       method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: 'boss-agent' },
@@ -513,6 +530,7 @@ test('pure boss conversation does not write organization intent state', async ()
     }
     assert.equal(view.json().messages[1]?.state, 'replied');
     assert.equal(organization.get().events.length, 0);
+    assert.equal(conversation.intentTextsView().size, 0);
   } finally {
     await app.close();
     await taskService.stop();

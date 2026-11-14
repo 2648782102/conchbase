@@ -199,7 +199,9 @@ export class BossModeService {
     const progress = typeof raw.onProgress === 'function' ? raw.onProgress as BossModeSubmitInput['onProgress'] : undefined;
     const submission = validateSubmission({ ...raw, ...(progress ? { onProgress: progress } : {}) });
     const resolvedIntentId = intentId(submission.idempotencyKey);
-    this.conversation?.recordIntentText(resolvedIntentId, submission.text);
+    if (submission.source !== 'agent-chat') {
+      this.conversation?.recordIntentText(resolvedIntentId, submission.text);
+    }
     const bodyDigest = digest(JSON.stringify([submission.text, resolvedIntentId]));
     const recorded = this.findRecordedIntent(resolvedIntentId, bodyDigest);
     if (recorded) return recorded;
@@ -227,6 +229,9 @@ export class BossModeService {
     };
     const modelReference = await this.resolveModelReference();
     const direct = await this.parser.parse({ ...parseInput, modelReference });
+    if (submission.source === 'agent-chat' && direct.actions.length > 0) {
+      this.conversation?.recordIntentText(resolvedIntentId, submission.text);
+    }
     if (submission.source === 'agent-chat' && direct.actions.length === 0) {
       const accepted: BossModeSubmitResult = Object.freeze({
         version: BOSS_MODE_SERVICE_VERSION,
