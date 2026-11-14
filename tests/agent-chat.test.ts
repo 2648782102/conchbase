@@ -728,6 +728,32 @@ test('a completed configured-Agent reply survives restart as replied', async () 
   }
 });
 
+test('agent chat reloads an evicted conversation from durable storage', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-agent-chat-evict-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: fakeFetch(),
+  });
+  const agentChat = new AgentChatService(taskService);
+  try {
+    const agent = await taskService.createAgent({
+      name: '缓存助手', instructions: 'Reply.', providerId: 'magpie', modelId: 'fixture/chat-model',
+    });
+    let firstId = '';
+    for (let index = 0; index < 70; index += 1) {
+      const created = await agentChat.createConversation({ agentId: agent.id });
+      if (index === 0) firstId = created.id;
+    }
+    const reloaded = agentChat.view(firstId);
+    assert.equal(reloaded.id, firstId);
+    assert.equal(reloaded.agentId, agent.id);
+  } finally {
+    taskService.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('agent chat conversation pins a user-selected model override', async () => {
   await withApp(async (app, agentId) => {
     const created = await app.inject({

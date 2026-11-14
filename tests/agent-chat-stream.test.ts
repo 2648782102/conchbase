@@ -301,3 +301,50 @@ test('agent chat SSE publishes Boss conversation updates without task ids', asyn
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('closing an Agent Chat stream releases the connection slot', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-chat-stream-close-'));
+  const service = new TaskService(
+    new SqliteTaskStore(path.join(directory, 'runtime.sqlite')),
+    {
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/model',
+      fetch: scripted([() => text('ok')]),
+    },
+    catalog(),
+  );
+  const agentChat = new AgentChatService(service);
+  const app = createApp({ logger: false, taskService: service, agentChatService: agentChat });
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address();
+  assert.ok(address && typeof address === 'object');
+  const base = `http://127.0.0.1:${address.port}`;
+  try {
+    const agent = await service.createAgent({
+      name: '关闭助手', instructions: 'Reply.', providerId: 'magpie', modelId: 'fixture/model',
+    });
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
+    });
+    const conversationId = created.json().id as string;
+    for (let index = 0; index < 5; index += 1) {
+      const controller = new AbortController();
+      const response = await fetch(`${base}/v1/agent-chat/conversations/${conversationId}/events`, {
+        signal: controller.signal,
+      });
+      assert.equal(response.status, 200);
+      controller.abort();
+    }
+    const healthy = await fetch(`${base}/v1/health`);
+    assert.equal(healthy.status, 200);
+    const reopened = await fetch(`${base}/v1/agent-chat/conversations/${conversationId}/events`, {
+      signal: AbortSignal.timeout(5_000),
+    });
+    assert.equal(reopened.status, 200);
+    await reopened.body?.cancel();
+  } finally {
+    await app.close();
+    await service.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

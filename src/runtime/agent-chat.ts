@@ -261,6 +261,7 @@ function boundedString(value: unknown, fallback = ''): string {
 
 export class AgentChatService {
   private readonly conversations = new Map<string, ConversationRecord>();
+  private static readonly MAX_CACHED_CONVERSATIONS = 64;
   private readonly store: AgentChatStore;
 
   constructor(
@@ -917,6 +918,10 @@ export class AgentChatService {
       idempotency: new Map(stored.idempotency),
     };
     this.conversations.set(conversationId, record);
+    if (this.conversations.size > AgentChatService.MAX_CACHED_CONVERSATIONS) {
+      const oldest = this.conversations.keys().next().value;
+      if (oldest !== undefined && oldest !== conversationId) this.conversations.delete(oldest);
+    }
     return record;
   }
 
