@@ -366,6 +366,48 @@ test('closing an Agent Chat stream releases the connection slot', async () => {
   }
 });
 
+test('repeated stream open and close does not accumulate task listeners', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-chat-stream-listeners-'));
+  const service = new TaskService(
+    new SqliteTaskStore(path.join(directory, 'runtime.sqlite')),
+    {
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/model',
+      fetch: scripted([() => text('ok')]),
+    },
+    catalog(),
+  );
+  const agentChat = new AgentChatService(service);
+  const app = createApp({ logger: false, taskService: service, agentChatService: agentChat });
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address();
+  assert.ok(address && typeof address === 'object');
+  const base = `http://127.0.0.1:${address.port}`;
+  try {
+    const agent = await service.createAgent({
+      name: '监听器助手', instructions: 'Reply.', providerId: 'magpie', modelId: 'fixture/model',
+    });
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
+    });
+    const conversationId = created.json().id as string;
+    for (let index = 0; index < 6; index += 1) {
+      const controller = new AbortController();
+      const response = await fetch(`${base}/v1/agent-chat/conversations/${conversationId}/events`, {
+        signal: controller.signal,
+      });
+      assert.equal(response.status, 200);
+      controller.abort();
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    assert.equal(service.changeListenerCount, 0);
+  } finally {
+    await app.close();
+    await service.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('Agent Chat SSE never accepts a token in the query string', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-chat-stream-token-'));
   const service = new TaskService(

@@ -648,6 +648,10 @@ export class TaskService {
     return () => this.eventListeners.delete(listener);
   }
 
+  get changeListenerCount(): number {
+    return this.eventListeners.size;
+  }
+
   private notifyChange(taskId: string): void {
     for (const listener of this.eventListeners) {
       try {
