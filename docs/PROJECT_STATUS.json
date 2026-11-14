@@ -22,6 +22,11 @@
       "pathCount": 8,
       "frozen": true
     },
+    "executionRun": {
+      "version": "1.3.0",
+      "pathCount": 8,
+      "frozen": true
+    },
     "workContractVersion": 2,
     "databaseUserVersion": 3,
     "currentPrivateDatabaseUserVersion": 4,
@@ -157,6 +162,11 @@
       "id": "controlled-execution-v1",
       "summary": "ADR 0043 implements deterministic controlled execution v1 with explicit grants, request approval/rejection, digest-only fake execution, revocation, and bounded audit events over additive 1.2.0 paths.",
       "evidence": "src/runtime/controlled-execution.ts"
+    },
+    {
+      "id": "isolated-execution-v2",
+      "summary": "ADR 0044 implements isolated local execution v2 with a fixed Node child-process worker, closed deterministic operations, durable queued/running/succeeded/failed/cancelled/interrupted runs, explicit start/cancel/recover, restart interruption, and digest-only audit over additive 1.3.0 paths.",
+      "evidence": "src/runtime/isolated-execution.ts"
     }
   ],
   "validationEvidence": [
@@ -263,12 +273,18 @@
       "summary": "An executable fixture covers explicit grants, stale versions, idempotency, approved fake execution, rejected requests, revocation, public paths, discovery, digest-only results, and no plaintext/private-path leakage.",
       "evidence": "tests/controlled-execution.test.ts",
       "executableFixture": true
+    },
+    {
+      "id": "isolated-execution-v2-fixture",
+      "summary": "An executable fixture covers approved-request/active-grant run creation, isolated child-process execution, stale versions, idempotency conflicts, cancel/recover, restart interruption, public run discovery, adapters, and no plaintext/private-path leakage.",
+      "evidence": "tests/isolated-execution.test.ts",
+      "executableFixture": true
     }
   ],
   "blockedDirections": [
     {
       "id": "real-controlled-execution",
-      "summary": "Real executor isolation, MCP/Skill/plugin lifecycle, external Sources, external writes, and crash-safe side effects remain blocked; ADR 0043 implements only the deterministic fake-executor v1 slice.",
+      "summary": "Real MCP/Skill/plugin lifecycle, external Sources, external writes, arbitrary host tool execution, and crash-safe external side effects remain blocked; ADR 0044 implements only isolated local deterministic operations with no external write.",
       "requiresAcceptedAdr": true,
       "directionAdr": "docs/decisions/0043-controlled-execution-v1.md"
     },

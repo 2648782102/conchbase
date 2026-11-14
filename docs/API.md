@@ -89,6 +89,15 @@ The service listens on `127.0.0.1:4318` by default. The machine-readable source 
 | `GET /v1/execution/requests/{requestId}` | Read one published request. |
 | `POST /v1/execution/requests/{requestId}/decide` | Approve and fake-execute, or reject, a pending request. |
 | `GET /v1/execution/events?after=<eventId>&limit=<n>` | Read bounded deterministic execution audit events. |
+| `GET /v1/execution/run-health` | Read isolated execution `1.3.0` availability and exact run paths. |
+| `GET /v1/execution/adapters` | List published isolated local executor adapters. |
+| `GET /v1/execution/runs` | List durable isolated execution runs. |
+| `POST /v1/execution/runs` | Create a queued run from an approved request and active grant. |
+| `GET /v1/execution/runs/{runId}` | Read one durable run. |
+| `POST /v1/execution/runs/{runId}/start` | Start a queued run in an isolated local child process. |
+| `POST /v1/execution/runs/{runId}/cancel` | Cancel a queued run with its published expected version. |
+| `POST /v1/execution/runs/{runId}/recover` | Recover an interrupted or failed run for a fresh bounded attempt. |
+| `GET /v1/execution/runs/{runId}/events` | Read bounded audit events for one run. |
 
 An Agent profile is a versioned resource with bounded name, instructions, and `{ providerId, modelId }` default model reference. It contains no credential, provider URL, permission, or tool grant. The first Agent becomes default; there is no implicit default selection for task creation. Profile edits and history apply use `expectedRevisionId`; rollback appends a revision. Archiving is soft and irreversible in the current API, preserves history, and prevents new tasks. Existing tasks, including retries, stay bound to their pinned revision.
 
@@ -119,5 +128,6 @@ Durable work documents are deterministic, topology-neutral state from [ADR 0024]
 - Work and platform routes do not call a model, execute a host tool, perform an external write, expose a generic secret resolver, read a private file from a client, define a canonical topology, or reinterpret the phase-1 `Task` resource. A submitted SecretHandle value is sealed with a process-scoped key and is exposed only to one runtime-owned fixed adapter; restart invalidates old sealed values.
 - The additive `1.1.0` organization contract publishes only Runtime-owned facts. Intents are bounded, idempotent text submissions; the Runtime may use a deterministic or OpenAI-compatible structured parser, then validates all proposed actions, creates real Agent revisions, starts durable work, commits structured reports/Attention, and returns `202` while clients read published state. Clients cannot submit lifecycle commands, inspect drafts or raw transcripts, compute authority locally, or read private files/database state.
 - The additive `1.2.0` controlled-execution contract adds explicit grants, pending requests, approval/rejection, deterministic fake execution, revocation, and bounded audit. It does not install MCP servers, load Skills/plugins, execute host tools, write external systems, or expose plaintext secrets. Capability records are data; only an active explicit grant plus an approved request can reach the fake executor.
+- The additive `1.3.0` isolated execution contract adds a Runtime-owned fixed Node child-process executor, closed deterministic operations, durable run state, explicit start/cancel/recover, restart interruption, and digest-only run audit. It performs no file, network, credential, package, shell, or external write operation.
 
 > Final local-first target: Conchbase `1.0.0` and ADR 0025 close the exact 47-path platform contract. Write-only SecretHandle values are sealed at rest with a process-scoped AES-256-GCM key, exposed only to one runtime-owned fixed adapter, and never returned, logged, or sent to a model, client, event, or UI. Restart invalidates previously sealed values; cross-process key sources, real external adapters, executors, Sources, external writes, and tools require separate ADRs.

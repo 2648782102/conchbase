@@ -5,6 +5,7 @@ export function registerRuntimeRoute(
   tasksEnabled = false,
   organizationEnabled = false,
   executionEnabled = false,
+  executionRunEnabled = false,
 ): void {
   app.get('/v1/runtime', async () => ({
     name: 'Conchbase',
@@ -17,6 +18,10 @@ export function registerRuntimeRoute(
     ...(executionEnabled ? {
       executionContract: '1.2.0' as const,
       executionPaths: 8,
+    } : {}),
+    ...(executionRunEnabled ? {
+      executionRunContract: '1.3.0' as const,
+      executionRunPaths: 8,
     } : {}),
     capabilities: tasksEnabled
       ? [

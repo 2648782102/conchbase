@@ -1711,6 +1711,209 @@ paths:
           $ref: '#/components/responses/ExecutionValidationError'
         '503':
           $ref: '#/components/responses/ExecutionUnavailableError'
+  /v1/execution/run-health:
+    get:
+      operationId: getExecutionRunHealth
+      summary: Read isolated execution 1.3.0 availability and exact published run paths.
+      responses:
+        '200':
+          description: Isolated execution run contract availability.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionRunHealth'
+        '503':
+          $ref: '#/components/responses/ExecutionRunUnavailableError'
+  /v1/execution/adapters:
+    get:
+      operationId: listExecutionAdapters
+      summary: List published isolated local executor adapters.
+      responses:
+        '200':
+          description: Adapter collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionAdapterList'
+        '503':
+          $ref: '#/components/responses/ExecutionRunUnavailableError'
+  /v1/execution/runs:
+    get:
+      operationId: listExecutionRuns
+      summary: List durable isolated execution runs.
+      responses:
+        '200':
+          description: Run collection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionRunList'
+        '503':
+          $ref: '#/components/responses/ExecutionRunUnavailableError'
+    post:
+      operationId: createExecutionRun
+      summary: Create a queued run from an approved request and active grant.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateExecutionRunRequest'
+      responses:
+        '201':
+          description: Run created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionRunEnvelope'
+        '400':
+          $ref: '#/components/responses/ExecutionRunValidationError'
+        '404':
+          $ref: '#/components/responses/ExecutionRunNotFoundError'
+        '409':
+          $ref: '#/components/responses/ExecutionRunConflictError'
+        '503':
+          $ref: '#/components/responses/ExecutionRunUnavailableError'
+  /v1/execution/runs/{runId}:
+    get:
+      operationId: getExecutionRun
+      summary: Read one durable execution run.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Execution run.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionRunEnvelope'
+        '404':
+          $ref: '#/components/responses/ExecutionRunNotFoundError'
+        '503':
+          $ref: '#/components/responses/ExecutionRunUnavailableError'
+  /v1/execution/runs/{runId}/start:
+    post:
+      operationId: startExecutionRun
+      summary: Start a queued run in an isolated local child process.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecutionRunTransitionRequest'
+      responses:
+        '200':
+          description: Finished execution run.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionRunEnvelope'
+        '400':
+          $ref: '#/components/responses/ExecutionRunValidationError'
+        '404':
+          $ref: '#/components/responses/ExecutionRunNotFoundError'
+        '409':
+          $ref: '#/components/responses/ExecutionRunConflictError'
+        '503':
+          $ref: '#/components/responses/ExecutionRunUnavailableError'
+  /v1/execution/runs/{runId}/cancel:
+    post:
+      operationId: cancelExecutionRun
+      summary: Cancel a queued run using its published expected version.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecutionRunTransitionRequest'
+      responses:
+        '200':
+          description: Cancelled execution run.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionRunEnvelope'
+        '400':
+          $ref: '#/components/responses/ExecutionRunValidationError'
+        '409':
+          $ref: '#/components/responses/ExecutionRunConflictError'
+  /v1/execution/runs/{runId}/recover:
+    post:
+      operationId: recoverExecutionRun
+      summary: Recover an interrupted or failed run for a fresh bounded attempt.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecutionRunTransitionRequest'
+      responses:
+        '200':
+          description: Recovered queued execution run.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionRunEnvelope'
+        '400':
+          $ref: '#/components/responses/ExecutionRunValidationError'
+        '409':
+          $ref: '#/components/responses/ExecutionRunConflictError'
+  /v1/execution/runs/{runId}/events:
+    get:
+      operationId: listExecutionRunEvents
+      summary: Read bounded audit events for one run.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        '200':
+          description: Run event page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionRunEventPage'
+        '400':
+          $ref: '#/components/responses/ExecutionRunValidationError'
+        '404':
+          $ref: '#/components/responses/ExecutionRunNotFoundError'
 
 components:
   parameters:
@@ -2030,6 +2233,30 @@ components:
           items:
             $ref: '#/components/schemas/ProviderModel'
   responses:
+    ExecutionRunValidationError:
+      description: Invalid run request, unknown field, or unsupported contract shape.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ExecutionRunNotFoundError:
+      description: Execution run resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ExecutionRunConflictError:
+      description: Execution run state, version, or idempotency conflict.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ExecutionRunUnavailableError:
+      description: Isolated execution service is not configured.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     ExecutionValidationError:
       description: Invalid execution request, unknown field, or unsupported contract shape.
       content:
@@ -2138,6 +2365,11 @@ components:
           type: string
           const: '1.2.0'
         executionPaths:
+          const: 8
+        executionRunContract:
+          type: string
+          const: '1.3.0'
+        executionRunPaths:
           const: 8
     Error:
       type: object
@@ -4367,6 +4599,197 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ExecutionEvent'
+        nextCursor:
+          type: [string, 'null']
+        hasMore:
+          type: boolean
+    ExecutionRunVersion:
+      type: string
+      const: '1.3.0'
+    ExecutionRunState:
+      type: string
+      enum: [queued, running, succeeded, failed, cancelled, interrupted]
+    ExecutionRunHealth:
+      type: object
+      additionalProperties: false
+      required: [version, status, paths]
+      properties:
+        version:
+          $ref: '#/components/schemas/ExecutionRunVersion'
+        status:
+          const: ready
+        paths:
+          type: array
+          items:
+            type: string
+    ExecutionAdapter:
+      type: object
+      additionalProperties: false
+      required: [version, id, kind, operations, maxInputBytes, maxRuntimeMs, network, filesystem, createdAt]
+      properties:
+        version:
+          $ref: '#/components/schemas/ExecutionRunVersion'
+        id:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        kind:
+          const: isolated-local-worker
+        operations:
+          type: array
+          items:
+            type: string
+        maxInputBytes:
+          type: integer
+        maxRuntimeMs:
+          type: integer
+        network:
+          const: forbidden
+        filesystem:
+          const: no-user-paths
+        createdAt:
+          type: string
+    ExecutionAdapterList:
+      type: object
+      additionalProperties: false
+      required: [version, adapters]
+      properties:
+        version:
+          $ref: '#/components/schemas/ExecutionRunVersion'
+        adapters:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExecutionAdapter'
+    ExecutionRun:
+      type: object
+      additionalProperties: false
+      required: [version, id, requestId, grantId, operation, argumentsDigest, adapterId, state, attempt, expectedVersion, workerPidDigest, exitCode, resultDigest, errorDigest, idempotencyKey, createdAt, startedAt, finishedAt]
+      properties:
+        version:
+          $ref: '#/components/schemas/ExecutionRunVersion'
+        id:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        requestId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        grantId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        operation:
+          type: string
+          enum: [hash, echo_length, fixed_matrix]
+        argumentsDigest:
+          $ref: '#/components/schemas/ExecutionDigest'
+        adapterId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        state:
+          $ref: '#/components/schemas/ExecutionRunState'
+        attempt:
+          type: integer
+          minimum: 1
+        expectedVersion:
+          type: integer
+          minimum: 1
+        workerPidDigest:
+          type: [string, 'null']
+        exitCode:
+          type: [integer, 'null']
+        resultDigest:
+          type: [string, 'null']
+        errorDigest:
+          type: [string, 'null']
+        idempotencyKey:
+          type: string
+        createdAt:
+          type: string
+        startedAt:
+          type: [string, 'null']
+        finishedAt:
+          type: [string, 'null']
+    ExecutionRunEnvelope:
+      type: object
+      additionalProperties: false
+      required: [version, run]
+      properties:
+        version:
+          $ref: '#/components/schemas/ExecutionRunVersion'
+        run:
+          $ref: '#/components/schemas/ExecutionRun'
+    ExecutionRunList:
+      type: object
+      additionalProperties: false
+      required: [version, runs]
+      properties:
+        version:
+          $ref: '#/components/schemas/ExecutionRunVersion'
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExecutionRun'
+    CreateExecutionRunRequest:
+      type: object
+      additionalProperties: false
+      required: [requestId, expectedRequestVersion, grantId, operation, argumentsDigest, adapterId, idempotencyKey]
+      properties:
+        requestId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        expectedRequestVersion:
+          type: integer
+          minimum: 1
+        grantId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        operation:
+          type: string
+          enum: [hash, echo_length, fixed_matrix]
+        argumentsDigest:
+          $ref: '#/components/schemas/ExecutionDigest'
+        adapterId:
+          $ref: '#/components/schemas/ExecutionOpaqueId'
+        idempotencyKey:
+          type: string
+    ExecutionRunTransitionRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion]
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 1
+    ExecutionRunEvent:
+      type: object
+      additionalProperties: false
+      required: [version, id, sequence, type, data, createdAt]
+      properties:
+        version:
+          $ref: '#/components/schemas/ExecutionRunVersion'
+        id:
+          type: string
+        sequence:
+          type: integer
+          minimum: 1
+        type:
+          type: string
+          enum:
+            - execution.run_created
+            - execution.run_started
+            - execution.run_succeeded
+            - execution.run_failed
+            - execution.run_cancelled
+            - execution.run_interrupted
+            - execution.run_recovered
+        data:
+          type: object
+          additionalProperties:
+            type: [string, number, boolean]
+        createdAt:
+          type: string
+    ExecutionRunEventPage:
+      type: object
+      additionalProperties: false
+      required: [version, events, nextCursor, hasMore]
+      properties:
+        version:
+          $ref: '#/components/schemas/ExecutionRunVersion'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExecutionRunEvent'
         nextCursor:
           type: [string, 'null']
         hasMore:

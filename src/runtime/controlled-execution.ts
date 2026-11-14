@@ -383,6 +383,40 @@ export class ControlledExecutionService {
     return this.snapshot;
   }
 
+  approvedRequest(requestId: string): {
+    readonly id: string;
+    readonly grantId: string;
+    readonly state: ExecutionRequestState;
+    readonly expectedVersion: number;
+    readonly operation: string;
+    readonly argumentsDigest: string;
+  } | undefined {
+    const request = this.snapshot.requests.find((item) => item.id === requestId);
+    if (!request) return undefined;
+    return Object.freeze({
+      id: request.id,
+      grantId: request.grantId,
+      state: request.state,
+      expectedVersion: request.expectedVersion,
+      operation: request.operation,
+      argumentsDigest: request.argumentsDigest,
+    });
+  }
+
+  activeGrant(grantId: string): {
+    readonly id: string;
+    readonly state: GrantState;
+    readonly operation: string;
+  } | undefined {
+    const grant = this.snapshot.grants.find((item) => item.id === grantId);
+    if (!grant) return undefined;
+    return Object.freeze({
+      id: grant.id,
+      state: grant.state,
+      operation: grant.operation,
+    });
+  }
+
   createGrant(input: unknown): ExecutionGrant {
     const parsed = parseCreateGrantInput(input);
     const capability = this.snapshot.capabilities.find((item) => item.id === parsed.capabilityId);

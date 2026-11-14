@@ -5,6 +5,7 @@ import test from 'node:test';
 import { createApp } from '../src/http/create-app.js';
 import {
   EXECUTION_PATHS_FIXTURE,
+  EXECUTION_RUN_PATHS_FIXTURE,
   HEALTH_RESPONSE_FIXTURE,
   ORGANIZATION_PATHS_FIXTURE,
   RUNTIME_RESPONSE_FIXTURE,
@@ -106,6 +107,7 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
       '/v1/secret-handles/use-receipts',
       ...ORGANIZATION_PATHS_FIXTURE,
       ...EXECUTION_PATHS_FIXTURE,
+      ...EXECUTION_RUN_PATHS_FIXTURE,
     ],
   );
   assert.match(spec, /\$ref: '#\/components\/schemas\/Health'/);
@@ -329,6 +331,12 @@ test('live injected responses equal the documented response fixtures', async () 
         ? {
           executionContract: runtime.json().executionContract,
           executionPaths: runtime.json().executionPaths,
+        }
+        : {}),
+      ...(runtime.json().executionRunContract
+        ? {
+          executionRunContract: runtime.json().executionRunContract,
+          executionRunPaths: runtime.json().executionRunPaths,
         }
         : {}),
     });
