@@ -142,13 +142,17 @@ function buildCommands(
   }
 
   for (const worker of snapshot.workers) {
-    if (worker.state !== 'authorized' && worker.state !== 'idle') continue;
+    if (worker.state !== 'authorized' && worker.state !== 'idle' && worker.state !== 'running') continue;
     const project = snapshot.projects.find((candidate) => candidate.id === worker.projectId);
     if (!project || project.state !== 'active' && project.state !== 'resumed') continue;
     if (snapshot.delegations.find((delegation) => delegation.id === worker.delegationId)?.state !== 'active') continue;
     if (activeWorkItemIds.length >= limits.globalActive) break;
     if ((activeByProject.get(worker.projectId) ?? 0) >= limits.perProjectActive) continue;
-    const workItemId = `work_${worker.id}`;
+    const executionEvent = [...snapshot.events].reverse().find((event) =>
+      event.type === 'organization.worker_execution_recorded' && event.data.workerId === worker.id);
+    const workItemId = typeof executionEvent?.data.workItemId === 'string'
+      ? executionEvent.data.workItemId
+      : `work_${worker.id}`;
     if (work.some((item) => item.id === workItemId)) continue;
     commands.push(Object.freeze({
       type: 'start_work',

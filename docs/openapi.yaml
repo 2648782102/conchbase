@@ -1894,7 +1894,7 @@ components:
     RuntimeStatus:
       type: object
       additionalProperties: false
-      required: [name, version, state, capabilities, organizationContract, organizationPaths]
+      required: [name, version, state, capabilities]
       properties:
         name:
           const: Conchbase

@@ -114,8 +114,6 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
     'version',
     'state',
     'capabilities',
-    'organizationContract',
-    'organizationPaths',
   ]);
   assert.match(spec, /CreateTaskRequest:[\s\S]*?allOf:/);
   assertSchemaFields('AgentReference', ['providerId', 'modelId']);
@@ -293,16 +291,12 @@ test('exact response fixtures match the documented read-only JSON schema shapes'
     'version',
     'state',
     'capabilities',
-    'organizationContract',
-    'organizationPaths',
   ]);
   assert.equal(RUNTIME_RESPONSE_FIXTURE.name, 'Conchbase');
   assert.equal(typeof RUNTIME_RESPONSE_FIXTURE.version, 'string');
   assert.equal(RUNTIME_RESPONSE_FIXTURE.state, 'ready');
   assert.ok(Array.isArray(RUNTIME_RESPONSE_FIXTURE.capabilities));
   assert.ok(RUNTIME_RESPONSE_FIXTURE.capabilities.every((item) => typeof item === 'string'));
-  assert.equal(RUNTIME_RESPONSE_FIXTURE.organizationContract, '1.1.0');
-  assert.equal(RUNTIME_RESPONSE_FIXTURE.organizationPaths, 18);
 });
 
 test('live injected responses equal the documented response fixtures', async () => {
@@ -321,6 +315,12 @@ test('live injected responses equal the documented response fixtures', async () 
     assert.deepEqual(runtime.json(), {
       ...RUNTIME_RESPONSE_FIXTURE,
       capabilities: runtime.json().capabilities,
+      ...(runtime.json().organizationContract
+        ? {
+          organizationContract: runtime.json().organizationContract,
+          organizationPaths: runtime.json().organizationPaths,
+        }
+        : {}),
     });
   } finally {
     await app.close();

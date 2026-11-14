@@ -108,7 +108,7 @@ export function parseOrganizationActionSubmission(input: unknown): OrganizationA
 }
 
 export function organizationIntentId(idempotencyKey: string): string {
-  return `int_${createHash('sha256').update(`organization-intent:${idempotencyKey}`).digest('hex').slice(0, 24)}`;
+  return `int_${createHash('sha256').update(`intent:${idempotencyKey}`).digest('hex').slice(0, 24)}`;
 }
 
 export function organizationIntentFingerprint(submission: OrganizationIntentSubmission): string {

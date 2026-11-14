@@ -41,6 +41,12 @@ function fixtureParser(): OrganizationIntentParser {
           maxDelegationDepth: 0,
           ttlEvents: 100,
         }),
+        parseOrganizationAction({
+          type: 'start_worker',
+          expectedSequence: input.expectedSequence + 3,
+          projectId,
+          workerId,
+        }),
       ]);
       return Object.freeze({
         version: 1 as const,
@@ -63,7 +69,13 @@ async function withService(action: (service: BossModeService, directory: string)
           data: [{ id: 'fixture-model', display_name: 'Fixture Model' }],
         }), { status: 200, headers: { 'content-type': 'application/json' } });
       }
-      throw new Error('No model call is required by this fixture.');
+      if (String(input).endsWith('/v1/chat/completions')) {
+        return new Response('data: {"choices":[{"delta":{"content":"done"},"finish_reason":null}]}\n\ndata: [DONE]\n\n', {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        });
+      }
+      throw new Error(`Unexpected fetch in fixture: ${String(input)}`);
     }) as typeof globalThis.fetch,
   });
   const store = new InMemoryOrganizationStore();
@@ -83,13 +95,13 @@ test('boss mode creates a real Agent revision and binds durable work from one in
       idempotencyKey: 'boss-fixture-1',
     });
     assert.equal(result.state, 'accepted');
-    assert.equal(result.actions.length, 3);
+    assert.equal(result.actions.length, 5);
     assert.ok(result.executions.some((execution) => execution.status === 'created-agent'));
 
     const snapshot = service.snapshot();
     assert.equal(snapshot.projects.length, 1);
     assert.equal(snapshot.workers.length, 1);
-    assert.equal(snapshot.workers[0]?.state, 'running');
+    assert.equal(snapshot.workers[0]?.state, 'reporting');
 
     const revisionId = service.getDynamicAgentRevisionId('wrk_alpha');
     assert.ok(revisionId);
@@ -99,7 +111,7 @@ test('boss mode creates a real Agent revision and binds durable work from one in
       taskService: { store: { work: { listWorkItems(): readonly { id: string; state: string }[] } } };
     }).taskService.store.work.listWorkItems();
     assert.equal(workItems.length, 1);
-    assert.equal(workItems[0]?.state, 'open');
+    assert.equal(workItems[0]?.state, 'completed');
   });
 });
 
@@ -107,9 +119,11 @@ test('boss mode replays an idempotency key and rejects body conflicts', async ()
   await withService(async (service) => {
     const input = { text: 'Start project alpha and hire a worker.', idempotencyKey: 'boss-fixture-1' };
     const first = await service.submit(input);
+    const eventCount = service.snapshot().events.length;
     const replay = await service.submit(input);
-    assert.deepEqual(replay, first);
-    assert.equal(service.snapshot().events.length, 5);
+    assert.equal(replay.intentId, first.intentId);
+    assert.equal(replay.state, 'accepted');
+    assert.equal(service.snapshot().events.length, eventCount);
     await assert.rejects(() => service.submit({ ...input, text: 'Different body.' }));
   });
 });

@@ -10,7 +10,7 @@ export function registerRuntimeRoute(
     version: '1.0.0',
     state: 'ready',
     ...(organizationEnabled ? {
-      organizationContract: '1.1.0',
+      organizationContract: '1.1.0' as const,
       organizationPaths: 18,
     } : {}),
     capabilities: tasksEnabled

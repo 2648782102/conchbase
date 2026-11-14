@@ -1,5 +1,10 @@
 import { createHash } from 'node:crypto';
-import { parseOrganizationAction, type OrganizationAction } from './organization-contract.js';
+import {
+  createOrganization,
+  parseOrganizationAction,
+  type OrganizationAction,
+  type OrganizationSnapshot,
+} from './organization-contract.js';
 
 export const ORGANIZATION_INTENT_PARSER_VERSION = 1;
 
@@ -15,6 +20,8 @@ export interface OrganizationIntentParserInput {
   readonly text: string;
   readonly expectedSequence: number;
   readonly signal?: AbortSignal;
+  readonly snapshot?: OrganizationSnapshot;
+  readonly modelReference?: { readonly providerId: string; readonly modelId: string };
 }
 
 export interface OrganizationIntentParseResult {
@@ -44,6 +51,10 @@ function boundedDigest(value: string): string {
   return `sha256:${digest(value)}`;
 }
 
+function actionAt(action: OrganizationAction, expectedSequence: number): OrganizationAction {
+  return Object.freeze({ ...action, expectedSequence }) as OrganizationAction;
+}
+
 export function parseStructuredOrganizationResult(
   input: OrganizationIntentParserInput,
   value: unknown,
@@ -53,7 +64,9 @@ export function parseStructuredOrganizationResult(
   if (!Array.isArray(rawActions) || rawActions.length > 16) {
     throw new OrganizationIntentParseError('Structured adapter must return at most 16 actions.');
   }
-  const actions = rawActions.map((candidate) => parseOrganizationAction(candidate));
+  const baseSequence = input.snapshot?.events.length ?? input.expectedSequence;
+  const actions = rawActions.map((candidate, index) =>
+    actionAt(parseOrganizationAction(candidate), baseSequence + index));
   const relay = value.relay === null || value.relay === undefined ? null : value.relay;
   if (relay !== null && (typeof relay !== 'string' || relay.length > 2000)) {
     throw new OrganizationIntentParseError('Structured adapter relay is not bounded.');
@@ -71,6 +84,16 @@ export function parseStructuredOrganizationResult(
 
 const parseStructuredResult = parseStructuredOrganizationResult;
 
+function projectName(text: string): string {
+  const match = /\b(?:project|项目)\s*[“"'：:]?\s*([A-Za-z0-9][A-Za-z0-9 _-]{1,48})/i.exec(text);
+  return (match?.[1] ?? 'primary initiative').trim().replace(/\s+/g, '-').toLowerCase();
+}
+
+function workerName(text: string, project: string): string | null {
+  const match = /\b(?:worker|employee|员工|招聘|hire)\s*[“"'：:]?\s*([A-Za-z0-9][A-Za-z0-9 _-]{1,48})/i.exec(text);
+  return match ? (match[1] ?? `${project}-worker`).trim().replace(/\s+/g, '-').toLowerCase() : null;
+}
+
 export function createDeterministicOrganizationIntentParser(): OrganizationIntentParser {
   return {
     async parse(input) {
@@ -79,95 +102,110 @@ export function createDeterministicOrganizationIntentParser(): OrganizationInten
       if (/sk-|Bearer|ghp_|github_pat_|password|apiKey|privateKey/i.test(text)) {
         throw new OrganizationIntentParseError('Intent text contains secret-like content.');
       }
-
-      const projectMatch = /\b(?:project|项目)\s*[“"'：:]?\s*([A-Za-z0-9][A-Za-z0-9 _-]{1,48})/i.exec(text);
-      const workerMatch = /\b(?:worker|employee|员工|招聘|hire)\s*[“"'：:]?\s*([A-Za-z0-9][A-Za-z0-9 _-]{1,48})/i.exec(text);
+      const snapshot = input.snapshot ?? createOrganization('primary_conversation');
+      const modelReference = input.modelReference ?? { providerId: 'magpie', modelId: 'fixture-model' };
+      const requestedName = projectName(text);
+      const wantsLifecycle = /\barchive|归档|offboard|裁掉|resume|恢复|重启项目\b/i.test(text);
+      const lifecycleProject = wantsLifecycle
+        ? snapshot.projects.find((item) => /\barchive|归档|offboard|裁掉\b/i.test(text)
+          ? item.state === 'active' || item.state === 'resumed' || item.state === 'quiet'
+          : item.state === 'archived')
+        : undefined;
+      const name = lifecycleProject?.id ?? requestedName;
+      const projectId = name.startsWith('project_') ? name : `project_${reference(name)}`;
+      const project = snapshot.projects.find((item) => item.id === projectId);
+      const worker = workerName(text, name);
+      const workerId = worker ? `wrk_${reference(`worker:${name}:${worker}`)}` : undefined;
+      const wantsResume = /\bresume|恢复|重启项目\b/i.test(text);
       const wantsArchive = /\barchive|归档|offboard|裁掉\b/i.test(text);
-      const wantsReport = /\breport|汇报|总结\b/i.test(text);
       const wantsAttention = /\battention|need (?:input|help)|需要(?:确认|输入|帮助)\b/i.test(text);
+      const wantsAnswer = /\banswer|回答|确认(?:完成|继续)\b/i.test(text);
+      const actions: OrganizationAction[] = [];
+      let sequence = snapshot.events.length;
 
-      if (!projectMatch && !wantsReport && !wantsAttention && !wantsArchive) {
-        return parseStructuredResult(input, { actions: [], relay: '意图已收到；当前没有可安全执行的结构化动作。' });
+      if (wantsResume && project?.state === 'archived') {
+        const delegation = snapshot.delegations.find((item) => item.projectId === projectId);
+        actions.push(parseOrganizationAction({
+          type: 'resume_project',
+          expectedSequence: sequence++,
+          projectId,
+          revalidatedDelegationId: delegation?.id ?? 'del_unknown',
+        }));
+        return parseStructuredResult(input, { actions, relay: '项目恢复动作已提交。' });
       }
-
-      const projectName = (projectMatch?.[1] ?? 'primary initiative').trim().replace(/\s+/g, '-').toLowerCase();
-      const projectId = `project_${reference(projectName)}`;
-      const workerName = (workerMatch?.[1] ?? `${projectName}-worker`).trim().replace(/\s+/g, '-').toLowerCase();
-      const workerId = `wrk_${reference(`worker:${projectName}:${workerName}`)}`;
-      const actions: Record<string, unknown>[] = [];
-      let sequence = input.expectedSequence;
-
-      if (projectMatch && !wantsArchive) {
-        actions.push({
+      if (wantsArchive && project && project.state !== 'archived') {
+        actions.push(parseOrganizationAction({
+          type: 'archive_project',
+          expectedSequence: sequence++,
+          projectId,
+        }));
+        return parseStructuredResult(input, { actions, relay: '项目归档动作已提交。' });
+      }
+      if (wantsAnswer) {
+        const attention = snapshot.attentionRequests.find((item) => item.state === 'open');
+        if (attention) {
+          actions.push(parseOrganizationAction({
+            type: 'answer_attention',
+            expectedSequence: sequence++,
+            projectId: attention.projectId,
+            attentionId: attention.id,
+            decisionDigest: boundedDigest(`answer:${text}`),
+          }));
+        }
+        return parseStructuredResult(input, { actions, relay: actions.length ? 'Attention 已回答。' : '当前没有待处理 Attention。' });
+      }
+      if (!project) {
+        actions.push(parseOrganizationAction({
           type: 'open_project',
           expectedSequence: sequence++,
           projectId,
           originTriggerId: input.intentId,
-        });
-        actions.push({
+        }));
+        actions.push(parseOrganizationAction({
           type: 'activate_project',
           expectedSequence: sequence++,
           projectId,
-        });
+        }));
       }
-
-      if (workerMatch && !wantsArchive) {
-        actions.push({
+      if (workerId && worker && !snapshot.workers.some((item) => item.id === workerId)) {
+        actions.push(parseOrganizationAction({
           type: 'create_agent',
           expectedSequence: sequence++,
           projectId,
           workerId,
           delegationId: `del_${reference(`delegation:${workerId}`)}`,
           agentRevisionId: `agr_${reference(`revision:${workerId}`)}`,
-          displayName: workerName.slice(0, 80),
-          instructionsDigest: boundedDigest(`dynamic instructions for ${workerName} on ${projectName}`),
-          scope: [`project:${projectName}`],
+          displayName: worker.slice(0, 80),
+          instructionsDigest: boundedDigest(`dynamic instructions for ${worker} on ${name}`),
+          scope: [`project:${name}`],
           capabilities: ['cap_read_context'],
-          model: { providerId: 'magpie', modelId: 'fixture-model' },
+          model: modelReference,
           maxDelegationDepth: 0,
           ttlEvents: 100,
-        });
-      }
-
-      if (wantsReport && !wantsArchive) {
-        actions.push({
-          type: 'report_worker',
+        }));
+        actions.push(parseOrganizationAction({
+          type: 'start_worker',
           expectedSequence: sequence++,
           projectId,
           workerId,
-          reportId: `rpt_${reference(`report:${input.intentId}`)}`,
-          state: 'ready',
-          summaryDigest: boundedDigest(text),
-        });
+        }));
       }
-
-      if (wantsAttention && !wantsArchive) {
-        actions.push({
+      if (wantsAttention && workerId) {
+        actions.push(parseOrganizationAction({
           type: 'request_attention',
           expectedSequence: sequence++,
           projectId,
           workerId,
           attentionId: `att_${reference(`attention:${input.intentId}`)}`,
           questionDigest: boundedDigest(`attention:${text}`),
-        });
+        }));
       }
-
-      if (wantsArchive) {
-        actions.push({
-          type: 'quiet_project',
-          expectedSequence: sequence++,
-          projectId,
-        });
-        actions.push({
-          type: 'archive_project',
-          expectedSequence: sequence++,
-          projectId,
-        });
+      if (actions.length === 0) {
+        return parseStructuredResult(input, { actions, relay: '意图已收到；项目与员工状态无需变化。' });
       }
-
       return parseStructuredResult(input, {
         actions,
-        relay: actions.length === 0 ? null : `已形成 ${actions.length} 个 Runtime 可验证动作。`,
+        relay: `已形成 ${actions.length} 个 Runtime 可验证动作。`,
       });
     },
   };
@@ -186,7 +224,8 @@ export interface StructuredModelClient {
 const OPENAI_COMPATIBLE_PARSER_INSTRUCTIONS = [
   'You are the Conchbase organization intent parser.',
   'Return only strict JSON with this shape: {"actions":[],"relay":string|null}.',
-  'Each action must use the Conchbase organization action schema and expectedSequence numbers supplied by the Runtime.',
+  'Each action must use the Conchbase organization action schema.',
+  'The Runtime replaces expectedSequence and model references before validation.',
   'Never invent capabilities, secret values, file paths, URLs, or role enums.',
 ].join(' ');
 
@@ -228,6 +267,11 @@ export function createOpenAiCompatibleOrganizationIntentParser(options: {
                   intentId: input.intentId,
                   text: input.text,
                   expectedSequence: input.expectedSequence,
+                  projectIds: (input.snapshot?.projects ?? []).map((project) => project.id),
+                  workerIds: (input.snapshot?.workers ?? []).map((worker) => worker.id),
+                  openAttentionIds: (input.snapshot?.attentionRequests ?? [])
+                    .filter((request) => request.state === 'open')
+                    .map((request) => request.id),
                 }),
               },
             ],

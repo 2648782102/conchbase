@@ -14,8 +14,8 @@ interface RuntimeResponseFixture {
   readonly version: string;
   readonly state: 'ready';
   readonly capabilities: readonly string[];
-  readonly organizationContract: '1.1.0';
-  readonly organizationPaths: 18;
+  readonly organizationContract?: '1.1.0';
+  readonly organizationPaths?: 18;
 }
 
 export const ORGANIZATION_PATHS_FIXTURE = Object.freeze([
@@ -50,8 +50,6 @@ export const RUNTIME_RESPONSE_FIXTURE: RuntimeResponseFixture = Object.freeze({
   version: '1.0.0',
   state: 'ready',
   capabilities: Object.freeze([] as string[]),
-  organizationContract: '1.1.0',
-  organizationPaths: 18,
 });
 
 export const READ_ONLY_TOOL_CALL: ModelTurn = Object.freeze({

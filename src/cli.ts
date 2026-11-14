@@ -112,6 +112,7 @@ async function main(argv: readonly string[]): Promise<void> {
         idempotencyKey: `cli-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       });
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      if (result.executions.some((execution) => execution.status === 'failed')) process.exitCode = 1;
       return;
     }
     if (command === 'organization') {

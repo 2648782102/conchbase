@@ -76,7 +76,7 @@ curl -X POST http://127.0.0.1:4318/v1/tasks \
 
 ## 面向 AI 开发
 
-本项目主要由 AI 编码 Agent 开发，代码结构、说明和验证流程优先服务于 AI 快速理解、完成边界清楚的改动并确定性验证；不把后续由人类接手作为产品要求。先读根目录 [`AGENTS.md`](AGENTS.md)，并以 [`docs/PROJECT_STATUS.json`](docs/PROJECT_STATUS.json) 的 `aiEntry.requiredOrder` 为阅读顺序：[AI 交接说明](docs/AI_HANDOFF.md)、[机器可读项目状态](docs/PROJECT_STATUS.json)、[目标模式接手说明](docs/OBJECTIVE_MODE.zh-CN.md)、[开发约定](docs/AI_DEVELOPMENT.md) 和 [任务队列](docs/AI_TASK_QUEUE.md)。随后读已接受 ADR、[完整组织运行时目标](docs/ORGANIZATION_RUNTIME_TARGET.zh-CN.md)及链接的架构/API 文档。[ADR 0028](docs/decisions/0028-interface-validation-boundary.md) 已闭合可执行接口验证切片，[ADR 0029](docs/decisions/0029-persistence-test-boundary.md) 已闭合持久化测试边界；[ADR 0030–0034](docs/decisions/) 接受完整组织运行时目标与契约门，但尚未实现。当前状态 JSON 记录验证证据与 ADR 门控的组织提案。
+本项目主要由 AI 编码 Agent 开发，代码结构、说明和验证流程优先服务于 AI 快速理解、完成边界清楚的改动并确定性验证；不把后续由人类接手作为产品要求。先读根目录 [`AGENTS.md`](AGENTS.md)，并以 [`docs/PROJECT_STATUS.json`](docs/PROJECT_STATUS.json) 的 `aiEntry.requiredOrder` 为阅读顺序：[AI 交接说明](docs/AI_HANDOFF.md)、[机器可读项目状态](docs/PROJECT_STATUS.json)、[目标模式接手说明](docs/OBJECTIVE_MODE.zh-CN.md)、[开发约定](docs/AI_DEVELOPMENT.md) 和 [任务队列](docs/AI_TASK_QUEUE.md)。随后读已接受 ADR、[完整组织运行时目标](docs/ORGANIZATION_RUNTIME_TARGET.zh-CN.md)及链接的架构/API 文档。[ADR 0028](docs/decisions/0028-interface-validation-boundary.md) 与 [ADR 0029](docs/decisions/0029-persistence-test-boundary.md) 闭合基础验证；[ADR 0041](docs/decisions/0041-boss-mode-product-loop.md) 完成老板模式主会话闭环及双仓端到端夹具。
 
 实现下一产品切片前必须读 [ADR 0025](docs/decisions/0025-local-first-v1-platform.md)、[ADR 0030](docs/decisions/0030-organization-runtime-direction.md) 与 `docs/AI_HANDOFF.md`；最终本地优先闭环已经实现，并成为组织运行时的执行底座。推进组织能力时必须按 [完整目标规格](docs/ORGANIZATION_RUNTIME_TARGET.zh-CN.md) 和 ADR 0031–0034 的契约门执行。新增真实 Source、外部写入、工具执行、跨进程密钥托管或稳定密钥源，都需要新的已接受 ADR。
 

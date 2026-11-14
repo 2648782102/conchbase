@@ -366,7 +366,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /ADR 0021/);
   assert.match(handoff, /ADR 0022/);
   assert.match(handoff, /ADR 0023/);
-  assert.match(handoff, /ADRs 0030–0040/);
+  assert.match(handoff, /ADRs 0030–0041/);
   assert.match(handoff, /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-contract\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-store\.ts/);
@@ -382,6 +382,8 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('tests/organization-agent-projection.test.ts'), /dynamic agent projection/);
   assert.match(read('tests/organization-coordinator.test.ts'), /coordinator applies one action/);
   assert.match(read('tests/boss-mode-service.test.ts'), /boss mode creates a real Agent revision/);
+  assert.match(read('tests/organization-e2e.test.ts'), /dual-repository Boss-mode product loop/);
+  assert.match(read('docs/decisions/0041-boss-mode-product-loop.md'), /accepted and implemented final Boss-mode product loop/);
   assert.match(handoff, /Plaintext handle values are never returned/);
   assert.match(handoff, /process-scoped AES-256-GCM sealed value/);
   assert.match(handoff, /deterministic live loopback paired-runtime acceptance/);
@@ -445,7 +447,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('README.zh-CN.md'), /仍在最终本地优先目标之外/);
   assert.match(read('README.zh-CN.md'), /ADR 0018/);
   assert.match(read('README.zh-CN.md'), /ADR 0019/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0034\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0041\]/);
   assert.match(read('README.md'), /ADR 0021 adds an opt-in live loopback acceptance test/);
   assert.match(read('README.zh-CN.md'), /ADR 0021/);
   assert.match(read('README.zh-CN.md'), /真实 loopback HTTP 验收/);
@@ -656,6 +658,8 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
   assert.ok(currentStatus.implemented.some((record) => record.id === 'concurrent-project-work'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'structured-reporting'));
   assert.ok(currentStatus.implemented.some((record) => record.id === 'archive-offboard-resume'));
+  assert.ok(currentStatus.implemented.some((record) => record.id === 'organization-runtime'));
+  assert.ok(currentStatus.implemented.some((record) => record.id === 'bounded-delegation'));
   assert.ok(
     currentStatus.validationEvidence.some(
       (record) => record.id === 'organization-domain-fixture' && record.executableFixture === true,
@@ -706,8 +710,13 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
       (record) => record.id === 'boss-mode-http-fixture' && record.executableFixture === true,
     ),
   );
+  assert.ok(
+    currentStatus.validationEvidence.some(
+      (record) => record.id === 'organization-product-loop-fixture' && record.executableFixture === true,
+    ),
+  );
   assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /完整组织运行时/);
-  assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /0038/);
+  assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /0041/);
   assert.match(read('docs/OBJECTIVE_MODE.zh-CN.md'), /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
   assert.match(read('docs/AI_TASK_QUEUE.md'), /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
   assertSequentialHandoffReadOrder(read('docs/AI_HANDOFF.md'), 'docs/AI_HANDOFF.md');
@@ -734,7 +743,7 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
     assert.match(read(file), /OBJECTIVE_MODE\.zh-CN\.md/, `${file} must link the Chinese objective brief`);
   }
   assert.match(read('docs/AI_TASK_QUEUE.md'), /Target-mode entry/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0034\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0041\]/);
   assert.match(read('README.md'), /Organization Runtime target/);
   assert.match(read('README.zh-CN.md'), /完整组织运行时目标/);
   assert.match(read('docs/QUICK_START.zh-CN.md'), /ADR 0030–0034/);

@@ -43,6 +43,18 @@ function attentionView(request: OrganizationSnapshot['attentionRequests'][number
   });
 }
 
+function publishedSession(snapshot: OrganizationSnapshot) {
+  return {
+    version: ORGANIZATION_PUBLIC_CONTRACT_VERSION,
+    bossSession: snapshot.bossSession,
+    projects: snapshot.projects,
+    delegations: snapshot.delegations,
+    workers: snapshot.workers,
+    reports: snapshot.reports,
+    attentionRequests: snapshot.attentionRequests.map(attentionView),
+  };
+}
+
 function decisionAction(
   snapshot: OrganizationSnapshot,
   attentionId: string,
@@ -90,10 +102,7 @@ export function registerOrganizationRoutes(
 
     scope.get('/v1/organization/session', async (_request, reply) => {
       if (!organizationStore) return unavailable(reply);
-      return reply.send({
-        ...organizationStore.get(),
-        version: ORGANIZATION_PUBLIC_CONTRACT_VERSION,
-      });
+      return reply.send(publishedSession(organizationStore.get()));
     });
 
     const intentResults = new Map<string, {
@@ -143,6 +152,12 @@ export function registerOrganizationRoutes(
           next.events.length,
         ));
       } catch (cause) {
+        if (cause instanceof Error && (cause.name === 'BossModeServiceError' || cause.name === 'OrganizationIntentParseError')) {
+          return reply.code(cause.name === 'BossModeServiceError' ? 503 : 400).send({ error: cause.message.slice(0, 240) });
+        }
+        if (cause instanceof Error && cause.name === 'OrganizationConflictError') {
+          return reply.code(409).send({ error: cause.message.slice(0, 240) });
+        }
         if (isOrganizationValidationError(cause)) {
           return errorResponse(reply, cause);
         }
@@ -329,6 +344,21 @@ export function registerOrganizationRoutes(
               kind,
               submission.decisionDigest ?? `sha256:${'0'.repeat(64)}`,
             );
+            if (bossMode) {
+              bossMode.decideAttention(
+                request.params.attentionId,
+                kind,
+                submission.expectedVersion,
+                submission.decisionDigest,
+              );
+              const next = organizationStore.get();
+              return {
+                version: ORGANIZATION_PUBLIC_CONTRACT_VERSION,
+                attentionRequest: attentionView(
+                  next.attentionRequests.find((item) => item.id === request.params.attentionId)!,
+                ),
+              };
+            }
             const next = organizationStore.apply(action);
             return {
               version: ORGANIZATION_PUBLIC_CONTRACT_VERSION,

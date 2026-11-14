@@ -65,12 +65,17 @@
     },
     {
       "id": "organization-runtime-direction",
-      "summary": "The long-range Organization Runtime target and internal boundaries are ADR-gated direction; the additive 1.1.0 Runtime API is implemented, but the complete runtime and paired console are not.",
+      "summary": "The Organization Runtime product loop is implemented under ADR 0041: one primary conversation, dynamic Agent revisions, Delegations, concurrent work, structured reports, Attention, archive/offboard/resume, and published 1.1.0 client state.",
       "evidence": "docs/ORGANIZATION_RUNTIME_TARGET.zh-CN.md"
     },
     {
+      "id": "organization-runtime",
+      "summary": "The complete local-first Boss-mode Organization Runtime loop is implemented and validated with a dual-repository fake-provider fixture.",
+      "evidence": "src/runtime/boss-mode-service.ts"
+    },
+    {
       "id": "organization-public-contract-direction",
-      "summary": "ADR 0038 fixes and the Runtime now implements the additive 1.1.0 organization API shape, exact 18-path set, authority boundary, idempotency, event cursor, and paired Pagurus gate; the Pagurus typed client remains a separate slice.",
+      "summary": "ADR 0038 fixes the additive 1.1.0 organization API shape and ADR 0041 corrects the published session, optional discovery, intent identity, errors, and execution semantics; Pagurus consumes these through its paired typed client.",
       "evidence": "docs/decisions/0038-organization-public-contract.md"
     },
     {
@@ -127,6 +132,11 @@
       "id": "concurrent-project-work",
       "summary": "Authorized organization workers bind to accepted durable WorkItems and bounded work controls through the existing execution substrate.",
       "evidence": "src/runtime/organization-coordinator.ts"
+    },
+    {
+      "id": "bounded-delegation",
+      "summary": "Parent/child Delegation actions remain topology-neutral and are enforced by scope/capability subset, recursion depth, TTL, and revival/revalidation rules.",
+      "evidence": "src/runtime/organization-contract.ts"
     },
     {
       "id": "structured-reporting",
@@ -230,6 +240,12 @@
       "id": "organization-intent-parser-fixture",
       "summary": "An executable fixture covers deterministic parsing, an OpenAI-compatible structured adapter, out-of-schema action rejection, and secret-like relay rejection.",
       "evidence": "tests/organization-intent-parser.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "organization-product-loop-fixture",
+      "summary": "A dual-repository live loopback fixture drives Pagurus typed organization clients over a credential-free fake provider through multiple projects, concurrent workers, one attention answer, and one archive/resume path.",
+      "evidence": "tests/organization-e2e.test.ts",
       "executableFixture": true
     }
   ],

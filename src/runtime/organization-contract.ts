@@ -126,6 +126,12 @@ export interface OpenProjectAction extends OrganizationActionBase<'open_project'
   readonly originTriggerId: string;
 }
 
+export interface RecordIntentAction extends OrganizationActionBase<'record_intent'> {
+  readonly intentId: string;
+  readonly bodyDigest: string;
+  readonly actionCount: number;
+}
+
 export interface CreateAgentAction extends OrganizationActionBase<'create_agent'> {
   readonly workerId: string;
   readonly delegationId: string;
@@ -177,8 +183,24 @@ export interface OffboardWorkerAction extends OrganizationActionBase<'offboard_w
   readonly workerId: string;
 }
 
+export interface ActivateDelegationAction extends OrganizationActionBase<'activate_delegation'> {
+  readonly delegationId: string;
+}
+
+export interface RecordWorkerExecutionAction extends OrganizationActionBase<'record_worker_execution'> {
+  readonly workerId: string;
+  readonly taskId: string;
+  readonly workItemId: string;
+  readonly agentId: string;
+}
+
+export interface ResumeWorkerAction extends OrganizationActionBase<'resume_worker'> {
+  readonly workerId: string;
+}
+
 export type OrganizationAction =
   | OpenProjectAction
+  | RecordIntentAction
   | CreateAgentAction
   | AuthorizeWorkerAction
   | StartWorkerAction
@@ -187,7 +209,10 @@ export type OrganizationAction =
   | AttentionDecisionAction
   | ProjectLifecycleAction
   | ActivateProjectAction
-  | OffboardWorkerAction;
+  | OffboardWorkerAction
+  | ActivateDelegationAction
+  | RecordWorkerExecutionAction
+  | ResumeWorkerAction;
 
 export class OrganizationValidationError extends Error {
   constructor(message: string) {
@@ -383,6 +408,41 @@ export function parseOrganizationAction(input: unknown): OrganizationAction {
       assertExactKeys(input, ['type', 'expectedSequence', 'projectId', 'originTriggerId'], 'open_project');
       const common = parseCommonAction(input, actionType);
       return Object.freeze({ ...common, originTriggerId: opaqueReference(input.originTriggerId, 'originTriggerId') });
+    }
+    case 'record_intent': {
+      assertExactKeys(input, ['type', 'expectedSequence', 'projectId', 'intentId', 'bodyDigest', 'actionCount'], actionType);
+      const common = parseCommonAction(input, actionType);
+      return Object.freeze({
+        ...common,
+        intentId: opaqueReference(input.intentId, 'intentId'),
+        bodyDigest: boundedDigest(input.bodyDigest, 'bodyDigest'),
+        actionCount: boundedInteger(input.actionCount, 'actionCount', 0, 32),
+      });
+    }
+    case 'activate_delegation': {
+      assertExactKeys(input, ['type', 'expectedSequence', 'projectId', 'delegationId'], actionType);
+      const common = parseCommonAction(input, actionType);
+      return Object.freeze({ ...common, delegationId: opaqueReference(input.delegationId, 'delegationId') });
+    }
+    case 'record_worker_execution': {
+      assertExactKeys(
+        input,
+        ['type', 'expectedSequence', 'projectId', 'workerId', 'taskId', 'workItemId', 'agentId'],
+        actionType,
+      );
+      const common = parseCommonAction(input, actionType);
+      return Object.freeze({
+        ...common,
+        workerId: opaqueReference(input.workerId, 'workerId'),
+        taskId: opaqueReference(input.taskId, 'taskId'),
+        workItemId: opaqueReference(input.workItemId, 'workItemId'),
+        agentId: opaqueReference(input.agentId, 'agentId'),
+      });
+    }
+    case 'resume_worker': {
+      assertExactKeys(input, ['type', 'expectedSequence', 'projectId', 'workerId'], actionType);
+      const common = parseCommonAction(input, actionType);
+      return Object.freeze({ ...common, workerId: opaqueReference(input.workerId, 'workerId') });
     }
     case 'create_agent': {
       assertExactKeys(
@@ -657,6 +717,64 @@ export function applyOrganizationAction(
       });
       return nextSnapshot;
     }
+    case 'record_intent': {
+      return Object.freeze({
+        ...snapshot,
+        events: appendEvent(snapshot, 'organization.intent_recorded', parsed.projectId, {
+          intentId: parsed.intentId,
+          bodyDigest: parsed.bodyDigest,
+          actionCount: parsed.actionCount,
+        }),
+      });
+    }
+    case 'activate_delegation': {
+      const delegation = findDelegation(snapshot, parsed.delegationId);
+      if (delegation.projectId !== parsed.projectId) {
+        throw new OrganizationConflictError('Delegation does not belong to the project.');
+      }
+      if (delegation.state === 'active') return snapshot;
+      if (delegation.state !== 'revoked') {
+        throw new OrganizationConflictError('Delegation cannot be reactivated from its current state.');
+      }
+      return Object.freeze({
+        ...snapshot,
+        delegations: replace(
+          snapshot.delegations,
+          delegation.id,
+          Object.freeze({ ...delegation, state: 'active' as const }),
+        ),
+        events: appendEvent(snapshot, 'organization.delegation_revalidated', parsed.projectId, {
+          delegationId: delegation.id,
+          authorizationDigest: delegation.authorizationDigest,
+        }),
+      });
+    }
+    case 'record_worker_execution': {
+      assertProjectWorker(snapshot, parsed, parsed.workerId);
+      return Object.freeze({
+        ...snapshot,
+        events: appendEvent(snapshot, 'organization.worker_execution_recorded', parsed.projectId, {
+          workerId: parsed.workerId,
+          taskId: parsed.taskId,
+          workItemId: parsed.workItemId,
+          agentId: parsed.agentId,
+        }),
+      });
+    }
+    case 'resume_worker': {
+      assertProjectWorker(snapshot, parsed, parsed.workerId);
+      const worker = findWorker(snapshot, parsed.workerId);
+      if (worker.state !== 'offboarded' && worker.state !== 'idle') {
+        throw new OrganizationConflictError('Worker cannot resume from its current state.');
+      }
+      return Object.freeze({
+        ...snapshot,
+        workers: replace(snapshot.workers, worker.id, Object.freeze({ ...worker, state: 'idle' as const })),
+        events: appendEvent(snapshot, 'organization.worker_resumed', parsed.projectId, {
+          workerId: worker.id,
+        }),
+      });
+    }
     case 'create_agent': {
       const project = findProject(snapshot, parsed.projectId);
       if (project.state === 'archived' || project.state === 'stopped') {
@@ -887,7 +1005,7 @@ export function applyOrganizationAction(
       const project = findProject(snapshot, parsed.projectId);
       if (project.state !== 'archived') throw new OrganizationConflictError('Only archived projects can resume.');
       const delegation = findDelegation(snapshot, parsed.revalidatedDelegationId!);
-      if (delegation.projectId !== project.id || delegation.state !== 'active') {
+      if (delegation.projectId !== project.id || delegation.state === 'revoked') {
         throw new OrganizationConflictError('Revalidated delegation is not active for this project.');
       }
       if (delegation.expiresAtSequence <= lastSequence(snapshot)) {
@@ -895,6 +1013,11 @@ export function applyOrganizationAction(
       }
       return Object.freeze({
         ...snapshot,
+        delegations: replace(
+          snapshot.delegations,
+          delegation.id,
+          Object.freeze({ ...delegation, state: 'active' as const }),
+        ),
         projects: replace(snapshot.projects, project.id, Object.freeze({ ...project, state: 'resumed' as const })),
         events: appendEvent(snapshot, 'organization.project_resumed', project.id, {
           revalidatedDelegationId: delegation.id,

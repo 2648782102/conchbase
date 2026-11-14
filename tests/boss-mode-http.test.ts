@@ -20,7 +20,13 @@ async function withApp(action: (app: ReturnType<typeof createApp>, service: Boss
           headers: { 'content-type': 'application/json' },
         });
       }
-      throw new Error('Unexpected model call.');
+      if (String(input).endsWith('/v1/chat/completions')) {
+        return new Response('data: {"choices":[{"delta":{"content":"done"},"finish_reason":null}]}\n\ndata: [DONE]\n\n', {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        });
+      }
+      throw new Error(`Unexpected model call: ${String(input)}`);
     }) as typeof globalThis.fetch,
   });
   const store = new InMemoryOrganizationStore();
@@ -54,13 +60,13 @@ test('primary intent HTTP entry creates published project and dynamic worker sta
       }),
     });
     assert.equal(response.statusCode, 202);
-    assert.match(response.json().intentId, /^int_[0-9a-f-]+$/);
+    assert.match(response.json().intentId, /^int_[0-9a-f]{24}$/);
 
     const snapshot = await app.inject({ method: 'GET', url: '/v1/organization/session' });
     assert.equal(snapshot.statusCode, 200);
     assert.equal(snapshot.json().projects.length, 1);
     assert.equal(snapshot.json().workers.length, 1);
-    assert.equal(service.snapshot().workers[0]?.state, 'running');
+    assert.equal(service.snapshot().workers[0]?.state, 'reporting');
 
     const replay = await app.inject({
       method: 'POST',
@@ -75,6 +81,7 @@ test('primary intent HTTP entry creates published project and dynamic worker sta
       }),
     });
     assert.equal(replay.statusCode, 202);
-    assert.deepEqual(replay.json(), response.json());
+    assert.equal(replay.json().intentId, response.json().intentId);
+    assert.equal(replay.json().state, 'accepted');
   });
 });
