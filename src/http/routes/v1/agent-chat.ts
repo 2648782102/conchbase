@@ -45,6 +45,20 @@ export function registerAgentChatRoutes(
     }
   });
 
+  app.get<{ Querystring: { limit?: string } }>('/v1/agent-chat/conversations', async (request, reply) => {
+    if (!service) return unavailable(reply);
+    try {
+      const raw = request.query?.limit;
+      const limit = raw === undefined ? 20 : Number(raw);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
+        return reply.code(400).send({ error: 'limit must be an integer between 1 and 50.' });
+      }
+      return reply.send(await service.listConversations(limit));
+    } catch (cause) {
+      return errorResponse(reply, cause);
+    }
+  });
+
   app.get<{ Params: { conversationId: string } }>(
     '/v1/agent-chat/conversations/:conversationId',
     async (request, reply) => {

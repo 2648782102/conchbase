@@ -62,7 +62,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     databasePath: env.CONCHBASE_DB ?? '.conchbase/runtime.sqlite',
     magpieBaseUrl,
     ...(magpieAppKey ? { magpieAppKey } : {}),
-    defaultModel: env.CONCHBASE_MODEL ?? '',
+    defaultModel: env.CONCHBASE_MODEL ?? 'workbuddy/blind-model-h',
     ...(env.CONCHBASE_ORGANIZATION_INTENT_MODEL
       ? { organizationIntentModel: env.CONCHBASE_ORGANIZATION_INTENT_MODEL }
       : {}),

@@ -33,13 +33,13 @@
       "frozen": true
     },
     "agentChat": {
-      "version": "1.5.0",
+      "version": "1.6.0",
       "pathCount": 4,
       "frozen": true
     },
     "workContractVersion": 2,
     "databaseUserVersion": 3,
-    "currentPrivateDatabaseUserVersion": 5,
+    "currentPrivateDatabaseUserVersion": 6,
     "sourceOfTruth": [
       "docs/openapi.yaml",
       "docs/API.md",
@@ -227,6 +227,11 @@
       "id": "mcp-provider",
       "summary": "ADR 0054 implements an administrator-configured MCP stdio provider without the MCP SDK: JSON-RPC handshake, tool allowlist, read-only enforcement, sanitized environment, timeouts, bounded results, and namespaced tool ids.",
       "evidence": "src/runtime/mcp-provider.ts"
+    },
+    {
+      "id": "agent-chat-history",
+      "summary": "ADR 0055 adds GET /v1/agent-chat/conversations for recent conversation recovery, pins reasoningEffort per conversation, and exposes it to provider requests; private schema advances to user_version 6.",
+      "evidence": "src/runtime/agent-chat.ts"
     }
   ],
   "validationEvidence": [
@@ -386,6 +391,12 @@
       "id": "mcp-provider-fixture",
       "summary": "Executable fixtures cover MCP discovery, namespacing, calls, non-read rejection, timeouts, malformed responses, bounded output, config validation, and Agent loop integration.",
       "evidence": "tests/mcp-provider.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "agent-chat-history-fixture",
+      "summary": "Executable fixtures cover conversation listing, default model selection, reasoning-effort pinning and validation, and history survival across restart.",
+      "evidence": "tests/agent-chat-history.test.ts",
       "executableFixture": true
     }
   ],

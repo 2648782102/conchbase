@@ -216,6 +216,7 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
           model: this.model,
           stream: true,
           messages: input.messages ?? [{ role: 'user', content: input.prompt }],
+          ...(input.reasoningEffort ? { reasoning_effort: input.reasoningEffort } : {}),
           ...(input.tools && input.tools.length > 0
             ? {
               tools: input.tools.map((tool) => ({

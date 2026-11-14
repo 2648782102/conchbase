@@ -31,6 +31,7 @@ export interface OrganizationIntentParserInput {
   }[];
   readonly organizationFacts?: BossOrganizationFacts;
   readonly onProgress?: (progress: BossConversationProgress) => void;
+  readonly reasoningEffort?: 'low' | 'medium' | 'high';
 }
 
 export interface BossConversationProgress {
@@ -393,6 +394,7 @@ export function createOpenAiCompatibleOrganizationIntentParser(options: {
           body: JSON.stringify({
             model: options.model,
             stream: true,
+            ...(input.reasoningEffort ? { reasoning_effort: input.reasoningEffort } : {}),
             messages: [
               { role: 'system', content: OPENAI_COMPATIBLE_PARSER_INSTRUCTIONS },
               {

@@ -1580,6 +1580,28 @@ paths:
         '503':
           $ref: '#/components/responses/OrganizationUnavailableError'
   /v1/agent-chat/conversations:
+    get:
+      operationId: listAgentChatConversations
+      summary: List recent Agent Chat conversations and the default chat model.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        '200':
+          description: Recent conversations with bounded previews and a default model.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentChatConversationList'
+        '400':
+          $ref: '#/components/responses/OrganizationValidationError'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
     post:
       operationId: createAgentChatConversation
       summary: Create one direct Agent Chat conversation pinned to a configured Agent.
@@ -2524,7 +2546,7 @@ components:
           const: 2
         agentChatContract:
           type: string
-          const: '1.5.0'
+          const: '1.6.0'
         agentChatPaths:
           const: 4
     Error:
@@ -5039,7 +5061,7 @@ components:
           type: boolean
     AgentChatVersion:
       type: string
-      const: '1.5.0'
+      const: '1.6.0'
     AgentChatAgentView:
       type: object
       additionalProperties: false
@@ -5070,6 +5092,36 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AgentChatAgentView'
+    AgentChatConversationList:
+      type: object
+      additionalProperties: false
+      required: [version, conversations, defaultModelId]
+      properties:
+        version:
+          $ref: '#/components/schemas/AgentChatVersion'
+        defaultModelId:
+          type: [string, 'null']
+        conversations:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, agentId, reasoningEffort, createdAt, messageCount, lastMessagePreview]
+            properties:
+              id:
+                type: string
+              agentId:
+                type: string
+              reasoningEffort:
+                type: string
+                enum: [low, medium, high]
+              createdAt:
+                type: string
+              messageCount:
+                type: integer
+              lastMessagePreview:
+                type: string
+                maxLength: 120
     AgentChatConversationCreateRequest:
       type: object
       additionalProperties: false
@@ -5079,6 +5131,9 @@ components:
           type: string
           minLength: 1
           maxLength: 200
+        reasoningEffort:
+          type: string
+          enum: [low, medium, high]
         modelOverride:
           type: object
           additionalProperties: false
@@ -5134,7 +5189,7 @@ components:
     AgentChatConversationView:
       type: object
       additionalProperties: false
-      required: [version, id, agentId, agentRevisionId, providerId, modelId, configurationRevisionId, messages]
+      required: [version, id, agentId, agentRevisionId, providerId, modelId, configurationRevisionId, reasoningEffort, messages]
       properties:
         version:
           $ref: '#/components/schemas/AgentChatVersion'
@@ -5151,6 +5206,9 @@ components:
           type: string
         configurationRevisionId:
           type: string
+        reasoningEffort:
+          type: string
+          enum: [low, medium, high]
         messages:
           type: array
           items:

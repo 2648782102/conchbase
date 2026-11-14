@@ -8,7 +8,7 @@ test('uses loopback defaults', () => {
     port: 4318,
     databasePath: '.conchbase/runtime.sqlite',
     magpieBaseUrl: 'http://127.0.0.1:3425',
-    defaultModel: '',
+    defaultModel: 'workbuddy/blind-model-h',
     allowAuthenticatedRemoteBinding: false,
   });
 });
@@ -21,7 +21,7 @@ test('accepts configured loopback host and decimal port', () => {
       port: 5000,
       databasePath: '.conchbase/runtime.sqlite',
       magpieBaseUrl: 'http://127.0.0.1:3425',
-      defaultModel: '',
+      defaultModel: 'workbuddy/blind-model-h',
       allowAuthenticatedRemoteBinding: false,
     },
   );

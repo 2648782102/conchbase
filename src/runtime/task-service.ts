@@ -76,6 +76,8 @@ export interface AgentLoopOptions {
   readonly tools?: ToolProvider;
   readonly maxIterations?: number;
   readonly deadlineMs?: number;
+  readonly reasoningEffort?: 'low' | 'medium' | 'high';
+  readonly preferredChatModelId?: string;
 }
 
 export interface CreateTaskInput {
@@ -140,6 +142,7 @@ export class TaskService {
   private readonly config: TaskServiceConfig;
   private readonly catalog: ModelCatalogClient;
   private readonly loopOptions: AgentLoopOptions;
+  private readonly effortByTaskId = new Map<string, 'low' | 'medium' | 'high'>();
 
   constructor(
     store: TaskStore,
@@ -161,6 +164,10 @@ export class TaskService {
 
   get activeConfigurationRevisionId(): string {
     return this.getConfigurationState().active.id;
+  }
+
+  get preferredChatModelId(): string | undefined {
+    return this.loopOptions.preferredChatModelId ?? (this.config.defaultModel || undefined);
   }
 
   getConfigurationState(): ConfigurationState {
@@ -362,6 +369,15 @@ export class TaskService {
       ? undefined
       : await this.validateAgentProfile(request.profile);
     return this.store.duplicateAgent(agentId, revisionId, profile);
+  }
+
+  async createAgentTaskWithEffort(
+    input: unknown,
+    reasoningEffort?: 'low' | 'medium' | 'high',
+  ): Promise<TaskSnapshot> {
+    const task = await this.createAgentTask(input);
+    if (reasoningEffort) this.effortByTaskId.set(task.id, reasoningEffort);
+    return task;
   }
 
   async createAgentTask(input: unknown): Promise<TaskSnapshot> {
@@ -637,6 +653,9 @@ export class TaskService {
         prompt: task.prompt,
         turnIndex: iteration,
         messages,
+        ...((this.effortByTaskId.get(task.id) ?? this.loopOptions.reasoningEffort)
+          ? { reasoningEffort: this.effortByTaskId.get(task.id) ?? this.loopOptions.reasoningEffort }
+          : {}),
         ...(tools
           ? {
             tools: tools.list().map((tool) => ({

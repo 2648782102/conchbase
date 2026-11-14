@@ -11,7 +11,7 @@ import {
   type AgentChatStore,
 } from './agent-chat-store.js';
 
-export const AGENT_CHAT_CONTRACT_VERSION = '1.5.0';
+export const AGENT_CHAT_CONTRACT_VERSION = '1.6.0';
 
 export const AGENT_CHAT_PUBLIC_PATHS = Object.freeze([
   '/v1/agent-chat/agents',
@@ -50,6 +50,8 @@ export type AgentChatMessagePhase =
   | 'human'
   | 'terminal';
 
+export type AgentChatReasoningEffort = 'low' | 'medium' | 'high';
+
 export interface AgentChatAgentView {
   readonly id: string;
   readonly name: string;
@@ -86,7 +88,23 @@ export interface AgentChatConversationView {
   readonly providerId: string;
   readonly modelId: string;
   readonly configurationRevisionId: string;
+  readonly reasoningEffort: AgentChatReasoningEffort;
   readonly messages: readonly AgentChatMessage[];
+}
+
+export interface AgentChatConversationSummary {
+  readonly id: string;
+  readonly agentId: string;
+  readonly reasoningEffort: AgentChatReasoningEffort;
+  readonly createdAt: string;
+  readonly messageCount: number;
+  readonly lastMessagePreview: string;
+}
+
+export interface AgentChatConversationList {
+  readonly version: typeof AGENT_CHAT_CONTRACT_VERSION;
+  readonly conversations: readonly AgentChatConversationSummary[];
+  readonly defaultModelId: string | null;
 }
 
 export interface AgentChatMessageResult {
@@ -172,6 +190,12 @@ function phaseForState(state: AgentChatMessageState): AgentChatMessagePhase {
   return 'accepted';
 }
 
+function parseReasoningEffort(value: unknown): AgentChatReasoningEffort {
+  if (value === undefined) return 'medium';
+  if (value === 'low' || value === 'medium' || value === 'high') return value;
+  throw new AgentChatServiceError('reasoningEffort must be low, medium, or high.');
+}
+
 function message(
   input: Omit<AgentChatMessage, 'phase' | 'progress' | 'updatedAt' | 'replyToId'>
     & Partial<Pick<AgentChatMessage, 'phase' | 'progress' | 'updatedAt' | 'replyToId'>>,
@@ -216,13 +240,14 @@ export class AgentChatService {
 
   async createConversation(input: unknown): Promise<AgentChatConversationView> {
     if (!isRecord(input)) throw new AgentChatServiceError('Conversation input must be an object.');
-    const allowed = new Set(['agentId', 'modelOverride']);
+    const allowed = new Set(['agentId', 'modelOverride', 'reasoningEffort']);
     const unknown = Object.keys(input).filter((key) => !allowed.has(key));
     if (unknown.length > 0) throw new AgentChatServiceError(`Unknown fields: ${unknown.sort().join(', ')}.`);
     const agentId = input.agentId === undefined
       ? this.defaultAgentId()
       : boundedText(input.agentId, 'agentId');
     const modelOverride = this.parseModelOverride(input.modelOverride);
+    const reasoningEffort = parseReasoningEffort(input.reasoningEffort);
     const isBoss = agentId === BOSS_AGENT_ID;
     if (isBoss && !this.bossMode) throw new AgentChatServiceError('Boss Agent is not configured.', 503);
     const bossView = isBoss ? this.bossAgentView() : null;
@@ -252,6 +277,7 @@ export class AgentChatService {
       modelId: modelOverride?.modelId ?? agent.modelId,
       configurationRevisionId: this.taskService.activeConfigurationRevisionId,
       isBoss,
+      reasoningEffort,
       createdAt: this.now(),
       messages: [],
       idempotency: new Map(),
@@ -305,12 +331,12 @@ export class AgentChatService {
     const prompt = context.length > 0 ? `${context}\n\nUser: ${text}` : text;
     let task: TaskSnapshot;
     try {
-      task = await this.taskService.createAgentTask({
+      task = await this.taskService.createAgentTaskWithEffort({
         prompt,
         agentId: record.agentId,
         expectedAgentRevisionId: record.agentRevisionId,
         modelOverride: { providerId: record.providerId, modelId: record.modelId },
-      });
+      }, record.reasoningEffort);
     } catch (cause) {
       const errorText = cause instanceof Error ? cause.message.slice(0, 240) : 'Agent task creation failed.';
       if (cause instanceof Error && cause.name.includes('NotFound')) {
@@ -410,7 +436,38 @@ export class AgentChatService {
       providerId: record.providerId,
       modelId: record.modelId,
       configurationRevisionId: record.configurationRevisionId,
+      reasoningEffort: record.reasoningEffort,
       messages: Object.freeze(record.messages.map((message) => Object.freeze({ ...message }))),
+    });
+  }
+
+  async listConversations(limit = 20): Promise<AgentChatConversationList> {
+    const bounded = Math.max(1, Math.min(limit, 50));
+    const records = this.store.list(bounded);
+    let defaultModelId: string | null = null;
+    try {
+      const models = await this.taskService.listProviderModels();
+      const configured = this.taskService.preferredChatModelId;
+      defaultModelId = (configured && models.some((model) => model.modelId === configured))
+        ? configured
+        : models[0]?.modelId ?? null;
+    } catch {
+      defaultModelId = null;
+    }
+    return Object.freeze({
+      version: AGENT_CHAT_CONTRACT_VERSION,
+      conversations: Object.freeze(records.map((record) => {
+        const last = [...record.messages].reverse().find((entry) => entry.body.length > 0);
+        return Object.freeze({
+          id: record.id,
+          agentId: record.agentId,
+          reasoningEffort: record.reasoningEffort,
+          createdAt: record.createdAt,
+          messageCount: record.messages.length,
+          lastMessagePreview: (last?.body ?? '').slice(0, 120),
+        });
+      })),
+      defaultModelId,
     });
   }
 
@@ -504,6 +561,7 @@ export class AgentChatService {
         text,
         idempotencyKey: `agent-chat:${record.id}:${idempotencyKey}`,
         conversation,
+        reasoningEffort: record.reasoningEffort,
         ...(record.isBoss && record.providerId === 'runtime'
           ? {}
           : { modelOverride: { providerId: record.providerId, modelId: record.modelId } }),

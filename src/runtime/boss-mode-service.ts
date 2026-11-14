@@ -38,6 +38,7 @@ export interface BossModeSubmitInput {
     readonly providerId: string;
     readonly modelId: string;
   };
+  readonly reasoningEffort?: 'low' | 'medium' | 'high';
   readonly source?: 'primary-conversation' | 'agent-chat';
   readonly conversation?: readonly {
     readonly author: 'user' | 'assistant';
@@ -111,7 +112,8 @@ function validateSubmission(input: unknown): BossModeSubmitInput {
     ? input.conversation
     : undefined;
   const unknown = Object.keys(input).filter((key) =>
-    !allowed.has(key) && key !== 'conversation' && key !== 'onProgress' && key !== 'modelOverride');
+    !allowed.has(key) && key !== 'conversation' && key !== 'onProgress'
+      && key !== 'modelOverride' && key !== 'reasoningEffort');
   if (unknown.length > 0) throw new BossModeServiceError(`Unknown fields: ${unknown.sort().join(', ')}.`);
   if (typeof input.text !== 'string' || input.text.trim().length === 0 || input.text.length > 20_000) {
     throw new BossModeServiceError('text must be a non-empty string of at most 20000 characters.');
@@ -151,6 +153,12 @@ function validateSubmission(input: unknown): BossModeSubmitInput {
       modelId: input.modelOverride.modelId,
     });
   }
+  if (input.reasoningEffort !== undefined
+    && input.reasoningEffort !== 'low'
+    && input.reasoningEffort !== 'medium'
+    && input.reasoningEffort !== 'high') {
+    throw new BossModeServiceError('reasoningEffort must be low, medium, or high.');
+  }
   return Object.freeze({
     text: input.text,
     idempotencyKey: input.idempotencyKey,
@@ -159,6 +167,7 @@ function validateSubmission(input: unknown): BossModeSubmitInput {
       : {}),
     ...(input.source ? { source: input.source } : {}),
     ...(modelOverride ? { modelOverride } : {}),
+    ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
     ...(boundedConversation ? { conversation: boundedConversation } : {}),
   });
 }
@@ -237,6 +246,7 @@ export class BossModeService {
       expectedSequence: snapshot.events.length,
       snapshot,
       organizationFacts,
+      ...(submission.reasoningEffort ? { reasoningEffort: submission.reasoningEffort } : {}),
       ...(submission.conversation ? { conversation: submission.conversation } : {}),
       ...(submission.onProgress ? { onProgress: (progress: { state: 'streaming'; percent: number; previousText?: string }) => {
         submission.onProgress?.({

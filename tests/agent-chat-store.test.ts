@@ -20,6 +20,7 @@ function record(id = 'chat_fixture'): AgentChatConversationRecord {
     modelId: '组织编排',
     configurationRevisionId: 'cfg_fixture',
     isBoss: true,
+    reasoningEffort: 'medium',
     createdAt: '2026-11-14T00:00:00.000Z',
     messages: Object.freeze([Object.freeze({
       id: 'amsg_fixture',

@@ -327,7 +327,7 @@ function assertProjectStatus(source: string, label: string): void {
     frozen: true,
   });
   assert.deepEqual(status.publicContract.agentChat, {
-    version: '1.5.0',
+    version: '1.6.0',
     pathCount: agentChatPathCount,
     frozen: true,
   });
@@ -1044,7 +1044,7 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
   const workRouteSource = read('src/http/routes/v1/work.ts');
   assert.doesNotMatch(workRouteSource, /fetch\(|exec|spawn|writeFile|readFile/i);
   assert.doesNotMatch(workRouteSource, /Router|Worker|three-layer|layered|hierarchy/i);
-  assert.match(read('src/runtime/task-store.ts'), /PRAGMA user_version = 5/);
+  assert.match(read('src/runtime/task-store.ts'), /PRAGMA user_version = 6/);
   const ledgerSource = read('src/runtime/tool-request.ts');
   assert.doesNotMatch(ledgerSource, /ToolCapabilityKernel|tool-capability/);
   assert.doesNotMatch(ledgerSource, /tool\.executed|tool\.replayed|tool\.denied|tool\.failed/);
@@ -1190,7 +1190,7 @@ test('guardrail helpers reject representative boundary violations', () => {
       execution: { version: '1.2.0', pathCount: executionPathCount, frozen: true },
       executionRun: { version: '1.3.0', pathCount: executionRunPathCount, frozen: true },
       conversation: { version: '1.4.0', pathCount: conversationPathCount, frozen: true },
-      agentChat: { version: '1.5.0', pathCount: agentChatPathCount, frozen: true },
+      agentChat: { version: '1.6.0', pathCount: agentChatPathCount, frozen: true },
     },
     aiEntry: {
       requiredOrder: [

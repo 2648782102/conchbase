@@ -41,6 +41,7 @@ export interface ModelAdapterInput {
   readonly signal?: AbortSignal;
   readonly messages?: readonly ProviderMessage[];
   readonly tools?: readonly ProviderToolDefinition[];
+  readonly reasoningEffort?: 'low' | 'medium' | 'high';
 }
 
 export interface ProviderToolDefinition {

@@ -112,7 +112,7 @@ test('organization actions migrate from user_version 3 and replay after reopen',
     try {
       assert.equal(
         (migrated.prepare('PRAGMA user_version').get() as { user_version: number }).user_version,
-        5,
+        6,
       );
       assert.deepEqual(
         (migrated.prepare('SELECT sequence FROM organization_actions ORDER BY sequence').all() as unknown[]).map(

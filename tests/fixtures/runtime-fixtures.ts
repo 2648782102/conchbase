@@ -22,7 +22,7 @@ interface RuntimeResponseFixture {
   readonly executionRunPaths?: 8;
   readonly conversationContract?: '1.4.0';
   readonly conversationPaths?: 2;
-  readonly agentChatContract?: '1.5.0';
+  readonly agentChatContract?: '1.6.0';
   readonly agentChatPaths?: 4;
 }
 

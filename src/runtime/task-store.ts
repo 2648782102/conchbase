@@ -485,7 +485,7 @@ export class SqliteTaskStore implements TaskStore {
       this.organization.initialize('primary_conversation');
       this.agentChat.initialize();
       this.database.exec('INSERT OR IGNORE INTO agent_state (singleton, default_agent_id) VALUES (1, NULL)');
-      this.database.exec('PRAGMA user_version = 5; COMMIT;');
+      this.database.exec('PRAGMA user_version = 6; COMMIT;');
       this.isOrganizationBootstrapTransaction = false;
       this.bootstrapConfiguration();
     } catch (cause) {
@@ -1007,7 +1007,7 @@ export class SqliteTaskStore implements TaskStore {
 
   private migrateAgentSchema(): void {
     const versionRow = this.database.prepare('PRAGMA user_version').get() as { user_version: number };
-    if (versionRow.user_version > 5) {
+    if (versionRow.user_version > 6) {
       throw new Error(`Database schema version ${versionRow.user_version} is newer than this runtime supports.`);
     }
     for (const [table, column] of [

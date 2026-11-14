@@ -191,7 +191,7 @@ test('the additive migration preserves legacy rows under one database owner', ()
     try {
       assert.equal(
         (migrated.prepare('PRAGMA user_version').get() as { user_version: number }).user_version,
-        5,
+        6,
       );
       const task = migrated.prepare('SELECT id, prompt, model, output FROM tasks').get() as Record<string, unknown>;
       assert.deepEqual({ ...task }, {

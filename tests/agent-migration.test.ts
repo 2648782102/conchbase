@@ -98,7 +98,7 @@ test('Agent schema migration preserves legacy runtime rows and active configurat
 
     const migrated = new DatabaseSync(filename);
     try {
-      assert.equal((migrated.prepare('PRAGMA user_version').get() as { user_version: number }).user_version, 5);
+      assert.equal((migrated.prepare('PRAGMA user_version').get() as { user_version: number }).user_version, 6);
       for (const [table, expected] of [
         ['tasks', ['agent_id', 'agent_revision_id', 'provider_id', 'model_id']],
         ['events', ['agent_id', 'agent_revision_id', 'provider_id', 'model_id']],

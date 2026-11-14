@@ -14,6 +14,7 @@ export interface AgentChatConversationRecord {
   readonly modelId: string;
   readonly configurationRevisionId: string;
   readonly isBoss: boolean;
+  readonly reasoningEffort: 'low' | 'medium' | 'high';
   readonly createdAt: string;
   readonly messages: readonly AgentChatMessage[];
   readonly idempotency: readonly (readonly [string, string])[];
@@ -23,6 +24,7 @@ export interface AgentChatStore {
   initialize(): void;
   save(record: AgentChatConversationRecord): void;
   get(conversationId: string): AgentChatConversationRecord | null;
+  list(limit: number): readonly AgentChatConversationRecord[];
 }
 
 const RECOVERED_ERROR = 'Runtime restarted before this reply finished.';
@@ -70,6 +72,12 @@ export class InMemoryAgentChatStore implements AgentChatStore {
   get(conversationId: string): AgentChatConversationRecord | null {
     return this.conversations.get(conversationId) ?? null;
   }
+
+  list(limit: number): readonly AgentChatConversationRecord[] {
+    return Object.freeze([...this.conversations.values()]
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .slice(0, limit));
+  }
 }
 
 interface ConversationRow {
@@ -80,6 +88,7 @@ interface ConversationRow {
   readonly model_id: string;
   readonly configuration_revision_id: string;
   readonly is_boss: number;
+  readonly reasoning_effort: string;
   readonly created_at: string;
 }
 
@@ -135,15 +144,16 @@ export class SqliteAgentChatStore implements AgentChatStore {
       this.database.prepare(`
         INSERT INTO agent_chat_conversations (
           id, agent_id, agent_revision_id, provider_id, model_id,
-          configuration_revision_id, is_boss, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          configuration_revision_id, is_boss, reasoning_effort, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           agent_id = excluded.agent_id,
           agent_revision_id = excluded.agent_revision_id,
           provider_id = excluded.provider_id,
           model_id = excluded.model_id,
           configuration_revision_id = excluded.configuration_revision_id,
-          is_boss = excluded.is_boss
+          is_boss = excluded.is_boss,
+          reasoning_effort = excluded.reasoning_effort
       `).run(
         record.id,
         record.agentId,
@@ -152,6 +162,7 @@ export class SqliteAgentChatStore implements AgentChatStore {
         record.modelId,
         record.configurationRevisionId,
         record.isBoss ? 1 : 0,
+        record.reasoningEffort,
         record.createdAt,
       );
       this.database.prepare('DELETE FROM agent_chat_messages WHERE conversation_id = ?').run(record.id);
@@ -193,7 +204,7 @@ export class SqliteAgentChatStore implements AgentChatStore {
   get(conversationId: string): AgentChatConversationRecord | null {
     const conversation = this.database.prepare(`
       SELECT id, agent_id, agent_revision_id, provider_id, model_id,
-        configuration_revision_id, is_boss, created_at
+        configuration_revision_id, is_boss, reasoning_effort, created_at
       FROM agent_chat_conversations WHERE id = ?
     `).get(conversationId) as ConversationRow | undefined;
     if (!conversation) return null;
@@ -213,17 +224,28 @@ export class SqliteAgentChatStore implements AgentChatStore {
       modelId: conversation.model_id,
       configurationRevisionId: conversation.configuration_revision_id,
       isBoss: conversation.is_boss === 1,
+      reasoningEffort: (conversation.reasoning_effort as AgentChatConversationRecord['reasoningEffort']) ?? 'medium',
       createdAt: conversation.created_at,
       messages: Object.freeze(messages.map(messageFromRow)),
       idempotency: Object.freeze(idempotency.map((row) =>
         Object.freeze([row.idempotency_key, row.message_id] as const))),
     });
   }
+
+  list(limit: number): readonly AgentChatConversationRecord[] {
+    const rows = this.database.prepare(`
+      SELECT id FROM agent_chat_conversations ORDER BY created_at DESC, id DESC LIMIT ?
+    `).all(limit) as unknown as { readonly id: string }[];
+    return Object.freeze(rows.flatMap((row) => {
+      const record = this.get(row.id);
+      return record ? [record] : [];
+    }));
+  }
 }
 
 export function migrateAgentChatSchema(database: DatabaseSync): void {
   const version = (database.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
-  if (version > 5) throw new Error(`Database schema version ${version} is newer than this runtime supports.`);
+  if (version > 6) throw new Error(`Database schema version ${version} is newer than this runtime supports.`);
   if (version < 5) {
     database.exec(`
       CREATE TABLE IF NOT EXISTS agent_chat_conversations (
@@ -234,6 +256,7 @@ export function migrateAgentChatSchema(database: DatabaseSync): void {
         model_id TEXT NOT NULL,
         configuration_revision_id TEXT NOT NULL,
         is_boss INTEGER NOT NULL CHECK (is_boss IN (0, 1)),
+        reasoning_effort TEXT NOT NULL DEFAULT 'medium',
         created_at TEXT NOT NULL
       ) STRICT;
       CREATE TABLE IF NOT EXISTS agent_chat_messages (
@@ -259,5 +282,9 @@ export function migrateAgentChatSchema(database: DatabaseSync): void {
         PRIMARY KEY (conversation_id, idempotency_key)
       ) STRICT;
     `);
+  }
+  const columns = database.prepare('PRAGMA table_info(agent_chat_conversations)').all() as unknown as { name: string }[];
+  if (!columns.some((column) => column.name === 'reasoning_effort')) {
+    database.exec("ALTER TABLE agent_chat_conversations ADD COLUMN reasoning_effort TEXT NOT NULL DEFAULT 'medium'");
   }
 }
