@@ -727,3 +727,59 @@ test('a completed configured-Agent reply survives restart as replied', async () 
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('agent chat conversation pins a user-selected model override', async () => {
+  await withApp(async (app, agentId) => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/v1/agent-chat/conversations',
+      payload: { agentId, modelOverride: { providerId: 'magpie', modelId: 'fixture/chat-model' } },
+    });
+    assert.equal(created.statusCode, 201);
+    assert.equal(created.json().providerId, 'magpie');
+    assert.equal(created.json().modelId, 'fixture/chat-model');
+  });
+});
+
+test('agent chat rejects an unavailable model override', async () => {
+  await withApp(async (app, agentId) => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/v1/agent-chat/conversations',
+      payload: { agentId, modelOverride: { providerId: 'magpie', modelId: 'fixture/missing-model' } },
+    });
+    assert.equal(created.statusCode, 400);
+    assert.match(created.json().error, /not available|不可用|模型/i);
+  });
+});
+
+test('boss agent chat pins a user-selected conversation model', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-model-select-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: bossConversationFetch(),
+  });
+  const organization = new InMemoryOrganizationStore();
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/chat-model',
+    fetch: bossConversationFetch(),
+  });
+  const bossMode = new BossModeService(organization, taskService, { parser, waitForTasks: false });
+  const agentChat = new AgentChatService(taskService, bossMode);
+  const app = createApp({ logger: false, taskService, organizationStore: organization, bossModeService: bossMode, agentChatService: agentChat });
+  try {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/v1/agent-chat/conversations',
+      payload: { agentId: 'boss-agent', modelOverride: { providerId: 'magpie', modelId: 'fixture/chat-model' } },
+    });
+    assert.equal(created.statusCode, 201);
+    assert.equal(created.json().modelId, 'fixture/chat-model');
+  } finally {
+    await app.close();
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

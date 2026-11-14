@@ -39,7 +39,7 @@ export function registerAgentChatRoutes(
   app.post('/v1/agent-chat/conversations', async (request, reply) => {
     if (!service) return unavailable(reply);
     try {
-      return reply.code(201).send(service.createConversation(request.body));
+      return reply.code(201).send(await service.createConversation(request.body));
     } catch (cause) {
       return errorResponse(reply, cause);
     }

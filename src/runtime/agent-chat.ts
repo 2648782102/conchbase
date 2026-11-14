@@ -149,7 +149,7 @@ function taskStateToMessageState(task: TaskSnapshot): AgentChatMessageState {
 }
 
 function unavailableError(message: string | null): boolean {
-  return /model catalog is unavailable|provider model catalog is unavailable|upstream|not valid JSON|empty completion|invalid JSON|not bounded|unknown fields|secret-like/i.test(message ?? '');
+  return /model catalog is unavailable|provider model catalog is unavailable|upstream|not valid JSON|empty completion|invalid JSON|not bounded|unknown fields|secret-like|selected model is not available/i.test(message ?? '');
 }
 
 function unavailableBody(cause: unknown): string {
@@ -213,14 +213,15 @@ export class AgentChatService {
     return Object.freeze(boss ? [boss, ...configured] : configured);
   }
 
-  createConversation(input: unknown): AgentChatConversationView {
+  async createConversation(input: unknown): Promise<AgentChatConversationView> {
     if (!isRecord(input)) throw new AgentChatServiceError('Conversation input must be an object.');
-    const allowed = new Set(['agentId']);
+    const allowed = new Set(['agentId', 'modelOverride']);
     const unknown = Object.keys(input).filter((key) => !allowed.has(key));
     if (unknown.length > 0) throw new AgentChatServiceError(`Unknown fields: ${unknown.sort().join(', ')}.`);
     const agentId = input.agentId === undefined
       ? this.defaultAgentId()
       : boundedText(input.agentId, 'agentId');
+    const modelOverride = this.parseModelOverride(input.modelOverride);
     const isBoss = agentId === BOSS_AGENT_ID;
     if (isBoss && !this.bossMode) throw new AgentChatServiceError('Boss Agent is not configured.', 503);
     const bossView = isBoss ? this.bossAgentView() : null;
@@ -231,13 +232,23 @@ export class AgentChatService {
       providerId: agentDetail!.current.providerId,
       modelId: agentDetail!.current.modelId,
     };
+    if (modelOverride) {
+      try {
+        await this.taskService.validateModelReference(modelOverride);
+      } catch (cause) {
+        throw new AgentChatServiceError(
+          cause instanceof Error ? cause.message.slice(0, 240) : 'Model override is not available.',
+          400,
+        );
+      }
+    }
     const id = reference('chat', `${agent.id}:${agent.currentRevisionId}:${randomUUID()}`);
     const record: ConversationRecord = {
       id,
       agentId: isBoss ? BOSS_AGENT_ID : agent.id,
       agentRevisionId: agent.currentRevisionId,
-      providerId: agent.providerId,
-      modelId: agent.modelId,
+      providerId: modelOverride?.providerId ?? agent.providerId,
+      modelId: modelOverride?.modelId ?? agent.modelId,
       configurationRevisionId: this.taskService.activeConfigurationRevisionId,
       isBoss,
       createdAt: this.now(),
@@ -247,6 +258,18 @@ export class AgentChatService {
     this.conversations.set(id, record);
     this.persist(record);
     return this.view(id);
+  }
+
+  private parseModelOverride(value: unknown): { providerId: string; modelId: string } | undefined {
+    if (value === undefined) return undefined;
+    if (!isRecord(value)) throw new AgentChatServiceError('modelOverride must contain providerId and modelId.');
+    if (typeof value.providerId !== 'string' || typeof value.modelId !== 'string') {
+      throw new AgentChatServiceError('modelOverride must contain providerId and modelId.');
+    }
+    return Object.freeze({
+      providerId: value.providerId,
+      modelId: value.modelId,
+    });
   }
 
   async postMessage(conversationId: string, input: unknown): Promise<AgentChatMessageResult> {
@@ -479,6 +502,9 @@ export class AgentChatService {
         text,
         idempotencyKey: `agent-chat:${record.id}:${idempotencyKey}`,
         conversation,
+        ...(record.isBoss && record.providerId === 'runtime'
+          ? {}
+          : { modelOverride: { providerId: record.providerId, modelId: record.modelId } }),
         source: 'agent-chat' as const,
         onProgress: (progress: {
           readonly state: 'thinking' | 'streaming' | 'organizing';

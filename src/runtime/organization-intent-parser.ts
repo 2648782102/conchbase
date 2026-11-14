@@ -428,7 +428,7 @@ export function createOpenAiCompatibleBossConversationParser(options: {
           headers,
           signal,
           body: JSON.stringify({
-            model: options.model,
+            model: input.modelReference?.modelId ?? options.model,
             stream: true,
             messages: [
               { role: 'system', content: BOSS_CONVERSATION_INSTRUCTIONS },

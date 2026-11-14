@@ -207,6 +207,11 @@
       "id": "boss-conversation-hardening",
       "summary": "ADR 0050 separates pure Boss chat from organization execution, projects readable organization facts and capability boundaries, streams provider progress, persists Agent Chat under private user_version 5, and recovers in-flight messages on restart.",
       "evidence": "docs/decisions/0050-boss-conversation-hardening.md"
+    },
+    {
+      "id": "agent-chat-model-selection",
+      "summary": "ADR 0051 adds optional provider-neutral model selection at Agent Chat conversation creation, validated against the Magpie catalog and pinned for ordinary Agent and Boss conversation turns.",
+      "evidence": "docs/decisions/0051-agent-chat-model-selection.md"
     }
   ],
   "validationEvidence": [

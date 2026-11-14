@@ -367,3 +367,25 @@ test('Boss conversation request includes readable organization facts and capabil
   });
   assert.equal(result.relay, '我先看现有组织事实。');
 });
+
+test('Boss conversation parser uses the selected model reference for the provider request', async () => {
+  const fetchImpl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as { model?: string };
+    assert.equal(body.model, 'fixture/selected-model');
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({ reply: '好的。', actions: [] }) } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }) as typeof globalThis.fetch;
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/default-model',
+    fetch: fetchImpl,
+  });
+  const result = await parser.parse({
+    intentId: 'int_selected',
+    text: '你好',
+    expectedSequence: 0,
+    modelReference: { providerId: 'magpie', modelId: 'fixture/selected-model' },
+  });
+  assert.equal(result.relay, '好的。');
+});

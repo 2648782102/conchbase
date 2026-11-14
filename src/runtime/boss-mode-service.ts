@@ -33,6 +33,10 @@ export class BossModeServiceError extends Error {
 export interface BossModeSubmitInput {
   readonly text: string;
   readonly idempotencyKey: string;
+  readonly modelOverride?: {
+    readonly providerId: string;
+    readonly modelId: string;
+  };
   readonly source?: 'primary-conversation' | 'agent-chat';
   readonly conversation?: readonly {
     readonly author: 'user' | 'assistant';
@@ -105,7 +109,8 @@ function validateSubmission(input: unknown): BossModeSubmitInput {
   const conversation = isRecord(input.conversation) || Array.isArray(input.conversation)
     ? input.conversation
     : undefined;
-  const unknown = Object.keys(input).filter((key) => !allowed.has(key) && key !== 'conversation' && key !== 'onProgress');
+  const unknown = Object.keys(input).filter((key) =>
+    !allowed.has(key) && key !== 'conversation' && key !== 'onProgress' && key !== 'modelOverride');
   if (unknown.length > 0) throw new BossModeServiceError(`Unknown fields: ${unknown.sort().join(', ')}.`);
   if (typeof input.text !== 'string' || input.text.trim().length === 0 || input.text.length > 20_000) {
     throw new BossModeServiceError('text must be a non-empty string of at most 20000 characters.');
@@ -133,6 +138,18 @@ function validateSubmission(input: unknown): BossModeSubmitInput {
   if (input.source !== undefined && input.source !== 'primary-conversation' && input.source !== 'agent-chat') {
     throw new BossModeServiceError('source must be primary-conversation or agent-chat.');
   }
+  let modelOverride: { readonly providerId: string; readonly modelId: string } | undefined;
+  if (input.modelOverride !== undefined) {
+    if (!isRecord(input.modelOverride)
+      || typeof input.modelOverride.providerId !== 'string'
+      || typeof input.modelOverride.modelId !== 'string') {
+      throw new BossModeServiceError('modelOverride must contain providerId and modelId.');
+    }
+    modelOverride = Object.freeze({
+      providerId: input.modelOverride.providerId,
+      modelId: input.modelOverride.modelId,
+    });
+  }
   return Object.freeze({
     text: input.text,
     idempotencyKey: input.idempotencyKey,
@@ -140,6 +157,7 @@ function validateSubmission(input: unknown): BossModeSubmitInput {
       ? { onProgress: input.onProgress as NonNullable<BossModeSubmitInput['onProgress']> }
       : {}),
     ...(input.source ? { source: input.source } : {}),
+    ...(modelOverride ? { modelOverride } : {}),
     ...(boundedConversation ? { conversation: boundedConversation } : {}),
   });
 }
@@ -227,7 +245,9 @@ export class BossModeService {
         });
       } } : {}),
     };
-    const modelReference = await this.resolveModelReference();
+    const modelReference = submission.modelOverride
+      ? await this.resolveModelOverride(submission.modelOverride)
+      : await this.resolveModelReference();
     const direct = await this.parser.parse({ ...parseInput, modelReference });
     if (submission.source === 'agent-chat' && direct.actions.length > 0) {
       this.conversation?.recordIntentText(resolvedIntentId, submission.text);
@@ -415,6 +435,19 @@ export class BossModeService {
       return Object.freeze({ providerId: first.providerId, modelId: first.modelId });
     } catch (cause) {
       throw new BossModeServiceError(`Model catalog is unavailable: ${boundedError(cause)}`);
+    }
+  }
+
+  private async resolveModelOverride(
+    reference: { readonly providerId: string; readonly modelId: string },
+  ): Promise<{ providerId: string; modelId: string }> {
+    const taskService = this.taskService;
+    if (!taskService) throw new BossModeServiceError('Task service is unavailable.');
+    try {
+      await taskService.validateModelReference(reference);
+      return Object.freeze({ providerId: reference.providerId, modelId: reference.modelId });
+    } catch (cause) {
+      throw new BossModeServiceError(`Selected model is not available: ${boundedError(cause)}`);
     }
   }
 

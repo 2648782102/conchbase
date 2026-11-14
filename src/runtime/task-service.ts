@@ -474,7 +474,7 @@ export class TaskService {
     return profile;
   }
 
-  private async validateModelReference(reference: ModelReference): Promise<void> {
+  async validateModelReference(reference: ModelReference): Promise<void> {
     if (reference.providerId !== 'magpie') {
       throw new AgentValidationError(`Provider '${reference.providerId}' is not available in this runtime.`);
     }

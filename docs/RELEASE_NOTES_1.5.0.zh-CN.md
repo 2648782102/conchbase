@@ -16,6 +16,7 @@
 - Agent 显示名统一使用中文：动态生成的员工 Agent 会获得中文角色名，已有的 `worker-validator` / `worker-scout` 等英文名在对话与项目视图中显示为中文别名，不改变 `agentId` 或 revision id。
 - [ADR 0049](decisions/0049-boss-conversation.md) 让 Runtime 拥有的「老板 Agent」通过同一个用户配置协议端点进行自然对话；老板自行判断何时使用组织能力，Runtime 校验全部动作，公开路径与 schema 不变。`CONCHBASE_MODEL` 作为默认模型，`CONCHBASE_BOSS_MODEL` 可选覆盖。
 - [ADR 0050](decisions/0050-boss-conversation-hardening.md) 修复纯聊天污染组织状态、组织阶段误标、只传 ID、模型身份/能力越界、会话重启丢失和缺少流式反馈；公开路径与 schema 不变，私有数据库升级到 `user_version = 5`。
+- [ADR 0051](decisions/0051-agent-chat-model-selection.md) 为 Agent 对话增加 Magpie 模型目录选择：创建会话时可指定模型，Runtime 校验后固定；任务执行与 Agent 配置已有的模型选择保持不变。
 
 ## 验证
 
