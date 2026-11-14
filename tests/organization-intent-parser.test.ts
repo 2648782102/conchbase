@@ -389,3 +389,85 @@ test('Boss conversation parser uses the selected model reference for the provide
   });
   assert.equal(result.relay, '好的。');
 });
+
+test('Boss conversation parser drops extra display-only action fields instead of failing the turn', async () => {
+  const fetchImpl = (async () => new Response(JSON.stringify({
+    choices: [{
+      message: {
+        content: JSON.stringify({
+          reply: '我会建立这个项目。',
+          actions: [{
+            type: 'open_project',
+            expectedSequence: 0,
+            projectId: 'project_website',
+            name: 'website-redesign',
+            purpose: '重做官网',
+            metadata: { owner: 'me' },
+          }, {
+            type: 'activate_project',
+            expectedSequence: 1,
+            projectId: 'project_website',
+            note: '启动',
+          }],
+        }),
+      },
+    }],
+  }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof globalThis.fetch;
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/boss-chat',
+    fetch: fetchImpl,
+  });
+  const result = await parser.parse({
+    intentId: 'int_extra_fields',
+    text: '建立项目 website-redesign',
+    expectedSequence: 0,
+  });
+  assert.equal(result.actions.length, 2);
+  assert.equal(result.actions[0]?.type, 'open_project');
+  assert.equal(result.actions[1]?.type, 'activate_project');
+  assert.equal(result.relay, '我会建立这个项目。');
+});
+
+test('Boss conversation parser still rejects actions missing required fields', async () => {
+  const fetchImpl = (async () => new Response(JSON.stringify({
+    choices: [{
+      message: {
+        content: JSON.stringify({
+          reply: '建立项目。',
+          actions: [{ type: 'open_project', name: 'no-id' }],
+        }),
+      },
+    }],
+  }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof globalThis.fetch;
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/boss-chat',
+    fetch: fetchImpl,
+  });
+  await assert.rejects(
+    () => parser.parse({ intentId: 'int_missing', text: '建立项目', expectedSequence: 0 }),
+    /projectId|expectedSequence|missing/i,
+  );
+});
+
+test('Boss conversation parser accepts strict JSON wrapped in a Markdown code fence', async () => {
+  const payload = JSON.stringify({
+    reply: '我在。',
+    actions: [],
+  });
+  const fetchImpl = (async () => new Response(JSON.stringify({
+    choices: [{ message: { content: `\`\`\`json\n${payload}\n\`\`\`` } }],
+  }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof globalThis.fetch;
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/boss-chat',
+    fetch: fetchImpl,
+  });
+  const result = await parser.parse({
+    intentId: 'int_fenced',
+    text: '你好',
+    expectedSequence: 0,
+  });
+  assert.equal(result.relay, '我在。');
+});

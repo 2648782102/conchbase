@@ -125,10 +125,11 @@ export function parseBossConversationResult(
   }
   const baseSequence = input.snapshot?.events.length ?? input.expectedSequence;
   const actions = rawActions.map((candidate, index) => {
-    const normalized = Boolean(candidate) && typeof candidate === 'object' && !Array.isArray(candidate)
-      && (candidate as Record<string, unknown>).type === 'open_project'
-      ? { ...(candidate as Record<string, unknown>), originTriggerId: input.intentId }
-      : candidate;
+    const projected = projectActionFields(candidate);
+    const normalized = Boolean(projected) && typeof projected === 'object' && !Array.isArray(projected)
+      && (projected as Record<string, unknown>).type === 'open_project'
+      ? { ...(projected as Record<string, unknown>), originTriggerId: input.intentId }
+      : projected;
     return actionAt(parseOrganizationAction(normalized), baseSequence + index);
   });
   return Object.freeze({
@@ -137,6 +138,44 @@ export function parseBossConversationResult(
     actions: Object.freeze(actions),
     relay: boundedReply,
   });
+}
+
+const ACTION_FIELDS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  open_project: ['type', 'expectedSequence', 'projectId', 'originTriggerId'],
+  record_intent: ['type', 'expectedSequence', 'projectId', 'intentId', 'bodyDigest', 'actionCount'],
+  activate_project: ['type', 'expectedSequence', 'projectId'],
+  create_agent: [
+    'type', 'expectedSequence', 'projectId', 'workerId', 'delegationId', 'parentDelegationId',
+    'agentRevisionId', 'displayName', 'instructionsDigest', 'scope', 'capabilities', 'model',
+    'maxDelegationDepth', 'ttlEvents',
+  ],
+  authorize_worker: ['type', 'expectedSequence', 'projectId', 'workerId'],
+  start_worker: ['type', 'expectedSequence', 'projectId', 'workerId'],
+  report_worker: ['type', 'expectedSequence', 'projectId', 'workerId', 'reportId', 'state', 'summaryDigest'],
+  request_attention: ['type', 'expectedSequence', 'projectId', 'workerId', 'attentionId', 'questionDigest'],
+  answer_attention: ['type', 'expectedSequence', 'projectId', 'attentionId', 'decisionDigest'],
+  withdraw_attention: ['type', 'expectedSequence', 'projectId', 'attentionId', 'decisionDigest'],
+  expire_attention: ['type', 'expectedSequence', 'projectId', 'attentionId', 'decisionDigest'],
+  quiet_project: ['type', 'expectedSequence', 'projectId'],
+  archive_project: ['type', 'expectedSequence', 'projectId'],
+  resume_project: ['type', 'expectedSequence', 'projectId', 'revalidatedDelegationId'],
+  offboard_worker: ['type', 'expectedSequence', 'projectId', 'workerId'],
+  activate_delegation: ['type', 'expectedSequence', 'projectId', 'delegationId'],
+  record_worker_execution: ['type', 'expectedSequence', 'projectId', 'workerId', 'taskId', 'workItemId', 'agentId'],
+  resume_worker: ['type', 'expectedSequence', 'projectId', 'workerId'],
+});
+
+function projectActionFields(value: unknown): unknown {
+  if (!isRecord(value)) return value;
+  const type = value.type;
+  if (typeof type !== 'string') return value;
+  const allowed = ACTION_FIELDS[type];
+  if (!allowed) return value;
+  const projected: Record<string, unknown> = {};
+  for (const key of allowed) {
+    if (key in value) projected[key] = value[key];
+  }
+  return projected;
 }
 
 export function normalizeBossReply(value: string): string {
@@ -470,13 +509,24 @@ export function createOpenAiCompatibleBossConversationParser(options: {
       }
       let structured: unknown;
       try {
-        structured = JSON.parse(content);
+        structured = JSON.parse(extractJsonObject(content));
       } catch {
         throw new OrganizationIntentParseError('Boss model output is not valid JSON.');
       }
       return parseBossConversationResult(input, structured);
     },
   };
+}
+
+export function extractJsonObject(content: string): string {
+  const trimmed = content.trim();
+  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
+  if (fenced?.[1]) return fenced[1].trim();
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) return trimmed;
+  const start = trimmed.indexOf('{');
+  const end = trimmed.lastIndexOf('}');
+  if (start >= 0 && end > start) return trimmed.slice(start, end + 1);
+  return trimmed;
 }
 
 async function readBossJson(response: Response): Promise<unknown> {
