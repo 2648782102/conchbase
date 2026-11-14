@@ -4,6 +4,11 @@ import type { TaskService } from './task-service.js';
 import type { TaskSnapshot } from './task-store.js';
 import { chineseAgentDisplayName } from './agent-name.js';
 import type { BossModeService } from './boss-mode-service.js';
+import {
+  InMemoryAgentChatStore,
+  type AgentChatConversationRecord,
+  type AgentChatStore,
+} from './agent-chat-store.js';
 
 export const AGENT_CHAT_CONTRACT_VERSION = '1.5.0';
 
@@ -90,14 +95,7 @@ export interface AgentChatMessageResult {
   readonly assistantMessage: AgentChatMessage;
 }
 
-interface ConversationRecord {
-  readonly id: string;
-  readonly agentId: string;
-  readonly agentRevisionId: string;
-  readonly providerId: string;
-  readonly modelId: string;
-  readonly configurationRevisionId: string;
-  readonly isBoss: boolean;
+interface ConversationRecord extends Omit<AgentChatConversationRecord, 'idempotency'> {
   readonly messages: AgentChatMessage[];
   readonly idempotency: Map<string, string>;
 }
@@ -154,6 +152,17 @@ function unavailableError(message: string | null): boolean {
   return /model catalog is unavailable|provider model catalog is unavailable|upstream|not valid JSON|empty completion|invalid JSON|not bounded|unknown fields|secret-like/i.test(message ?? '');
 }
 
+function unavailableBody(cause: unknown): string {
+  const text = cause instanceof Error ? cause.message : '';
+  if (/HTTP 429|rate limit/i.test(text)) return '模型服务当前请求过多，请稍后重试。';
+  if (/HTTP 5\d\d|upstream/i.test(text)) return '模型服务暂不可用，请检查 Magpie 配置或稍后重试。';
+  if (/not valid JSON|invalid JSON|not bounded|unknown fields|empty completion/i.test(text)) {
+    return '模型返回格式不符合 Runtime 契约，本次回复未采用。';
+  }
+  if (/secret-like/i.test(text)) return '模型返回包含敏感内容，本次回复已拒绝。';
+  return '模型目录暂不可用，请检查 Magpie 配置。';
+}
+
 function phaseForState(state: AgentChatMessageState): AgentChatMessagePhase {
   if (state === 'thinking' || state === 'streaming' || state === 'pending') return 'preparing';
   if (state === 'organizing') return 'organization';
@@ -178,12 +187,17 @@ function message(
 
 export class AgentChatService {
   private readonly conversations = new Map<string, ConversationRecord>();
+  private readonly store: AgentChatStore;
 
   constructor(
     private readonly taskService: TaskService,
     private readonly bossMode?: BossModeService,
     private readonly now: () => string = () => new Date().toISOString(),
-  ) {}
+    store?: AgentChatStore,
+  ) {
+    this.store = store ?? taskService.store?.agentChat ?? new InMemoryAgentChatStore();
+    this.store.initialize();
+  }
 
   listAgents(): readonly AgentChatAgentView[] {
     const configured = this.taskService.listAgents().map((agent) => Object.freeze({
@@ -226,15 +240,17 @@ export class AgentChatService {
       modelId: agent.modelId,
       configurationRevisionId: this.taskService.activeConfigurationRevisionId,
       isBoss,
+      createdAt: this.now(),
       messages: [],
       idempotency: new Map(),
     };
     this.conversations.set(id, record);
+    this.persist(record);
     return this.view(id);
   }
 
   async postMessage(conversationId: string, input: unknown): Promise<AgentChatMessageResult> {
-    const record = this.conversations.get(conversationId);
+    const record = this.load(conversationId);
     if (!record) throw new AgentChatServiceError('Agent Chat conversation not found.', 404);
     if (!isRecord(input)) throw new AgentChatServiceError('Message input must be an object.');
     const allowed = new Set(['text', 'idempotencyKey']);
@@ -302,6 +318,7 @@ export class AgentChatService {
       }, this.now);
       record.messages.push(userMessage, assistantMessage);
       record.idempotency.set(idempotencyKey, userMessage.id);
+      this.persist(record);
       return Object.freeze({
         version: AGENT_CHAT_CONTRACT_VERSION,
         conversationId: record.id,
@@ -334,6 +351,7 @@ export class AgentChatService {
     }, this.now);
     record.messages.push(userMessage, assistantMessage);
     record.idempotency.set(idempotencyKey, userMessage.id);
+    this.persist(record);
     try {
       this.taskService.startTask(task.id);
     } catch (cause) {
@@ -344,6 +362,7 @@ export class AgentChatService {
         error: cause instanceof Error ? cause.message.slice(0, 240) : 'Task start failed.',
         updatedAt: this.now(),
       });
+      this.persist(record);
     }
     this.refreshConversation(record);
     return Object.freeze({
@@ -355,7 +374,7 @@ export class AgentChatService {
   }
 
   view(conversationId: string): AgentChatConversationView {
-    const record = this.conversations.get(conversationId);
+    const record = this.load(conversationId);
     if (!record) throw new AgentChatServiceError('Agent Chat conversation not found.', 404);
     this.refreshConversation(record);
     return Object.freeze({
@@ -438,12 +457,7 @@ export class AgentChatService {
     }, this.now);
     record.messages.push(userMessage, assistantMessage);
     record.idempotency.set(idempotencyKey, userMessage.id);
-    this.replaceMessage(record, assistantMessage.id, {
-      ...assistantMessage,
-      state: 'organizing',
-      phase: 'organization',
-      updatedAt: this.now(),
-    });
+    this.persist(record);
     const onAccepted = (submitted: Awaited<ReturnType<BossModeService['submit']>>) => {
       const waiting = submitted.relays.some((relay) => relay.kind === 'attention')
         || this.bossMode?.snapshot().attentionRequests.some((request) => request.state === 'open')
@@ -459,21 +473,41 @@ export class AgentChatService {
         error: failed ? 'Boss Agent execution failed.' : null,
         updatedAt: this.now(),
       });
+      this.persist(record);
     };
     void bossMode.submit({
         text,
         idempotencyKey: `agent-chat:${record.id}:${idempotencyKey}`,
         conversation,
+        source: 'agent-chat' as const,
+        onProgress: (progress: {
+          readonly state: 'thinking' | 'streaming' | 'organizing';
+          readonly percent: number | null;
+          readonly previousText?: string;
+        }) => {
+          const current = this.getMessage(record, assistantMessage.id);
+          if (!current || current.phase === 'terminal') return;
+          this.replaceMessage(record, assistantMessage.id, {
+            ...current,
+            state: progress.state,
+            phase: progress.state === 'organizing' ? 'organization' : 'model',
+            body: progress.previousText ?? current.body,
+            progress: progress.percent,
+            updatedAt: this.now(),
+          });
+          this.persist(record);
+        },
       }, onAccepted).catch((cause: unknown) => {
         const textError = cause instanceof Error ? cause.message.slice(0, 240) : 'Boss Agent submit failed.';
         this.replaceMessage(record, assistantMessage.id, {
           ...assistantMessage,
-          body: unavailableError(textError) ? '模型目录暂不可用，请检查 Magpie 配置。' : '老板 Agent 提交失败。',
+          body: unavailableError(textError) ? unavailableBody(cause) : '老板 Agent 提交失败。',
           state: unavailableError(textError) ? 'unavailable' : 'failed',
           phase: 'terminal',
           error: textError,
           updatedAt: this.now(),
         });
+        this.persist(record);
       });
     return Object.freeze({
       version: AGENT_CHAT_CONTRACT_VERSION,
@@ -484,6 +518,7 @@ export class AgentChatService {
   }
 
   private refreshConversation(record: ConversationRecord): void {
+    let changed = false;
     for (const message of record.messages) {
       if (message.author !== 'assistant' || message.taskId === null || !nonterminalMessageState(message.state)) continue;
       const task = this.taskService.store.getTask(message.taskId);
@@ -495,6 +530,7 @@ export class AgentChatService {
           error: 'Task not found.',
           updatedAt: this.now(),
         });
+        changed = true;
         continue;
       }
       if (!terminalTaskState(task.state)) {
@@ -508,6 +544,7 @@ export class AgentChatService {
             progress: Math.min(100, Math.max(5, task.partialOutput.length)),
             updatedAt: this.now(),
           });
+          changed = true;
         } else if (message.state !== state) {
           this.replaceMessage(record, message.id, {
             ...message,
@@ -515,6 +552,7 @@ export class AgentChatService {
             phase: phaseForState(state),
             updatedAt: this.now(),
           });
+          changed = true;
         }
         continue;
       }
@@ -534,7 +572,9 @@ export class AgentChatService {
         error,
         updatedAt: this.now(),
       });
+      changed = true;
     }
+    if (changed) this.persist(record);
   }
 
   private getMessage(record: ConversationRecord, messageId: string): AgentChatMessage | undefined {
@@ -544,5 +584,28 @@ export class AgentChatService {
   private replaceMessage(record: ConversationRecord, messageId: string, next: AgentChatMessage): void {
     const index = record.messages.findIndex((message) => message.id === messageId);
     if (index >= 0) record.messages[index] = Object.freeze(next);
+  }
+
+  private load(conversationId: string): ConversationRecord | null {
+    const existing = this.conversations.get(conversationId);
+    if (existing) return existing;
+    const stored = this.store.get(conversationId);
+    if (!stored) return null;
+    const record: ConversationRecord = {
+      ...stored,
+      messages: [...stored.messages],
+      idempotency: new Map(stored.idempotency),
+    };
+    this.conversations.set(conversationId, record);
+    return record;
+  }
+
+  private persist(record: ConversationRecord): void {
+    this.store.save({
+      ...record,
+      messages: Object.freeze([...record.messages]),
+      idempotency: Object.freeze([...record.idempotency.entries()].map(([key, value]) =>
+        Object.freeze([key, value] as const))),
+    });
   }
 }

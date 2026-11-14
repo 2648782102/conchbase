@@ -650,7 +650,7 @@ export class SqlitePlatformStore implements PlatformStore {
 
 export function migratePlatformSchema(database: DatabaseSync): void {
   const version = database.prepare('PRAGMA user_version').get() as { user_version: number };
-  if (version.user_version > 4) {
+  if (version.user_version > 5) {
     throw new Error(`Database schema version ${version.user_version} is newer than this runtime supports.`);
   }
   if (version.user_version < 3) {

@@ -159,6 +159,8 @@ class CancelOnFirstNodeStore implements TaskStore {
 
   get organization() { return this.inner.organization; }
 
+  get agentChat() { return this.inner.agentChat; }
+
   createTask(input: TaskCreateInput): TaskSnapshot {
     return this.inner.createTask(input);
   }

@@ -218,3 +218,152 @@ test('Boss conversation parser classifies upstream failures without a fixed repl
     /upstream|HTTP 502|unavailable/i,
   );
 });
+
+test('Boss conversation parser streams answer deltas and parses final strict JSON', async () => {
+  const progress: number[] = [];
+  const fetchImpl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as { stream?: boolean };
+    assert.equal(body.stream, true);
+    const frame = (text: string) => `data: ${JSON.stringify({
+      choices: [{ delta: { content: text }, finish_reason: null }],
+    })}\n\n`;
+    const final = JSON.stringify({ reply: '你好，我在。', actions: [] });
+    return new Response(
+      `${frame(final.slice(0, 8))}${frame(final.slice(8))}data: [DONE]\n\n`,
+      { status: 200, headers: { 'content-type': 'text/event-stream' } },
+    );
+  }) as typeof globalThis.fetch;
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/boss-chat',
+    fetch: fetchImpl,
+  });
+  const result = await parser.parse({
+    intentId: 'int_stream',
+    text: '你好',
+    expectedSequence: 0,
+    onProgress: (value) => progress.push(value.percent),
+  });
+  assert.equal(result.relay, '你好，我在。');
+  assert.equal(result.actions.length, 0);
+  assert.ok(progress.some((value) => value > 0 && value < 100));
+  assert.equal(progress.at(-1), 100);
+});
+
+test('Boss conversation parser exposes partial natural reply text while streaming', async () => {
+  const partials: string[] = [];
+  const fetchImpl = (async () => {
+    const json = JSON.stringify({ reply: '我正在整理今天的安排。', actions: [] });
+    const frame = (text: string) => `data: ${JSON.stringify({
+      choices: [{ delta: { content: text }, finish_reason: null }],
+    })}\n\n`;
+    return new Response(
+      `${frame(json.slice(0, 20))}${frame(json.slice(20))}data: [DONE]\n\n`,
+      { status: 200, headers: { 'content-type': 'text/event-stream' } },
+    );
+  }) as typeof globalThis.fetch;
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/boss-chat',
+    fetch: fetchImpl,
+  });
+  await parser.parse({
+    intentId: 'int_partial',
+    text: '帮我安排今天',
+    expectedSequence: 0,
+    onProgress: (progress) => {
+      if (progress.previousText) partials.push(progress.previousText);
+    },
+  });
+  assert.ok(partials.some((text) => text.includes('我正在整理')));
+});
+
+test('Boss conversation parser normalizes false upstream identity and unsupported capability claims', async () => {
+  const fetchImpl = (async () => new Response(JSON.stringify({
+    choices: [{
+      message: {
+        content: JSON.stringify({
+          reply: '我是腾讯混元 Hy。我可以帮你查网页和读取 MacBook 文件。',
+          actions: [],
+        }),
+      },
+    }],
+  }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof globalThis.fetch;
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/boss-chat',
+    fetch: fetchImpl,
+  });
+  const result = await parser.parse({
+    intentId: 'int_identity',
+    text: '你是谁，能查网页和本机文件吗',
+    expectedSequence: 0,
+  });
+  assert.match(result.relay ?? '', /老板 Agent/);
+  assert.doesNotMatch(result.relay ?? '', /腾讯混元|Hy\b/);
+  assert.match(result.relay ?? '', /没有|暂不|不能/);
+  assert.match(result.relay ?? '', /网页|本机|文件/);
+});
+
+test('Boss conversation request includes readable organization facts and capability boundaries', async () => {
+  const fetchImpl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as {
+      messages: readonly { role: string; content: string }[];
+    };
+    const payload = JSON.parse(body.messages[1]?.content ?? '{}') as {
+      organization?: {
+        projects?: readonly { purpose?: string; state?: string }[];
+        workers?: readonly { displayName?: string; instructions?: string; state?: string }[];
+        capabilities?: readonly { id?: string; available?: boolean }[];
+      };
+    };
+    assert.equal(payload.organization?.projects?.[0]?.purpose, '整理海螺的发布文档');
+    assert.equal(payload.organization?.workers?.[0]?.displayName, '校验员');
+    assert.equal(payload.organization?.workers?.[0]?.instructions, '检查发布包');
+    assert.equal(payload.organization?.workers?.[0]?.state, 'blocked');
+    assert.equal(payload.organization?.capabilities?.some((item) =>
+      item.id === 'external-web' && item.available === false), true);
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({ reply: '我先看现有组织事实。', actions: [] }) } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }) as typeof globalThis.fetch;
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/boss-chat',
+    fetch: fetchImpl,
+  });
+  const result = await parser.parse({
+    intentId: 'int_facts',
+    text: '项目和员工是做什么的',
+    expectedSequence: 0,
+    organizationFacts: {
+      bossSessionId: 'boss_fixture',
+      projects: [{
+        id: 'project_alpha',
+        state: 'active',
+        purpose: '整理海螺的发布文档',
+        originIntent: '帮我整理发布文档',
+      }],
+      workers: [{
+        id: 'wrk_validator',
+        projectId: 'project_alpha',
+        displayName: '校验员',
+        state: 'blocked',
+        instructions: '检查发布包',
+        scope: ['project:alpha'],
+        capabilities: ['cap_read_context'],
+        model: { providerId: 'magpie', modelId: 'fixture/chat-model' },
+      }],
+      delegations: [],
+      reports: [],
+      attention: [],
+      capabilities: [
+        { id: 'organization', available: true, description: '项目、员工、汇报与归档' },
+        { id: 'agent-chat', available: true, description: '当前对话模型' },
+        { id: 'external-web', available: false, description: '网页搜索与联网读取' },
+        { id: 'local-files', available: false, description: '本机文件与设备查询' },
+      ],
+    },
+  });
+  assert.equal(result.relay, '我先看现有组织事实。');
+});

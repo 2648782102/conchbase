@@ -296,6 +296,10 @@ export function primaryConversationPage(
 export class PrimaryConversationService {
   private readonly intentTexts = new Map<string, string>();
 
+  intentTextsView(): ReadonlyMap<string, string> {
+    return this.intentTexts;
+  }
+
   recordIntentText(intentId: string, text: string): void {
     const bounded = boundedText(text, '用户意图已提交。');
     this.intentTexts.set(intentId, bounded);

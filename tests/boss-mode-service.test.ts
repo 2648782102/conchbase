@@ -139,3 +139,18 @@ test('boss mode exposes only structured facts and no plaintext', async () => {
     assert.ok(result.relays.every((relay) => typeof relay.digest === 'string'));
   });
 });
+
+test('boss mode emits organizing progress before committing proposed actions', async () => {
+  await withService(async (service) => {
+    const progress: string[] = [];
+    const result = await service.submit({
+      text: 'Start project alpha and hire a worker.',
+      idempotencyKey: 'boss-organizing-1',
+      source: 'agent-chat',
+      onProgress: (event: { readonly state: string }) => progress.push(event.state),
+    });
+    assert.equal(result.state, 'accepted');
+    assert.ok(progress.includes('organizing'));
+    assert.ok(service.snapshot().events.some((event) => event.type === 'organization.intent_recorded'));
+  });
+});

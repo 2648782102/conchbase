@@ -44,7 +44,8 @@ function bossConversationFetch(): typeof globalThis.fetch {
       const body = JSON.parse(String(init?.body)) as {
         messages: readonly { role: string; content: string }[];
       };
-      const context = body.messages[1]?.content ?? '';
+      const payload = JSON.parse(body.messages[1]?.content ?? '{}') as { text?: string };
+      const context = payload.text ?? '';
       const action = /建立|项目|招聘|归档|恢复/.test(context);
       return new Response(JSON.stringify({
         choices: [{
@@ -213,6 +214,7 @@ test('boss agent appears in Agent Chat and routes messages through Boss Mode', a
     });
     assert.equal(sent.statusCode, 202);
     assert.equal(sent.json().assistantMessage.author, 'assistant');
+    assert.equal(sent.json().assistantMessage.state, 'thinking');
     let bossView = await app.inject({
       method: 'GET',
       url: `/v1/agent-chat/conversations/${created.json().id}`,
@@ -471,6 +473,236 @@ test('boss agent classifies malformed conversational model output as unavailable
     }
     assert.equal(view.json().messages[1]?.state, 'unavailable');
     assert.doesNotMatch(view.json().messages[1]?.body ?? '', /意图已收到|已形成/);
+  } finally {
+    await app.close();
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('pure boss conversation does not write organization intent state', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-pure-chat-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: bossConversationFetch(),
+  });
+  const organization = new InMemoryOrganizationStore();
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/chat-model',
+    fetch: bossConversationFetch(),
+  });
+  const bossMode = new BossModeService(organization, taskService, { parser, waitForTasks: false });
+  const agentChat = new AgentChatService(taskService, bossMode);
+  const app = createApp({ logger: false, taskService, organizationStore: organization, bossModeService: bossMode, agentChatService: agentChat });
+  try {
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: 'boss-agent' },
+    });
+    const conversationId = created.json().id as string;
+    await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: { text: '你好', idempotencyKey: 'boss-pure-1' },
+    });
+    let view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+    for (let attempt = 0; attempt < 50 && view.json().messages[1]?.phase !== 'terminal'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+    }
+    assert.equal(view.json().messages[1]?.state, 'replied');
+    assert.equal(organization.get().events.length, 0);
+  } finally {
+    await app.close();
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('a completed boss conversation survives restart', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-restart-'));
+  const filename = path.join(directory, 'runtime.sqlite');
+  let taskService = createTaskService(filename, {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: bossConversationFetch(),
+  });
+  const organization = new InMemoryOrganizationStore();
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/chat-model',
+    fetch: bossConversationFetch(),
+  });
+  let bossMode = new BossModeService(organization, taskService, { parser, waitForTasks: false });
+  let agentChat = new AgentChatService(taskService, bossMode);
+  let app = createApp({ logger: false, taskService, organizationStore: organization, bossModeService: bossMode, agentChatService: agentChat });
+  let conversationId: string;
+  try {
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: 'boss-agent' },
+    });
+    conversationId = created.json().id as string;
+    await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: { text: '你好', idempotencyKey: 'boss-restart-complete' },
+    });
+    let view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+    for (let attempt = 0; attempt < 50 && view.json().messages[1]?.phase !== 'terminal'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+    }
+    assert.equal(view.json().messages[1]?.state, 'replied');
+  } finally {
+    await app.close();
+    await taskService.stop();
+  }
+
+  taskService = createTaskService(filename, {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: bossConversationFetch(),
+  });
+  bossMode = new BossModeService(organization, taskService, { parser, waitForTasks: false });
+  agentChat = new AgentChatService(taskService, bossMode);
+  app = createApp({ logger: false, taskService, organizationStore: organization, bossModeService: bossMode, agentChatService: agentChat });
+  try {
+    const reopened = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+    assert.equal(reopened.statusCode, 200);
+    assert.equal(reopened.json().messages.length, 2);
+    assert.equal(reopened.json().messages[1]?.state, 'replied');
+    assert.match(reopened.json().messages[1]?.body ?? '', /明确目标和验收标准/);
+  } finally {
+    await app.close();
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('an in-flight boss reply becomes unavailable after restart without losing its conversation', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-inflight-restart-'));
+  const filename = path.join(directory, 'runtime.sqlite');
+  let taskService = createTaskService(filename, {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: bossConversationFetch(),
+  });
+  const organization = new InMemoryOrganizationStore();
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/chat-model',
+    fetch: bossConversationFetch(),
+  });
+  let bossMode = new BossModeService(organization, taskService, { parser, waitForTasks: false });
+  let agentChat = new AgentChatService(taskService, bossMode);
+  let app = createApp({ logger: false, taskService, organizationStore: organization, bossModeService: bossMode, agentChatService: agentChat });
+  let conversationId: string;
+  try {
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: 'boss-agent' },
+    });
+    conversationId = created.json().id as string;
+    const stalledParser = createOpenAiCompatibleBossConversationParser({
+      baseUrl: 'http://127.0.0.1:3425',
+      model: 'fixture/chat-model',
+      fetch: (async () => new Promise<Response>(() => {
+        // Deliberately never resolves; this simulates a Runtime restart during an in-flight model turn.
+      })) as typeof globalThis.fetch,
+    });
+    bossMode = new BossModeService(organization, taskService, { parser: stalledParser, waitForTasks: false });
+    agentChat = new AgentChatService(taskService, bossMode);
+    app = createApp({ logger: false, taskService, organizationStore: organization, bossModeService: bossMode, agentChatService: agentChat });
+    const body = {
+      text: '你好，请回复',
+      idempotencyKey: 'boss-inflight-restart',
+    };
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: body,
+    });
+    assert.equal(sent.statusCode, 202);
+    assert.equal(sent.json().assistantMessage.state, 'thinking');
+  } finally {
+    await app.close();
+    await taskService.stop();
+  }
+  taskService = createTaskService(filename, {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: bossConversationFetch(),
+  });
+  bossMode = new BossModeService(organization, taskService, { parser, waitForTasks: false });
+  agentChat = new AgentChatService(taskService, bossMode);
+  app = createApp({ logger: false, taskService, organizationStore: organization, bossModeService: bossMode, agentChatService: agentChat });
+  try {
+    const reopened = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+    assert.equal(reopened.statusCode, 200);
+    assert.equal(reopened.json().messages.length, 2);
+    assert.equal(reopened.json().messages[1]?.state, 'unavailable');
+    assert.equal(reopened.json().messages[1]?.phase, 'terminal');
+    assert.match(reopened.json().messages[1]?.error ?? '', /restart/i);
+  } finally {
+    await app.close();
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('a completed configured-Agent reply survives restart as replied', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-agent-reply-restart-'));
+  const filename = path.join(directory, 'runtime.sqlite');
+  let taskService = createTaskService(filename, {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: fakeFetch(),
+  });
+  let app = createApp({ logger: false, taskService });
+  let conversationId: string;
+  let agentId: string;
+  try {
+    const agent = await taskService.createAgent({
+      name: '中文助手',
+      instructions: 'You are a concise assistant.',
+      providerId: 'magpie',
+      modelId: 'fixture/chat-model',
+    });
+    agentId = agent.id;
+    const agentChat = new AgentChatService(taskService);
+    app = createApp({ logger: false, taskService, agentChatService: agentChat });
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId },
+    });
+    conversationId = created.json().id as string;
+    await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: { text: '你好', idempotencyKey: 'agent-reply-restart' },
+    });
+    let view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+    for (let attempt = 0; attempt < 50 && view.json().messages[1]?.phase !== 'terminal'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+    }
+    assert.equal(view.json().messages[1]?.state, 'replied');
+    assert.match(view.json().messages[1]?.body ?? '', /配置好的 Agent/);
+    assert.equal(agentId.length > 0, true);
+  } finally {
+    await app.close();
+    await taskService.stop();
+  }
+  taskService = createTaskService(filename, {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: fakeFetch(),
+  });
+  app = createApp({ logger: false, taskService, agentChatService: new AgentChatService(taskService) });
+  try {
+    const reopened = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+    assert.equal(reopened.statusCode, 200);
+    assert.equal(reopened.json().messages[1]?.state, 'replied');
+    assert.match(reopened.json().messages[1]?.body ?? '', /配置好的 Agent/);
   } finally {
     await app.close();
     await taskService.stop();

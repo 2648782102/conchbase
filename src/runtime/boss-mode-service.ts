@@ -19,6 +19,7 @@ import type { OrganizationRelay } from './organization-execution.js';
 import type { OrganizationStore } from './organization-store.js';
 import type { TaskService } from './task-service.js';
 import { type WorkTriggerRequest } from './work-contract.js';
+import { buildBossOrganizationFacts } from './boss-organization-context.js';
 
 export const BOSS_MODE_SERVICE_VERSION = 2;
 
@@ -32,10 +33,16 @@ export class BossModeServiceError extends Error {
 export interface BossModeSubmitInput {
   readonly text: string;
   readonly idempotencyKey: string;
+  readonly source?: 'primary-conversation' | 'agent-chat';
   readonly conversation?: readonly {
     readonly author: 'user' | 'assistant';
     readonly body: string;
   }[];
+  readonly onProgress?: (progress: {
+    readonly state: 'streaming' | 'organizing';
+    readonly percent: number | null;
+    readonly previousText?: string;
+  }) => void;
 }
 
 export interface BossModeExecution {
@@ -61,6 +68,7 @@ export interface BossModeServiceOptions {
   readonly waitForTasks?: boolean;
   readonly conversation?: {
     recordIntentText(intentId: string, text: string): void;
+    intentTexts?(): ReadonlyMap<string, string>;
   };
   readonly onAccepted?: (result: BossModeSubmitResult) => void;
 }
@@ -93,11 +101,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function validateSubmission(input: unknown): BossModeSubmitInput {
   if (!isRecord(input)) throw new BossModeServiceError('Boss mode intent must be an object.');
-  const allowed = new Set(['text', 'idempotencyKey']);
+  const allowed = new Set(['text', 'idempotencyKey', 'source']);
   const conversation = isRecord(input.conversation) || Array.isArray(input.conversation)
     ? input.conversation
     : undefined;
-  const unknown = Object.keys(input).filter((key) => !allowed.has(key) && key !== 'conversation');
+  const unknown = Object.keys(input).filter((key) => !allowed.has(key) && key !== 'conversation' && key !== 'onProgress');
   if (unknown.length > 0) throw new BossModeServiceError(`Unknown fields: ${unknown.sort().join(', ')}.`);
   if (typeof input.text !== 'string' || input.text.trim().length === 0 || input.text.length > 20_000) {
     throw new BossModeServiceError('text must be a non-empty string of at most 20000 characters.');
@@ -122,9 +130,16 @@ function validateSubmission(input: unknown): BossModeSubmitInput {
       return Object.freeze({ author: item.author, body: item.body });
     }));
   }
+  if (input.source !== undefined && input.source !== 'primary-conversation' && input.source !== 'agent-chat') {
+    throw new BossModeServiceError('source must be primary-conversation or agent-chat.');
+  }
   return Object.freeze({
     text: input.text,
     idempotencyKey: input.idempotencyKey,
+    ...(typeof input.onProgress === 'function'
+      ? { onProgress: input.onProgress as NonNullable<BossModeSubmitInput['onProgress']> }
+      : {}),
+    ...(input.source ? { source: input.source } : {}),
     ...(boundedConversation ? { conversation: boundedConversation } : {}),
   });
 }
@@ -180,7 +195,9 @@ export class BossModeService {
     input: unknown,
     onAccepted?: (result: BossModeSubmitResult) => void,
   ): Promise<BossModeSubmitResult> {
-    const submission = validateSubmission(input);
+    const raw = isRecord(input) ? input : {};
+    const progress = typeof raw.onProgress === 'function' ? raw.onProgress as BossModeSubmitInput['onProgress'] : undefined;
+    const submission = validateSubmission({ ...raw, ...(progress ? { onProgress: progress } : {}) });
     const resolvedIntentId = intentId(submission.idempotencyKey);
     this.conversation?.recordIntentText(resolvedIntentId, submission.text);
     const bodyDigest = digest(JSON.stringify([submission.text, resolvedIntentId]));
@@ -188,15 +205,49 @@ export class BossModeService {
     if (recorded) return recorded;
 
     const snapshot = this.store.get();
+    const organizationFacts = buildBossOrganizationFacts({
+      snapshot,
+      intentTexts: this.intentTexts(),
+      agentInstructions: (worker) => this.instructionsForRevision(worker.agentRevisionId),
+    });
     const parseInput = {
       intentId: resolvedIntentId,
       text: submission.text,
       expectedSequence: snapshot.events.length,
       snapshot,
+      organizationFacts,
       ...(submission.conversation ? { conversation: submission.conversation } : {}),
+      ...(submission.onProgress ? { onProgress: (progress: { state: 'streaming'; percent: number; previousText?: string }) => {
+        submission.onProgress?.({
+          state: 'streaming',
+          percent: progress.percent,
+          ...(progress.previousText !== undefined ? { previousText: progress.previousText } : {}),
+        });
+      } } : {}),
     };
     const modelReference = await this.resolveModelReference();
-    const parsed = await this.prepareParsedActions({ ...parseInput, modelReference }, modelReference);
+    const direct = await this.parser.parse({ ...parseInput, modelReference });
+    if (submission.source === 'agent-chat' && direct.actions.length === 0) {
+      const accepted: BossModeSubmitResult = Object.freeze({
+        version: BOSS_MODE_SERVICE_VERSION,
+        intentId: resolvedIntentId,
+        state: 'accepted' as const,
+        expectedSequence: snapshot.events.length,
+        actions: Object.freeze([]),
+        executions: Object.freeze([]),
+        relays: Object.freeze([]),
+        reply: direct.relay,
+      });
+      onAccepted?.(accepted);
+      this.onAccepted?.(accepted);
+      return accepted;
+    }
+    const parsed = direct.actions.length > 0
+      ? await this.prepareParsedActions({ ...parseInput, modelReference }, modelReference, direct)
+      : direct;
+    if (parsed.actions.length > 0) {
+      submission.onProgress?.({ state: 'organizing', percent: null });
+    }
     const actions: OrganizationAction[] = [];
     const executions: BossModeExecution[] = [];
     const createdWorkers: WorkerExecutionRecord[] = [];
@@ -306,6 +357,21 @@ export class BossModeService {
     return this.workerExecutions.get(workerId)?.agentRevisionId;
   }
 
+  private intentTexts(): ReadonlyMap<string, string> {
+    if (typeof this.conversation?.intentTexts === 'function') return this.conversation.intentTexts();
+    return new Map();
+  }
+
+  private instructionsForRevision(revisionId: string): string | undefined {
+    const store = this.taskService?.store;
+    if (!store) return undefined;
+    for (const agent of store.listAgents()) {
+      const revision = store.getAgentRevision(agent.id, revisionId);
+      if (revision) return revision.instructions;
+    }
+    return undefined;
+  }
+
   snapshot(): OrganizationSnapshot {
     return this.store.get();
   }
@@ -350,8 +416,9 @@ export class BossModeService {
   private async prepareParsedActions(
     parseInput: Parameters<OrganizationIntentParser['parse']>[0],
     modelReference: { providerId: string; modelId: string },
+    parsedInput?: OrganizationIntentParseResult,
   ): Promise<OrganizationIntentParseResult> {
-    const parsed = await this.parser.parse({ ...parseInput, modelReference });
+    const parsed = parsedInput ?? await this.parser.parse({ ...parseInput, modelReference });
     const body = JSON.stringify([parseInput.text, parseInput.intentId]);
     const bodyDigest = digest(body);
     const snapshot = this.store.get();

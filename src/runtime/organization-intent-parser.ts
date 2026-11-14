@@ -6,6 +6,7 @@ import {
   type OrganizationSnapshot,
 } from './organization-contract.js';
 import { chineseAgentDisplayName } from './agent-name.js';
+import type { BossOrganizationFacts } from './boss-organization-context.js';
 
 export const ORGANIZATION_INTENT_PARSER_VERSION = 1;
 
@@ -27,6 +28,14 @@ export interface OrganizationIntentParserInput {
     readonly author: 'user' | 'assistant';
     readonly body: string;
   }[];
+  readonly organizationFacts?: BossOrganizationFacts;
+  readonly onProgress?: (progress: BossConversationProgress) => void;
+}
+
+export interface BossConversationProgress {
+  readonly state: 'streaming';
+  readonly percent: number;
+  readonly previousText?: string;
 }
 
 export interface OrganizationIntentParseResult {
@@ -105,7 +114,7 @@ export function parseBossConversationResult(
   if (typeof reply !== 'string' || reply.trim().length === 0 || reply.length > 12_000) {
     throw new OrganizationIntentParseError('Boss conversation reply is not bounded.');
   }
-  const boundedReply = reply.replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+  const boundedReply = normalizeBossReply(reply);
   if (/sk-|Bearer|ghp_|github_pat_|password|apiKey|privateKey|\.conchbase\/|runtime\.sqlite/i.test(boundedReply)) {
     throw new OrganizationIntentParseError('Boss conversation reply contains secret-like content.');
   }
@@ -127,6 +136,26 @@ export function parseBossConversationResult(
     actions: Object.freeze(actions),
     relay: boundedReply,
   });
+}
+
+export function normalizeBossReply(value: string): string {
+  const text = value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+  const hasUnsupportedClaim = /查(?:网页|网络|联网)|本机文件|读取.{0,8}文件|执行.{0,8}命令|腾讯混元|腾讯\s*Hy|\bHy\b/i.test(text);
+  const hasFalseIdentity = /腾讯混元|腾讯\s*Hy|\bHy\b/i.test(text);
+  let normalized = text;
+  if (hasFalseIdentity) {
+    normalized = normalized
+      .replace(/我是[^。！？\n]{0,40}(?:腾讯混元|腾讯\s*Hy|\bHy\b)[^。！？\n]*[。！？]?/gi, '我是 Conchbase 的老板 Agent。')
+      .replace(/(?:底层)?模型是[^。！？\n]*(?:腾讯混元|腾讯\s*Hy|\bHy\b)[^。！？\n]*[。！？]?/gi, '');
+  }
+  if (hasUnsupportedClaim) {
+    normalized = normalized
+      .replace(/我可以[^。！？\n]{0,40}(?:查网页|联网|读取.{0,8}文件|本机文件)[^。！？\n]*[。！？]?/gi,
+        '我当前没有网页搜索、本机文件或设备查询能力；这些能力尚未接入 Runtime。')
+      .replace(/我能[^。！？\n]{0,40}(?:查网页|联网|读取.{0,8}文件|本机文件)[^。！？\n]*[。！？]?/gi,
+        '我当前没有网页搜索、本机文件或设备查询能力；这些能力尚未接入 Runtime。');
+  }
+  return normalized.replace(/\s+/g, ' ').trim();
 }
 
 const parseStructuredResult = parseStructuredOrganizationResult;
@@ -290,6 +319,8 @@ const BOSS_CONVERSATION_INSTRUCTIONS = [
   'For create_agent include workerId, delegationId, agentRevisionId, displayName, instructionsDigest, scope, capabilities, model, maxDelegationDepth, ttlEvents. Runtime replaces expectedSequence and model references.',
   'Never invent capabilities, secret values, private paths, URLs, role enums, or extra top-level fields.',
   'If no organization action is useful, return {"reply":"你的自然回复","actions":[]}.',
+  '你的产品身份始终是 Conchbase Runtime 拥有的老板 Agent；不要声称自己是某个底层模型或供应商。',
+  '你没有网页搜索、联网读取、本机文件、设备查询或命令执行能力；除非 Runtime 明确提供，否则不要声称可以做到。',
 ].join(' ');
 
 export function createOpenAiCompatibleOrganizationIntentParser(options: {
@@ -303,7 +334,7 @@ export function createOpenAiCompatibleOrganizationIntentParser(options: {
   const endpoint = `${base}/v1/chat/completions`;
   const fetchImpl = options.fetch ?? globalThis.fetch;
   const headers: Record<string, string> = {
-    Accept: 'application/json',
+    Accept: 'text/event-stream, application/json',
     'Content-Type': 'application/json',
     'User-Agent': 'Conchbase/1.0.0',
   };
@@ -321,7 +352,7 @@ export function createOpenAiCompatibleOrganizationIntentParser(options: {
           signal,
           body: JSON.stringify({
             model: options.model,
-            stream: false,
+            stream: true,
             messages: [
               { role: 'system', content: OPENAI_COMPATIBLE_PARSER_INSTRUCTIONS },
               {
@@ -335,6 +366,7 @@ export function createOpenAiCompatibleOrganizationIntentParser(options: {
                   openAttentionIds: (input.snapshot?.attentionRequests ?? [])
                     .filter((request) => request.state === 'open')
                     .map((request) => request.id),
+                  organization: input.organizationFacts ?? null,
                 }),
               },
             ],
@@ -397,7 +429,7 @@ export function createOpenAiCompatibleBossConversationParser(options: {
           signal,
           body: JSON.stringify({
             model: options.model,
-            stream: false,
+            stream: true,
             messages: [
               { role: 'system', content: BOSS_CONVERSATION_INSTRUCTIONS },
               {
@@ -415,6 +447,7 @@ export function createOpenAiCompatibleBossConversationParser(options: {
                   openAttentionIds: (input.snapshot?.attentionRequests ?? [])
                     .filter((request) => request.state === 'open')
                     .map((request) => request.id),
+                  organization: input.organizationFacts ?? null,
                 }),
               },
             ],
@@ -427,15 +460,10 @@ export function createOpenAiCompatibleBossConversationParser(options: {
       if (!response.ok) {
         throw new OrganizationIntentParseError(`Boss model provider returned HTTP ${response.status}; upstream is unavailable.`);
       }
-      let payload: unknown;
-      try {
-        payload = await response.json();
-      } catch {
-        throw new OrganizationIntentParseError('Boss model provider returned invalid JSON.');
-      }
-      const content = (payload as {
-        choices?: readonly { message?: { content?: unknown } }[];
-      })?.choices?.[0]?.message?.content;
+      const streamed = response.headers.get('content-type')?.includes('text/event-stream');
+      const content = streamed
+        ? await readBossStream(response, input.onProgress)
+        : await readBossJson(response);
       if (typeof content !== 'string' || content.trim().length === 0) {
         throw new OrganizationIntentParseError('Boss model provider returned an empty completion.');
       }
@@ -448,4 +476,86 @@ export function createOpenAiCompatibleBossConversationParser(options: {
       return parseBossConversationResult(input, structured);
     },
   };
+}
+
+async function readBossJson(response: Response): Promise<unknown> {
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new OrganizationIntentParseError('Boss model provider returned invalid JSON.');
+  }
+  return (payload as {
+    choices?: readonly { message?: { content?: unknown } }[];
+  })?.choices?.[0]?.message?.content;
+}
+
+async function readBossStream(
+  response: Response,
+  onProgress: OrganizationIntentParserInput['onProgress'],
+): Promise<string> {
+  if (!response.body) throw new OrganizationIntentParseError('Boss model provider returned no response stream.');
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let output = '';
+  let sawDone = false;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let newline = buffer.indexOf('\n');
+      while (newline >= 0) {
+        const line = buffer.slice(0, newline).replace(/\r$/, '').trim();
+        buffer = buffer.slice(newline + 1);
+        newline = buffer.indexOf('\n');
+        if (line.length === 0 || line.startsWith(':')) continue;
+        if (!line.startsWith('data:')) {
+          throw new OrganizationIntentParseError('Boss model provider returned an invalid stream frame.');
+        }
+        const data = line.slice(5).trim();
+        if (data === '[DONE]') {
+          sawDone = true;
+          continue;
+        }
+        let payload: unknown;
+        try {
+          payload = JSON.parse(data);
+        } catch {
+          throw new OrganizationIntentParseError('Boss model provider returned invalid stream JSON.');
+        }
+        const delta = (payload as {
+          choices?: readonly { delta?: { content?: unknown } }[];
+        })?.choices?.[0]?.delta?.content;
+        if (typeof delta !== 'string' || delta.length === 0) continue;
+        output += delta;
+        if (output.length > 24_000) {
+          throw new OrganizationIntentParseError('Boss model provider exceeded the reply length limit.');
+        }
+        onProgress?.({
+          state: 'streaming',
+          percent: Math.min(95, Math.max(5, Math.round(output.length / 2))),
+          previousText: partialBossReply(output),
+        });
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  if (!sawDone || output.length === 0) {
+    throw new OrganizationIntentParseError('Boss model provider returned an incomplete stream.');
+  }
+  onProgress?.({ state: 'streaming', percent: 100, previousText: '' });
+  return output;
+}
+
+function partialBossReply(output: string): string {
+  const match = /"reply"\s*:\s*"((?:[^"\\]|\\.)*)/.exec(output);
+  if (!match?.[1]) return '';
+  try {
+    return JSON.parse(`"${match[1]}"`).slice(0, 4000);
+  } catch {
+    return match[1].replace(/\\n/g, ' ').slice(0, 4000);
+  }
 }

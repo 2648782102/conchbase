@@ -39,7 +39,7 @@
     },
     "workContractVersion": 2,
     "databaseUserVersion": 3,
-    "currentPrivateDatabaseUserVersion": 4,
+    "currentPrivateDatabaseUserVersion": 5,
     "sourceOfTruth": [
       "docs/openapi.yaml",
       "docs/API.md",
@@ -110,7 +110,7 @@
     },
     {
       "id": "organization-persistence",
-      "summary": "An internal SQLite organization store shares Conchbase's single database owner, migrates private schema to user_version 4, persists validated bounded actions, and replays one coherent snapshot after restart without public API changes.",
+      "summary": "An internal SQLite organization store shares Conchbase's single database owner, persists validated bounded actions in the private schema, and replays one coherent snapshot after restart without public API changes; ADR 0050 keeps the current private schema at user_version 5 with Agent Chat tables.",
       "evidence": "src/runtime/organization-store.sqlite.ts"
     },
     {
@@ -202,6 +202,11 @@
       "id": "boss-natural-conversation",
       "summary": "ADR 0049 implements natural Boss Agent conversation through the user-configured OpenAI-compatible protocol endpoint, with bounded context, optional Runtime-adjudicated actions, and no new public path or schema.",
       "evidence": "src/runtime/organization-intent-parser.ts"
+    },
+    {
+      "id": "boss-conversation-hardening",
+      "summary": "ADR 0050 separates pure Boss chat from organization execution, projects readable organization facts and capability boundaries, streams provider progress, persists Agent Chat under private user_version 5, and recovers in-flight messages on restart.",
+      "evidence": "docs/decisions/0050-boss-conversation-hardening.md"
     }
   ],
   "validationEvidence": [
@@ -343,6 +348,12 @@
       "id": "boss-natural-conversation-fixture",
       "summary": "An executable fixture covers natural Boss replies, optional organization action proposals, strict output rejection, unavailable classification, no fixed fallback phrase, and no normal Agent task creation.",
       "evidence": "tests/agent-chat.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "boss-conversation-hardening-fixture",
+      "summary": "Executable fixtures cover pure-chat no organization writes, readable organization facts, SSE progress, identity/capability normalization, durable Agent Chat reopen, and in-flight restart recovery.",
+      "evidence": "tests/agent-chat-store.test.ts",
       "executableFixture": true
     }
   ],

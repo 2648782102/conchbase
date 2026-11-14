@@ -49,7 +49,12 @@ export function createApp(options: CreateAppOptions = {}) {
   const bossMode = options.bossModeService
     ?? (options.taskService && organization
       ? new BossModeService(organization, options.taskService, conversation
-        ? { conversation: { recordIntentText: (intentId, text) => conversation.recordIntentText(intentId, text) } }
+        ? {
+          conversation: {
+            recordIntentText: (intentId, text) => conversation.recordIntentText(intentId, text),
+            intentTexts: () => conversation.intentTextsView(),
+          },
+        }
         : {})
       : undefined);
   const agentChat = options.agentChatService
