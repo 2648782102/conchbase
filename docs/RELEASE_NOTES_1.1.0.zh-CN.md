@@ -71,6 +71,7 @@ curl 'http://127.0.0.1:4318/v1/organization/events?limit=100'
 - Pagurus `npm run check && npm test && npm run build`：95 个测试通过。
 - 双仓产品闭环夹具：`tests/organization-e2e.test.ts` 使用 credential-free fake provider、真实 Fastify Runtime、动态导入的 Pagurus typed organization client，覆盖两个项目、并发 worker、一次 Attention 回答、一次归档/恢复，以及意图/报告/Attention/归档/恢复事件。
 - 本地 Runtime 验收：`npm run validate:boss-local` 对真实开发服务完成 `health → runtime discovery → model-catalog → primary intent → published session → events` 检查；确定性离线模式下通过，输出项目、员工、报告、事件与 session 不含 raw events 的有界摘要。
+- 真实浏览器验收：见 [Boss Mode 1.1.0 浏览器验收记录](VALIDATION_BROWSER_1.1.0.zh-CN.md)。真实 Conchbase/Pagurus 开发服务与 fake provider 下，桌面和 `375 × 812` 窄屏均完成组织台、Attention 回答、项目详情、归档/恢复、时间线增量更新、可见键盘焦点和控制台日志检查。
 - 真模型解析器验收：本机 Magpie 模型目录可用；`workbuddy/hy4flash-dev` 能完成 Chat Completions，但当前结构化提示曾返回不被组织内核接受的 `startProjectReleaseValidation` action type，Runtime 正确在提交前拒绝为 `400`。这属于供应商/提示词结构化输出一致性限制，不代表 Runtime 状态提交；结构化解析器指令已加强为明确 action 白名单，未来真实供应商一致性仍需单独验证。
 - 真实模型凭证、输出或用户数据不会提交到仓库。
 - CI 不调用公网、不使用真实凭证；真实供应商一致性、真实浏览器无障碍、生产远程 UX 与生产存储矩阵仍是独立验证层。
