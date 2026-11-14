@@ -57,6 +57,23 @@ npm run dev
 
 设置 `CONCHBASE_MODEL` 后，老板 Agent 会默认通过同一个协议端点进行自然对话；可用 `CONCHBASE_BOSS_MODEL` 单独覆盖模型。用户只和老板对话，是否使用组织能力由老板判断；所有动作仍由 Runtime 校验。
 
+需要让 Agent 使用 MCP 工具时，先由管理员写一份本地配置，再用 `CONCHBASE_MCP_CONFIG` 指向它：
+
+```json
+{
+  "servers": [
+    {
+      "id": "local",
+      "command": "/absolute/path/to/mcp-server",
+      "args": ["--stdio"],
+      "tools": [{ "name": "search_docs", "sideEffect": "read" }]
+    }
+  ]
+}
+```
+
+Runtime 只启动这里声明的绝对路径命令，不继承环境变量，不接受 `shell`，并且只暴露显式列出的 `read` 工具。写入类工具与远程 MCP 传输仍需单独 ADR。
+
 独立 Agent 对话不需要在 Conchbase 配置供应商凭证；请在 Magpie 中配置模型、供应商、凭证、路由与 app key，Conchbase 只通过 OpenAI 兼容协议接口访问本机 Magpie。
 
 ## 架构边界
