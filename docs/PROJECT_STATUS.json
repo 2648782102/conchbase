@@ -242,6 +242,11 @@
       "id": "tool-approval-write-tools",
       "summary": "ADR 0057 implements Runtime-owned write-tool approval: waiting_approval checkpoints persist across restart, POST /v1/tasks/{taskId}/approval resumes the loop after approved execution, rejection fails without writing, and CONCHBASE_ALLOW_TOOL_WRITES gates the bounded workspace_write tool.",
       "evidence": "src/runtime/task-service.ts"
+    },
+    {
+      "id": "multi-tool-turns",
+      "summary": "ADR 0058 allows up to maxToolCallsPerTurn tool calls per model turn (default 4, cap 8), executes them in order, requires one approval per write, and rejects turns above the cap.",
+      "evidence": "src/runtime/task-service.ts"
     }
   ],
   "validationEvidence": [
@@ -419,6 +424,12 @@
       "id": "tool-approval-fixture",
       "summary": "Executable fixtures cover pause-before-write, approve-and-continue, reject-without-write, restart survival, duplicate-decision conflict, and the approval route.",
       "evidence": "tests/agent-approval.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "multi-tool-fixture",
+      "summary": "Executable fixtures cover multiple reads in one turn, two writes requiring two approvals, and cap rejection.",
+      "evidence": "tests/agent-multi-tool.test.ts",
       "executableFixture": true
     }
   ],

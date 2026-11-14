@@ -55,6 +55,7 @@ import {
 } from './tool-request.js';
 import { createBuiltinReadTools, ToolRejectedError, type ToolProvider } from './tool-provider.js';
 import type { ProviderMessage } from './model-adapter.js';
+import type { ProviderToolCall } from './model-adapter.js';
 
 function digestArguments(args: Readonly<Record<string, string | number | boolean | null>>): string {
   const canonical = Object.keys(args).sort().map((key) => `${key}=${String(args[key])}`).join('&');
@@ -79,6 +80,7 @@ export interface AgentLoopOptions {
   readonly reasoningEffort?: 'low' | 'medium' | 'high';
   readonly preferredChatModelId?: string;
   readonly skills?: readonly { readonly name: string; readonly instructions: string }[];
+  readonly maxToolCallsPerTurn?: number;
 }
 
 export interface CreateTaskInput {
@@ -502,80 +504,37 @@ export class TaskService {
       if (!raw) throw new Error('Approval checkpoint is missing.');
       const checkpoint = JSON.parse(raw) as {
         readonly iteration: number;
-        readonly toolId: string;
-        readonly toolCallId: string;
-        readonly arguments: Readonly<Record<string, string | number | boolean | null>>;
-        readonly messages: readonly ProviderMessage[];
+        readonly messages: ProviderMessage[];
+        readonly pending: readonly {
+          readonly id: string;
+          readonly name: string;
+          readonly arguments: Readonly<Record<string, string | number | boolean | null>>;
+        }[];
       };
       const tools = this.loopOptions.tools;
-      if (!tools?.has(checkpoint.toolId)) throw new Error('Approved tool is no longer available.');
-      const result = await tools.invoke(checkpoint.toolId, checkpoint.arguments);
-      this.store.recordEvent(task.id, {
-        ...this.eventInput(task, 'agent_loop.tool_executed', 'running', task.attempt),
-        data: {
-          toolId: checkpoint.toolId,
-          toolVersion: 1,
-          argumentsDigest: digestArguments(checkpoint.arguments),
-          resultDigest: result.digest,
-          bytes: result.bytes,
-        },
-      });
+      if (!tools) throw new Error('Tool runtime is unavailable.');
+      const approved = checkpoint.pending[0];
+      if (!approved) throw new Error('Approval checkpoint is empty.');
+      if (!tools.has(approved.name)) throw new Error('Approved tool is no longer available.');
+      const result = await tools.invoke(approved.name, approved.arguments);
+      this.recordToolExecuted(task, checkpoint.iteration, approved.name, approved.arguments, result);
       if (signal.aborted) return;
       const messages: ProviderMessage[] = [
         ...checkpoint.messages,
-        { role: 'tool', toolCallId: checkpoint.toolCallId, content: result.summary },
+        { role: 'tool', toolCallId: approved.id, content: result.summary },
       ];
-      const provider = new OpenAiChatCompletionsProvider({
-        baseUrl: this.config.magpieBaseUrl,
-        model: task.modelId ?? task.model,
-        ...(this.config.magpieAppKey ? { appKey: this.config.magpieAppKey } : {}),
-        ...(this.config.fetch ? { fetch: this.config.fetch } : {}),
-      });
-      const turn = await provider.streamTurn({
-        taskId: task.id,
-        prompt: task.prompt,
-        turnIndex: checkpoint.iteration + 1,
-        messages,
-        signal,
-        ...(tools
-          ? {
-            tools: tools.list().map((tool) => ({
-              id: tool.id,
-              description: tool.description,
-              parameters: { type: 'object', additionalProperties: true },
-            })),
-          }
-          : {}),
-        onOutputDelta: () => undefined,
-      });
+      const remaining = checkpoint.pending.slice(1).map((entry) => ({
+        id: entry.id,
+        name: entry.name,
+        arguments: entry.arguments,
+      }));
+      if (remaining.length > 0) {
+        const drained = await this.drainToolCalls(task, remaining, checkpoint.iteration, messages, signal);
+        if (drained === 'paused') return;
+      }
       this.store.saveLoopState(task.id, null);
       if (signal.aborted) return;
-      if (turn.kind === 'tool_calls') {
-        const feedback = await this.continueLoopAfterApproval(
-          task,
-          messages,
-          checkpoint.iteration + 1,
-          turn.calls,
-          signal,
-        );
-        if (feedback === null) return;
-        this.store.transitionTask(
-          task.id,
-          'succeeded',
-          this.eventInput(task, 'task.completed', 'succeeded', task.attempt),
-          { output: feedback },
-        );
-        return;
-      }
-      if (turn.kind !== 'final') {
-        throw new Error('Unsupported model turn after approval.');
-      }
-      this.store.transitionTask(
-        task.id,
-        'succeeded',
-        this.eventInput(task, 'task.completed', 'succeeded', task.attempt),
-        { output: turn.output },
-      );
+      await this.runAgentLoop(task, messages, checkpoint.iteration + 1, signal);
     } catch (cause) {
       if (signal.aborted) return;
       this.store.saveLoopState(task.id, null);
@@ -586,106 +545,6 @@ export class TaskService {
         { error: cause instanceof Error ? cause.message.slice(0, 500) : 'Approved tool failed.' },
       );
     }
-  }
-
-  private async continueLoopAfterApproval(
-    task: TaskSnapshot,
-    messages: readonly ProviderMessage[],
-    startIteration: number,
-    initialCalls: readonly { readonly id: string; readonly name: string; readonly arguments: Readonly<Record<string, string | number | boolean | null>> }[],
-    signal: AbortSignal,
-  ): Promise<string | null> {
-    const tools = this.loopOptions.tools;
-    if (!tools) throw new Error('Tool runtime is unavailable.');
-    const provider = new OpenAiChatCompletionsProvider({
-      baseUrl: this.config.magpieBaseUrl,
-      model: task.modelId ?? task.model,
-      ...(this.config.magpieAppKey ? { appKey: this.config.magpieAppKey } : {}),
-      ...(this.config.fetch ? { fetch: this.config.fetch } : {}),
-    });
-    const maxIterations = Math.max(1, Math.min(this.loopOptions.maxIterations ?? 6, 12));
-    let current: readonly { readonly id: string; readonly name: string; readonly arguments: Readonly<Record<string, string | number | boolean | null>> }[] = initialCalls;
-    let conversation: ProviderMessage[] = [...messages];
-    for (let iteration = startIteration; iteration < maxIterations; iteration += 1) {
-      if (current.length !== 1) throw new Error('Agent loop v1 accepts exactly one tool call per turn.');
-      const call = current[0]!;
-      conversation = [...conversation, { role: 'assistant', content: '', toolCalls: current }];
-      const definition = tools.list().find((entry) => entry.id === call.name);
-      if (!definition) {
-        conversation = [...conversation, { role: 'tool', toolCallId: call.id, content: 'error: unknown_tool' }];
-      } else if (definition.sideEffect === 'write') {
-        const alreadyApplied = this.store.listEvents(null)
-          .some((event) => event.taskId === task.id
-            && event.type === 'agent_loop.tool_executed'
-            && event.data.toolId === call.name
-            && event.data.argumentsDigest === digestArguments(call.arguments));
-        if (alreadyApplied) {
-          conversation = [
-            ...conversation,
-            {
-              role: 'tool',
-              toolCallId: call.id,
-              content: 'This identical write already completed; do not repeat it. Summarize the result for the user.',
-            },
-          ];
-          const next = await provider.streamTurn({
-            taskId: task.id,
-            prompt: task.prompt,
-            turnIndex: iteration + 1,
-            messages: conversation,
-            signal,
-            onOutputDelta: () => undefined,
-          });
-          if (next.kind === 'final') return next.output;
-          current = next.kind === 'tool_calls' ? next.calls : current;
-          continue;
-        }
-        this.store.saveLoopState(task.id, JSON.stringify({
-          iteration,
-          toolId: call.name,
-          arguments: call.arguments,
-          toolCallId: call.id,
-          messages: conversation,
-        }));
-        this.store.transitionTask(
-          task.id,
-          'waiting_approval',
-          this.eventInput(task, 'agent_loop.approval_requested', 'waiting_approval', task.attempt),
-        );
-        return null;
-      } else {
-        const result = await tools.invoke(call.name, call.arguments);
-        this.store.recordEvent(task.id, {
-          ...this.eventInput(task, 'agent_loop.tool_executed', 'running', task.attempt),
-          data: {
-            toolId: call.name,
-            toolVersion: 1,
-            argumentsDigest: digestArguments(call.arguments),
-            resultDigest: result.digest,
-            bytes: result.bytes,
-          },
-        });
-        conversation = [...conversation, { role: 'tool', toolCallId: call.id, content: result.summary }];
-      }
-      if (signal.aborted) throw new Error('Task was cancelled.');
-      const next = await provider.streamTurn({
-        taskId: task.id,
-        prompt: task.prompt,
-        turnIndex: iteration + 1,
-        messages: conversation,
-        tools: tools.list().map((tool) => ({
-          id: tool.id,
-          description: tool.description,
-          parameters: { type: 'object', additionalProperties: true },
-        })),
-        signal,
-        onOutputDelta: () => undefined,
-      });
-      if (next.kind === 'final') return next.output;
-      if (next.kind !== 'tool_calls') throw new Error('Unsupported model turn after approval.');
-      current = next.calls;
-    }
-    throw new Error(`Agent loop exceeded ${maxIterations} iterations.`);
   }
 
   cancelTask(taskId: string): TaskSnapshot {
@@ -848,9 +707,10 @@ export class TaskService {
         ? [{
           role: 'system' as const,
           content: [
-            'You can use these read-only tools:',
+            'You can use these tools:',
             ...tools.list().map((tool) => `- ${tool.id}: ${tool.description}`),
-            'Emit exactly one tool call per turn when you need information. Do not invent tool names.',
+            'Read tools run immediately. Write tools pause the task and require explicit operator approval before each execution.',
+            `Emit at most ${this.maxToolCallsPerTurn()} tool calls per turn when you need information. Do not invent tool names.`,
             'All paths are relative to the workspace root; paths outside it are rejected.',
           ].join('\n'),
         }]
@@ -868,13 +728,29 @@ export class TaskService {
         : []),
       { role: 'user' as const, content: task.prompt },
     ];
+    await this.runAgentLoop(task, messages, 0, signal);
+  }
+
+  private async runAgentLoop(
+    task: TaskSnapshot,
+    messages: ProviderMessage[],
+    startIteration: number,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const provider = new OpenAiChatCompletionsProvider({
+      baseUrl: this.config.magpieBaseUrl,
+      model: task.modelId ?? task.model,
+      ...(this.config.magpieAppKey ? { appKey: this.config.magpieAppKey } : {}),
+      ...(this.config.fetch ? { fetch: this.config.fetch } : {}),
+    });
+    const tools = this.loopOptions.tools;
     const maxIterations = Math.max(1, Math.min(this.loopOptions.maxIterations ?? 6, 12));
     const deadline = Date.now() + Math.max(1_000, this.loopOptions.deadlineMs ?? 120_000);
     let partialOutput = '';
     let turn: Awaited<ReturnType<typeof provider.streamTurn>> = Object.freeze({ kind: 'final', output: '' });
     let completed = false;
 
-    for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+    for (let iteration = startIteration; iteration < maxIterations; iteration += 1) {
       if (signal.aborted) break;
       if (Date.now() > deadline) throw new Error('Agent loop exceeded its time budget.');
       this.store.recordEvent(task.id, {
@@ -923,8 +799,8 @@ export class TaskService {
         throw new Error('Provider tool-call observation is not actionable in this runtime slice.');
       }
       if (turn.kind !== 'tool_calls') throw new Error('Unsupported model turn.');
-      if (turn.calls.length !== 1) {
-        throw new Error('Agent loop v1 accepts exactly one tool call per turn.');
+      if (turn.calls.length > this.maxToolCallsPerTurn()) {
+        throw new Error(`Agent loop accepts at most ${this.maxToolCallsPerTurn()} tool calls per turn.`);
       }
       if (iteration === maxIterations - 1) {
         throw new Error(`Agent loop exceeded ${maxIterations} iterations.`);
@@ -934,60 +810,8 @@ export class TaskService {
         content: turn.content,
         toolCalls: turn.calls,
       });
-      for (const call of turn.calls) {
-        this.store.recordEvent(task.id, {
-          ...this.eventInput(task, 'agent_loop.tool_requested', 'running', task.attempt),
-            data: {
-              iteration,
-              toolId: call.name,
-              toolVersion: 1,
-              argumentsDigest: digestArguments(call.arguments),
-            },
-        });
-        try {
-          if (!tools || !tools.has(call.name)) throw new ToolRejectedError('unknown_tool');
-          const definition = tools.list().find((entry) => entry.id === call.name);
-          if (definition?.sideEffect === 'write') {
-            this.store.saveLoopState(task.id, JSON.stringify({
-              iteration,
-              toolId: call.name,
-              arguments: call.arguments,
-              toolCallId: call.id,
-              messages,
-            }));
-            this.store.transitionTask(
-              task.id,
-              'waiting_approval',
-              this.eventInput(task, 'agent_loop.approval_requested', 'waiting_approval', task.attempt),
-            );
-            return;
-          }
-          const result = await tools.invoke(call.name, call.arguments);
-          this.store.recordEvent(task.id, {
-            ...this.eventInput(task, 'agent_loop.tool_executed', 'running', task.attempt),
-            data: {
-              iteration,
-              toolId: call.name,
-              toolVersion: 1,
-              argumentsDigest: digestArguments(call.arguments),
-              resultDigest: result.digest,
-              bytes: result.bytes,
-            },
-          });
-          messages.push({ role: 'tool', toolCallId: call.id, content: result.summary });
-          messages.push({
-            role: 'system',
-            content: 'You have a tool result. Answer the user now unless another tool is strictly required.',
-          });
-        } catch (cause) {
-          const code = cause instanceof ToolRejectedError ? cause.code : 'tool_failed';
-          this.store.recordEvent(task.id, {
-            ...this.eventInput(task, 'agent_loop.tool_failed', 'running', task.attempt),
-            data: { iteration, toolId: call.name, toolVersion: 1, errorCode: code },
-          });
-          messages.push({ role: 'tool', toolCallId: call.id, content: `error: ${code}` });
-        }
-      }
+      const outcome = await this.drainToolCalls(task, turn.calls, iteration, messages, signal);
+      if (outcome === 'paused') return;
       if (messages.length > 200) throw new Error('Agent loop exceeded its context budget.');
     }
     if (!completed) {
@@ -1005,6 +829,113 @@ export class TaskService {
       this.eventInput(task, 'task.completed', 'succeeded', task.attempt),
       { output: turn.output },
     );
+  }
+
+  private maxToolCallsPerTurn(): number {
+    return Math.max(1, Math.min(this.loopOptions.maxToolCallsPerTurn ?? 4, 8));
+  }
+
+  private writeAlreadyApplied(
+    task: TaskSnapshot,
+    toolId: string,
+    args: Readonly<Record<string, string | number | boolean | null>>,
+  ): boolean {
+    const digest = digestArguments(args);
+    return this.store.listEvents(null).some((event) => event.taskId === task.id
+      && event.type === 'agent_loop.tool_executed'
+      && event.data.toolId === toolId
+      && event.data.argumentsDigest === digest);
+  }
+
+  private recordToolExecuted(
+    task: TaskSnapshot,
+    iteration: number,
+    toolId: string,
+    args: Readonly<Record<string, string | number | boolean | null>>,
+    result: { readonly digest: string; readonly bytes: number },
+  ): void {
+    this.store.recordEvent(task.id, {
+      ...this.eventInput(task, 'agent_loop.tool_executed', 'running', task.attempt),
+      data: {
+        iteration,
+        toolId,
+        toolVersion: 1,
+        argumentsDigest: digestArguments(args),
+        resultDigest: result.digest,
+        bytes: result.bytes,
+      },
+    });
+  }
+
+  private recordToolFailed(task: TaskSnapshot, iteration: number, toolId: string, errorCode: string): void {
+    this.store.recordEvent(task.id, {
+      ...this.eventInput(task, 'agent_loop.tool_failed', 'running', task.attempt),
+      data: { iteration, toolId, toolVersion: 1, errorCode },
+    });
+  }
+
+  private async drainToolCalls(
+    task: TaskSnapshot,
+    calls: readonly ProviderToolCall[],
+    iteration: number,
+    messages: ProviderMessage[],
+    signal: AbortSignal,
+  ): Promise<'done' | 'paused'> {
+    const tools = this.loopOptions.tools;
+    for (let index = 0; index < calls.length; index += 1) {
+      const call = calls[index]!;
+      if (signal.aborted) throw new Error('Task was cancelled.');
+      this.store.recordEvent(task.id, {
+        ...this.eventInput(task, 'agent_loop.tool_requested', 'running', task.attempt),
+        data: {
+          iteration,
+          toolId: call.name,
+          toolVersion: 1,
+          argumentsDigest: digestArguments(call.arguments),
+        },
+      });
+      const definition = tools?.list().find((entry) => entry.id === call.name);
+      if (!definition) {
+        this.recordToolFailed(task, iteration, call.name, 'unknown_tool');
+        messages.push({ role: 'tool', toolCallId: call.id, content: 'error: unknown_tool' });
+        continue;
+      }
+      if (definition.sideEffect === 'write') {
+        if (this.writeAlreadyApplied(task, call.name, call.arguments)) {
+          messages.push({
+            role: 'tool',
+            toolCallId: call.id,
+            content: 'This identical write already completed; do not repeat it.',
+          });
+          continue;
+        }
+        this.store.saveLoopState(task.id, JSON.stringify({
+          iteration,
+          messages,
+          pending: calls.slice(index).map((entry) => ({
+            id: entry.id,
+            name: entry.name,
+            arguments: entry.arguments,
+          })),
+        }));
+        this.store.transitionTask(
+          task.id,
+          'waiting_approval',
+          this.eventInput(task, 'agent_loop.approval_requested', 'waiting_approval', task.attempt),
+        );
+        return 'paused';
+      }
+      try {
+        const result = await tools!.invoke(call.name, call.arguments);
+        this.recordToolExecuted(task, iteration, call.name, call.arguments, result);
+        messages.push({ role: 'tool', toolCallId: call.id, content: result.summary });
+      } catch (cause) {
+        const code = cause instanceof ToolRejectedError ? cause.code : 'tool_failed';
+        this.recordToolFailed(task, iteration, call.name, code);
+        messages.push({ role: 'tool', toolCallId: call.id, content: `error: ${code}` });
+      }
+    }
+    return 'done';
   }
 
   private async executeSingleTurn(task: TaskSnapshot, signal: AbortSignal): Promise<void> {
