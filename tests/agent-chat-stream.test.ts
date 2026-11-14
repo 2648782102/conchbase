@@ -502,3 +502,52 @@ test('a cursor from an earlier task in the same conversation can be resumed', as
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('a cursor from a different conversation is rejected', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-chat-stream-foreign-'));
+  const service = new TaskService(
+    new SqliteTaskStore(path.join(directory, 'runtime.sqlite')),
+    {
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/model',
+      fetch: scripted([() => text('甲'), () => text('乙')]),
+    },
+    catalog(),
+  );
+  const agentChat = new AgentChatService(service);
+  const app = createApp({ logger: false, taskService: service, agentChatService: agentChat });
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address();
+  assert.ok(address && typeof address === 'object');
+  const base = `http://127.0.0.1:${address.port}`;
+  try {
+    const agent = await service.createAgent({
+      name: '会话边界', instructions: 'Reply.', providerId: 'magpie', modelId: 'fixture/model',
+    });
+    const firstConversation = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
+    });
+    const secondConversation = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
+    });
+    const posted = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${firstConversation.json().id}/messages`,
+      payload: { text: '甲', idempotencyKey: 'foreign-1' },
+    });
+    await waitForTask(service, posted.json().assistantMessage.taskId, 'succeeded');
+    const foreignCursor = service.store.listEvents(null)
+      .filter((event) => event.taskId === posted.json().assistantMessage.taskId).at(-1)!.id;
+    const response = await fetch(
+      `${base}/v1/agent-chat/conversations/${secondConversation.json().id}/events?after=${foreignCursor}`,
+      { signal: AbortSignal.timeout(5_000) },
+    );
+    assert.equal(response.status, 400);
+    const body = await response.json() as { error?: string };
+    assert.match(body.error ?? '', /belong/i);
+  } finally {
+    await app.close();
+    await service.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
