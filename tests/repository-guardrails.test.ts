@@ -460,6 +460,9 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('docs/QUICK_START.zh-CN.md'), /契约事实源/);
   assert.match(read('docs/RELEASE_NOTES_1.0.0.zh-CN.md'), /中文发布说明/);
   assert.match(read('docs/RELEASE_NOTES_1.0.0.zh-CN.md'), /本 Release 同时附带上述中文文档资产/);
+  assert.match(read('docs/RELEASE_NOTES_1.1.0.zh-CN.md'), /Boss Mode `1\.1\.0`/);
+  assert.match(read('docs/QUICK_START.zh-CN.md'), /conchbase boss/);
+  assert.match(read('docs/decisions/0042-controlled-execution-direction.md'), /accepted product direction; implementation blocked/);
   const validationPlan = read('docs/VALIDATION_PLAN.md');
   assert.match(validationPlan, /ADR 0021's opt-in paired-runtime acceptance/);
   assert.match(validationPlan, /Live real-provider conformance, real-browser accessibility validation/);

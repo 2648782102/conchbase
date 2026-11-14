@@ -52,9 +52,12 @@ ADR 0025 implements asynchronous control, restart reconciliation, a deterministi
 
 1. **Implemented:** ADR 0024 accepts the historical durable-work domain and deterministic fake/manual Trigger intake.
 2. **Implemented:** ADR 0025 accepts durable start/stop/complete, restart recovery, Outbox/DeliveryReceipt decisions, events, local Source policy, capability records, authentication/pairing metadata, and process-scoped SecretHandles. Pagurus ADR 0010 implements the paired `1.0.0` control client.
-3. **Deferred:** stable cross-process keys, real external Sources, external writes, and executable tools require new ADRs.
+3. **Implemented:** ADR 0041 and Pagurus ADR 0018 complete the local-first Boss-mode Organization Runtime loop; `tests/organization-e2e.test.ts` provides the dual-repository fake-provider fixture.
+4. **Deferred:** stable cross-process keys, real external Sources, external writes, and executable tools require new ADRs.
 
 ## Phase 3: interoperability and hardening
+
+`1.1.0` Boss Mode is released with Chinese quick-start and release notes. The next product direction is controlled execution: ADR 0042 and a paired Pagurus ADR must define authorization, executor isolation, MCP lifecycle, Skill/plugin loading, UI grants, audit, and crash-safe side effects before any implementation.
 
 - Publish a TypeScript client from the stable API contract.
 - Add SSE or an ACP compatibility adapter where client support is useful.

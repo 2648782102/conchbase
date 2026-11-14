@@ -57,7 +57,7 @@ curl -X POST http://127.0.0.1:4318/v1/tasks \
   -d '{"prompt":"Reply with exactly: ok","model":"provider/model-id"}'
 ```
 
-See [the API guide](docs/API.md) and [OpenAPI contract](docs/openapi.yaml) for Agent, task, event, configuration, model-catalog, and tool request/approval ledger routes.
+See [the API guide](docs/API.md) and [OpenAPI contract](docs/openapi.yaml) for Agent, task, event, configuration, model-catalog, tool request/approval ledger, and additive `1.1.0` organization routes. Boss Mode `1.1.0` adds one primary-conversation intent entry and published organization state; see the [v1.1.0 Chinese release notes](docs/RELEASE_NOTES_1.1.0.zh-CN.md) and the [Chinese quick start](docs/QUICK_START.zh-CN.md).
 
 ## Architecture
 
@@ -73,13 +73,13 @@ See [the API guide](docs/API.md) and [OpenAPI contract](docs/openapi.yaml) for A
 - A Skill supplies instructions, never tool permissions; model-requested tools are rejected in phase 1.
 - A public tool request/approval decision is durable ledger state, never execution permission. A transient provider observation is untrusted normalization data, never execution permission.
 
-See [architecture](docs/ARCHITECTURE.md), [technology baseline](docs/TECH_STACK.md), [roadmap](docs/ROADMAP.md), [validation plan](docs/VALIDATION_PLAN.md), and the long-range [Organization Runtime target](docs/ORGANIZATION_RUNTIME_TARGET.zh-CN.md). The companion console is [Pagurus](https://github.com/2648782102/pagurus). Chinese: [README.zh-CN.md](README.zh-CN.md), [quick start](docs/QUICK_START.zh-CN.md), [target-mode brief](docs/OBJECTIVE_MODE.zh-CN.md), and [v1.0.0 release notes](docs/RELEASE_NOTES_1.0.0.zh-CN.md). The optional [visual overview](docs/VISUAL_OVERVIEW.zh-CN.md) is a human-facing illustration only, not a contract source of truth.
+See [architecture](docs/ARCHITECTURE.md), [technology baseline](docs/TECH_STACK.md), [roadmap](docs/ROADMAP.md), [validation plan](docs/VALIDATION_PLAN.md), and the complete [Organization Runtime target](docs/ORGANIZATION_RUNTIME_TARGET.zh-CN.md). The companion console is [Pagurus](https://github.com/2648782102/pagurus). Chinese: [README.zh-CN.md](README.zh-CN.md), [quick start](docs/QUICK_START.zh-CN.md), [target-mode brief](docs/OBJECTIVE_MODE.zh-CN.md), [v1.0.0 release notes](docs/RELEASE_NOTES_1.0.0.zh-CN.md), and [v1.1.0 release notes](docs/RELEASE_NOTES_1.1.0.zh-CN.md). The optional [visual overview](docs/VISUAL_OVERVIEW.zh-CN.md) is a human-facing illustration only, not a contract source of truth.
 
 ## AI-first development
 
 This project is developed primarily by AI coding agents. Architecture, documentation, and validation optimize for fast context loading, bounded changes, and deterministic verification; future human handoff is not a product requirement. Start with [`AGENTS.md`](AGENTS.md), then follow `docs/PROJECT_STATUS.json`'s `aiEntry.requiredOrder`: the [AI handoff](docs/AI_HANDOFF.md), the machine-readable [project status](docs/PROJECT_STATUS.json), the Chinese [target-mode brief](docs/OBJECTIVE_MODE.zh-CN.md), the [development guide](docs/AI_DEVELOPMENT.md), and [task queue](docs/AI_TASK_QUEUE.md). Read accepted ADRs [0010–0041](docs/decisions/), the [complete Organization Runtime target](docs/ORGANIZATION_RUNTIME_TARGET.zh-CN.md), and the linked architecture/API documents next. ADR 0041 completes the Boss-mode product loop and its dual-repository executable acceptance fixture.
 
-Before implementing the next product slice, read [ADR 0025](docs/decisions/0025-local-first-v1-platform.md) and [ADR 0030](docs/decisions/0030-organization-runtime-direction.md). ADR 0025 is the final local-first contract and execution substrate; ADR 0030 and ADRs 0031–0034 define the longer organization target. Future external adapters, stable cross-process keys, real Sources, external writes, tool execution, and organization work require separate accepted implementation contracts.
+Before implementing the next product slice, read [ADR 0025](docs/decisions/0025-local-first-v1-platform.md), [ADR 0041](docs/decisions/0041-boss-mode-product-loop.md), and [ADR 0042](docs/decisions/0042-controlled-execution-direction.md). ADR 0025 is the final local-first contract and execution substrate; ADR 0041 completes the Boss-mode organization loop; ADR 0042 fixes the next controlled-execution boundary. Future external adapters, stable cross-process keys, real Sources, external writes, and tool execution require separate accepted implementation contracts.
 
 Run `npm run check`, `npm test`, and `npm run build` after code changes.
 

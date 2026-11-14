@@ -251,6 +251,12 @@
   ],
   "blockedDirections": [
     {
+      "id": "controlled-execution",
+      "summary": "Real tool authorization, executor isolation, MCP/Skill/plugin lifecycle, grants, approvals, audit, and crash-safe side effects are accepted as the next direction by ADR 0042 but require separate implementation ADRs and paired client contracts.",
+      "requiresAcceptedAdr": true,
+      "directionAdr": "docs/decisions/0042-controlled-execution-direction.md"
+    },
+    {
       "id": "stable-cross-process-secrets",
       "summary": "OS-managed key custody, replayable encrypted-at-rest values, and production revocation.",
       "requiresAcceptedAdr": true,

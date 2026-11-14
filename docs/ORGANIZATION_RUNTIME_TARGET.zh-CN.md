@@ -24,7 +24,7 @@ Conchbase 的最终目标不是“更多会话”或“更复杂的工作流编�
 
 `1.0.0` 已完成：Agent identity/revision、provider-neutral model reference、Task、deterministic composition、tool request ledger、durable work、SecretHandle、capability directory、local Source、authenticated pairing metadata、47-path OpenAPI 与单实例 SQLite。
 
-完整组织目标尚未实现。差距是：
+`1.0.0` 完成后，完整组织目标曾存在以下差距；这些差距现在由 ADR 0031–0041、additive `1.1.0` 公开契约、BossModeService、Pagurus 组织控制台与 `tests/organization-e2e.test.ts` 逐项闭合：
 
 | 领域 | 1.0.0 基线 | 最终目标 |
 | --- | --- | --- |
@@ -287,7 +287,7 @@ Pagurus 不得：
 
 ## 7. 最终状态定义
 
-只有当 `docs/PROJECT_STATUS.json` 同时满足以下条件时，才可以把组织目标标为完成：
+组织目标完成的判定条件如下；当前 `docs/PROJECT_STATUS.json` 已满足：
 
 - `implemented` 包含 `organization-runtime`；
 - `implemented` 包含 `dynamic-agent-revisions`；
@@ -300,7 +300,7 @@ Pagurus 不得：
 - `nextBoundedSlices` 中不再有组织目标相关条目；
 - Pagurus status 对应记录 `organization-console`。
 
-在此之前，ADR 0030 与 Pagurus ADR 0015 只代表已接受方向，不代表已实现。
+ADR 0030 与 Pagurus ADR 0015 曾经只代表方向；组织目标现在已由 ADR 0041 与 Pagurus ADR 0018 完成实现和双仓验收。
 
 ## 8. 交付顺序
 
@@ -326,4 +326,4 @@ Pagurus 不得：
 
 因此，本项目选择“模型提出定义，Runtime 裁决授权；员工动态产生，历史结构化保存；用户只看一个入口，系统承担并发复杂度”。这是产品方向，不是当前实现承诺。
 
-> 目标模式不是宣布完工，而是把远目标固定下来，让每个后续 AI 开发模型按同一目标连续推进。
+> 目标模式已经按本规格完成；后续 AI 开发模型应从 `PROJECT_STATUS.json` 的 `blockedDirections` 中选择新的外部能力边界，并先接受对应 ADR，不得把外部工具、外部 Source、跨进程密钥或生产远端 UX 误当作已实现能力。

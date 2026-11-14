@@ -224,9 +224,12 @@ export interface StructuredModelClient {
 const OPENAI_COMPATIBLE_PARSER_INSTRUCTIONS = [
   'You are the Conchbase organization intent parser.',
   'Return only strict JSON with this shape: {"actions":[],"relay":string|null}.',
-  'Each action must use the Conchbase organization action schema.',
-  'The Runtime replaces expectedSequence and model references before validation.',
+  'Each actions item must be an object whose type is exactly one of open_project, activate_project, create_agent, authorize_worker, start_worker, report_worker, request_attention, answer_attention, withdraw_attention, quiet_project, archive_project, resume_project, offboard_worker, record_intent, activate_delegation, record_worker_execution, resume_worker.',
+  'Use snake_case action types only. Never turn a phrase into a camelCase or PascalCase action type.',
+  'Always include numeric expectedSequence and string projectId. The Runtime replaces expectedSequence and model references before validation.',
+  'For create_agent also include workerId, delegationId, agentRevisionId, displayName, instructionsDigest, scope, capabilities, model, maxDelegationDepth, ttlEvents.',
   'Never invent capabilities, secret values, file paths, URLs, or role enums.',
+  'If the user text cannot be represented exactly by accepted actions, return {"actions":[],"relay":"No safe structured action."}.',
 ].join(' ');
 
 export function createOpenAiCompatibleOrganizationIntentParser(options: {
