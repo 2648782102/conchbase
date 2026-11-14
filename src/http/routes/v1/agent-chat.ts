@@ -153,6 +153,7 @@ export function registerAgentChatRoutes(
 
       reply.hijack();
       activeStreams += 1;
+      request.log.debug({ conversationId, activeStreams, after: after ?? null }, 'agent chat stream opened');
       const response = reply.raw;
       response.writeHead(200, {
         'content-type': 'text/event-stream; charset=utf-8',
@@ -172,6 +173,7 @@ export function registerAgentChatRoutes(
         if (closed) return;
         closed = true;
         activeStreams = Math.max(0, activeStreams - 1);
+        request.log.debug({ conversationId, activeStreams }, 'agent chat stream closed');
         if (interval !== null) clearInterval(interval);
         if (heartbeat !== null) clearInterval(heartbeat);
         response.end();
