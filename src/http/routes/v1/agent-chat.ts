@@ -157,6 +157,7 @@ export function registerAgentChatRoutes(
       let closed = false;
       let cursor = after ?? null;
       let revision = service.conversationRevision(conversationId);
+      const nonTaskSent = new Map<string, string>();
       const sent = new Map<string, string>();
       let interval: NodeJS.Timeout | null = null;
       let heartbeat: NodeJS.Timeout | null = null;
@@ -174,7 +175,7 @@ export function registerAgentChatRoutes(
           close();
           return;
         }
-        if (frame.eventId !== null) cursor = frame.eventId;
+        if (frame.eventId !== null && frame.kind !== 'snapshot') cursor = frame.eventId;
         if (frame.kind === 'message' && frame.messageId !== null) {
           const fingerprint = JSON.stringify(frame.message);
           if (sent.get(frame.messageId) === fingerprint) return;
@@ -215,15 +216,18 @@ export function registerAgentChatRoutes(
           if (latestRevision !== revision) {
             revision = latestRevision;
             const current = service.view(conversationId);
-            const last = current.messages.at(-1);
-            if (last) {
+            for (const changed of current.messages) {
+              if (changed.taskId !== null) continue;
+              const fingerprint = JSON.stringify(changed);
+              if (nonTaskSent.get(changed.id) === fingerprint) continue;
+              nonTaskSent.set(changed.id, fingerprint);
               write({
                 version: AGENT_CHAT_CONTRACT_VERSION,
                 conversationId,
                 kind: 'message',
                 eventId: cursor,
-                messageId: last.id,
-                message: last,
+                messageId: changed.id,
+                message: changed,
                 conversation: null,
               });
             }
