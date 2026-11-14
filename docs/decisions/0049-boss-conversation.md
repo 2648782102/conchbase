@@ -12,7 +12,7 @@ The product requires a normal conversation with the Boss. The user should not ha
 
 ## Decision
 
-1. A Runtime-owned conversational brain uses the same user-configured OpenAI Chat Completions-compatible endpoint as Agent Chat. `CONCHBASE_MODEL` is the default model; `CONCHBASE_BOSS_MODEL` optionally overrides it. `CONCHBASE_ORGANIZATION_INTENT_MODEL` retains priority for legacy strict action-only parsing.
+1. A Runtime-owned conversational brain uses the same user-configured OpenAI Chat Completions-compatible endpoint as Agent Chat. `CONCHBASE_MODEL` is the default model; `CONCHBASE_BOSS_MODEL` optionally overrides it. `CONCHBASE_ORGANIZATION_INTENT_MODEL` retains priority for legacy strict action-only parsing. Startup wires a 30-second upstream timeout so a slow provider becomes an explicit `unavailable` state instead of an indefinite `organizing` state.
 2. `AgentChatService` supplies at most eight bounded recent messages to `BossModeService`. `BossModeService` passes that context and a bounded organization snapshot to the parser. The brain returns strict JSON with exactly `reply` and `actions`; the natural `reply` is published as the assistant message.
 3. The Boss decides whether to propose capabilities. Ordinary conversation returns `actions: []`; an organization-worthy turn may return accepted action candidates. Runtime replaces `expectedSequence` and `create_agent.model`, reparses all candidates through `parseOrganizationAction`, then commits them through the existing `BossModeService` execution bridge.
 4. Plain text, unknown fields, empty/oversized replies, secret-like content, out-of-schema actions, and upstream failures are rejected. Agent Chat publishes `unavailable` with a bounded error, never a fixed conversational phrase.

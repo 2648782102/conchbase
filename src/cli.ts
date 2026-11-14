@@ -64,6 +64,7 @@ function createBossModeService(
       ? createOpenAiCompatibleBossConversationParser({
         baseUrl: config.magpieBaseUrl,
         model: config.bossModel ?? config.defaultModel,
+        timeoutMs: 30_000,
         ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
       })
       : undefined;
