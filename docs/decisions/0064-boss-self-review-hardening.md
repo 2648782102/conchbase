@@ -25,7 +25,8 @@ Asked to evaluate itself, the Boss produced a specific and largely accurate crit
    - classify worker failures; billing/quota errors are reported, never automatically retried;
    - prefer reusing or retrying an existing worker over hiring a similar one;
    - respect the four-worker-per-project limit.
-5. No public path or schema changes.
+5. `applyOrganizationAction` accepts `skipNewPolicyChecks`, used only by the SQLite replay path. A schema rule introduced later must never make an existing database unopenable: replay restores accepted history verbatim, while new writes still enforce the limit.
+6. No public path or schema changes.
 
 ## Options
 
@@ -46,6 +47,7 @@ Consequences: correctness enforced where it is checkable; tone and reasoning gui
 - `tests/boss-mode-service.test.ts` asserts a trailing `ATTENTION:` line creates an open `AttentionRequest`.
 - `tests/organization-intent-parser.test.ts` asserts custom worker instructions survive parsing.
 - `tests/organization-contract.test.ts` asserts the fifth worker is rejected.
+- `tests/organization-persistence.test.ts` asserts a database holding more than four workers still reopens, because replay bypasses new policy checks.
 - `npm run check`, `npm test` (266), and `npm run build` pass.
 
 ## Consequences
