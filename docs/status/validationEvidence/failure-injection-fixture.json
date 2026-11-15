@@ -1,0 +1,6 @@
+{
+  "id": "failure-injection-fixture",
+  "summary": "Three deliberate defects were injected across distinct safety boundaries — memory tombstone enforcement, secret-like detection, and runtime-scope confirmation — and each produced the expected test failures before the sources were restored and verified. This is manual validation evidence, not repository code.",
+  "evidence": "docs/TEST_VALIDATION_LOG.md",
+  "executableFixture": false
+}

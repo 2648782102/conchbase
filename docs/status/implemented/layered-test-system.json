@@ -1,0 +1,5 @@
+{
+  "id": "layered-test-system",
+  "summary": "ADR 0086 adds a ten-layer test runner that fails on unassigned or missing test files, a coverage gate that requires the tsx loader and excludes the paired Pagurus console, and a module audit that fails when a runtime module has no test reference and no stated exemption. npm run verify chains types, audit, tests, and build.",
+  "evidence": "scripts/test-suites.mjs"
+}

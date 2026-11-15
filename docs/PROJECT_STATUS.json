@@ -219,6 +219,11 @@
       "evidence": "src/runtime/isolated-execution.ts"
     },
     {
+      "id": "layered-test-system",
+      "summary": "ADR 0086 adds a ten-layer test runner that fails on unassigned or missing test files, a coverage gate that requires the tsx loader and excludes the paired Pagurus console, and a module audit that fails when a runtime module has no test reference and no stated exemption. npm run verify chains types, audit, tests, and build.",
+      "evidence": "scripts/test-suites.mjs"
+    },
+    {
       "id": "local-first-v1-platform",
       "summary": "The exact 47-path local-first 1.0.0 platform is implemented, including authentication metadata, work control, recovery, one local Source, capability records, and process-scoped write-only SecretHandles.",
       "evidence": "docs/decisions/0025-local-first-v1-platform.md"
@@ -495,6 +500,12 @@
       "summary": "An executable fixture covers deterministic digest-only proposals, rejection of secret-like and non-organization actions, and absence of public routes or store writes.",
       "evidence": "tests/organization-agent-projection.test.ts",
       "executableFixture": true
+    },
+    {
+      "id": "failure-injection-fixture",
+      "summary": "Three deliberate defects were injected across distinct safety boundaries — memory tombstone enforcement, secret-like detection, and runtime-scope confirmation — and each produced the expected test failures before the sources were restored and verified. This is manual validation evidence, not repository code.",
+      "evidence": "docs/TEST_VALIDATION_LOG.md",
+      "executableFixture": false
     },
     {
       "id": "idle-project-convergence-fixture",
