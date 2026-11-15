@@ -196,3 +196,53 @@ test('organization persistence keeps the published contract frozen', () => {
   assert.match(spec, /^  version: 1\.1\.0$/m);
   assert.match(spec, /\/v1\/organization\/session/);
 });
+
+test('replaying history is not blocked by the new worker limit', () => {
+  withTemporaryDirectory((directory) => {
+    const filename = path.join(directory, 'runtime.sqlite');
+    const seed = new SqliteTaskStore(filename);
+    try {
+      seed.organization.initialize('primary_conversation');
+      seed.organization.apply({
+        type: 'open_project', expectedSequence: 0,
+        projectId: 'project_replay', originTriggerId: 'int_replay',
+      });
+      seed.organization.apply({
+        type: 'activate_project', expectedSequence: 1, projectId: 'project_replay',
+      });
+    } finally {
+      seed.close();
+    }
+
+    const database = new DatabaseSync(filename);
+    try {
+      const insert = database.prepare('INSERT INTO organization_actions (sequence, action) VALUES (?, ?)');
+      for (let index = 0; index < 6; index += 1) {
+        insert.run(3 + index, JSON.stringify({
+          type: 'create_agent',
+          expectedSequence: 2 + index,
+          projectId: 'project_replay',
+          workerId: `wrk_replay_${index}`,
+          delegationId: `del_replay_${index}`,
+          agentRevisionId: `agr_replay_${index}`,
+          displayName: `Replay Worker ${index}`,
+          instructionsDigest: 'sha256:instructions',
+          scope: ['project:replay'],
+          capabilities: ['cap_read_context'],
+          model: { providerId: 'magpie', modelId: 'fixture-model' },
+          maxDelegationDepth: 0,
+          ttlEvents: 10,
+        }));
+      }
+    } finally {
+      database.close();
+    }
+
+    const reopened = new SqliteTaskStore(filename);
+    try {
+      assert.equal(reopened.organization.get().workers.length, 6);
+    } finally {
+      reopened.close();
+    }
+  });
+});

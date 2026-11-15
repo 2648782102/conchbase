@@ -682,7 +682,9 @@ function nextWorkerState(state: ReportState): WorkerState {
 export function applyOrganizationAction(
   snapshot: OrganizationSnapshot,
   input: unknown,
+  options: { readonly skipNewPolicyChecks?: boolean } = {},
 ): OrganizationSnapshot {
+  const skipWorkerLimit = options.skipNewPolicyChecks === true;
   const parsed = parseOrganizationAction(input);
   assertExpectedSequence(snapshot, parsed);
 
@@ -793,7 +795,7 @@ export function applyOrganizationAction(
       }
       const sameProject = snapshot.workers.filter((worker) =>
         worker.projectId === parsed.projectId && worker.state !== 'offboarded');
-      if (sameProject.length >= MAX_ACTIVE_WORKERS_PER_PROJECT) {
+      if (!skipWorkerLimit && sameProject.length >= MAX_ACTIVE_WORKERS_PER_PROJECT) {
         throw new OrganizationConflictError(
           `Project already has ${sameProject.length} non-offboarded workers; reuse or offboard one before hiring another.`,
         );

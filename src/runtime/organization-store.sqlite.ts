@@ -45,7 +45,7 @@ function replay(database: DatabaseSync, conversationId: string): OrganizationSna
     } catch {
       throw new OrganizationConflictError('Persisted organization action is not valid JSON.');
     }
-    snapshot = applyOrganizationAction(snapshot, parsed);
+    snapshot = applyOrganizationAction(snapshot, parsed, { skipNewPolicyChecks: true });
   });
   return snapshot;
 }
