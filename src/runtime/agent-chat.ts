@@ -691,9 +691,9 @@ export class AgentChatService {
     record.idempotency.set(idempotencyKey, userMessage.id);
     this.persist(record);
     const onAccepted = (submitted: Awaited<ReturnType<BossModeService['submit']>>) => {
-      const waiting = submitted.relays.some((relay) => relay.kind === 'attention')
-        || this.bossMode?.snapshot().attentionRequests.some((request) => request.state === 'open')
-        || false;
+      // Only attention produced by this turn counts. A pre-existing open request is
+      // historical state, not something this reply is waiting on.
+      const waiting = submitted.relays.some((relay) => relay.kind === 'attention');
       const failed = submitted.executions.some((execution) => execution.status === 'failed');
       this.replaceMessage(record, assistantMessage.id, {
         ...assistantMessage,

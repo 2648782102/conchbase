@@ -841,3 +841,109 @@ test('boss agent chat pins a user-selected conversation model', async () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('a pre-existing open attention does not mark later Boss replies as waiting', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-stale-attention-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: fakeFetch(),
+  });
+  const organization = new InMemoryOrganizationStore();
+  const parser: OrganizationIntentParser = {
+    async parse(input) {
+      return Object.freeze({
+        version: 1 as const,
+        intentId: input.intentId,
+        actions: Object.freeze([]),
+        relay: '这是一次普通回复，不需要你确认任何东西。',
+      });
+    },
+  };
+  const bossMode = new BossModeService(organization, taskService, { parser, waitForTasks: false });
+  const agentChat = new AgentChatService(taskService, bossMode);
+  const app = createApp({
+    logger: false, taskService, organizationStore: organization, bossModeService: bossMode, agentChatService: agentChat,
+  });
+  try {
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: 'boss-agent' },
+    });
+    const conversationId = created.json().id as string;
+    // Simulate an attention left open by an earlier turn.
+    organization.apply({
+      type: 'open_project', expectedSequence: 0,
+      projectId: 'project_stale', originTriggerId: 'int_stale',
+    });
+    organization.apply({
+      type: 'activate_project', expectedSequence: 1, projectId: 'project_stale',
+    });
+    organization.apply({
+      type: 'create_agent',
+      expectedSequence: 2,
+      projectId: 'project_stale',
+      workerId: 'wrk_stale',
+      delegationId: 'del_stale',
+      agentRevisionId: 'agr_stale',
+      displayName: 'Stale Worker',
+      instructionsDigest: 'sha256:instructions',
+      scope: ['project:stale'],
+      capabilities: ['cap_read_context'],
+      model: { providerId: 'magpie', modelId: 'fixture/chat-model' },
+      maxDelegationDepth: 0,
+      ttlEvents: 10,
+    });
+    organization.apply({
+      type: 'authorize_worker',
+      expectedSequence: organization.get().events.length,
+      projectId: 'project_stale',
+      workerId: 'wrk_stale',
+    });
+    organization.apply({
+      type: 'start_worker',
+      expectedSequence: organization.get().events.length,
+      projectId: 'project_stale',
+      workerId: 'wrk_stale',
+    });
+    organization.apply({
+      type: 'report_worker',
+      expectedSequence: organization.get().events.length,
+      projectId: 'project_stale',
+      workerId: 'wrk_stale',
+      reportId: 'rpt_stale',
+      state: 'attention',
+      summaryDigest: 'sha256:summary',
+    });
+    organization.apply({
+      type: 'request_attention',
+      expectedSequence: organization.get().events.length,
+      projectId: 'project_stale',
+      workerId: 'wrk_stale',
+      attentionId: 'att_stale',
+      questionDigest: 'sha256:question',
+    });
+    assert.equal(
+      organization.get().attentionRequests.filter((request) => request.state === 'open').length,
+      1,
+    );
+
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: { text: '随便聊聊', idempotencyKey: 'stale-attention-1' },
+    });
+    assert.equal(sent.statusCode, 202, sent.body);
+    let view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+    for (let attempt = 0; attempt < 100 && view.json().messages[1]?.phase !== 'terminal'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+    }
+    const reply = view.json().messages[1];
+    assert.equal(reply.state, 'replied');
+    assert.equal(reply.phase, 'terminal');
+  } finally {
+    await app.close();
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

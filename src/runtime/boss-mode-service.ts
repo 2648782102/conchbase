@@ -666,13 +666,17 @@ export class BossModeService {
     const delegation = snapshot.delegations.find((item) => item.id === action.delegationId);
     const scope = (delegation?.scope ?? action.scope).join('、') || '未限定';
     const capabilities = (delegation?.capabilities ?? action.capabilities).join('、') || '仅读取上下文';
+    const hasExplicitFormat = (action.instructions ?? '').trim().length > 0;
     const prompt = [
       `你是${chineseAgentDisplayName(action.displayName)}，为项目 ${action.projectId} 执行限定任务。`,
       `项目目标：${projectPurpose}`,
       `授权范围：${scope}`,
       `可用能力：${capabilities}`,
       '重要：组织事实（项目、员工、委派、汇报）只存在于 Runtime 的组织记录里，不在工作区文件中；不要通过列目录或搜索文件寻找项目上下文，也不要反复取同样的信息。',
-      '请直接基于上述上下文给出简洁结论，通常一轮即可完成。需要人工输入时以 ATTENTION: 开头。',
+      '请直接基于上述上下文给出简洁结论，通常一轮即可完成。',
+      ...(hasExplicitFormat
+        ? ['严格按系统指令中的输出格式作答；系统指令禁止的内容不得输出，包括 ATTENTION 行。']
+        : ['需要人工输入时以 ATTENTION: 开头。']),
     ].join('\n');
     const task = taskService.store.createAgentTask({
       id: `task_${reference(`${action.workerId}:${snapshot.events.length}`)}`,
