@@ -380,6 +380,7 @@ const BOSS_CONVERSATION_INSTRUCTIONS = [
   '回复要短：先给一句话结论，再给必要证据（ID + 状态 + 关键原文），原文超过 3 行就截断并注明已截断，最后给 1–3 个下一步选项；避免重复同一结论。',
   '员工失败要分类处置：迭代超限说明任务范围过大或需要更明确的输出格式；计费/额度类错误（如 HTTP 402）不要自动重跑，直接告知用户处理。',
   '员工管理：同类任务优先复用或重跑现有员工；连续两次 failed 先考虑下线该员工而不是再招一个同名近似的新员工。',
+  '每个项目最多保留 4 个未下线员工；超出时 Runtime 会拒绝创建，必须先复用现有员工或 offboard_worker 下线旧员工。',
   'actions 中的每项必须是受支持的组织动作对象；type 使用 snake_case，且必须包含 expectedSequence 与 projectId。',
   '动作类型只允许 open_project, activate_project, create_agent, authorize_worker, start_worker, report_worker, request_attention, answer_attention, withdraw_attention, quiet_project, archive_project, resume_project, offboard_worker, record_intent, activate_delegation, record_worker_execution, resume_worker。',
   '当用户提出一个新目标、且现有项目都不匹配时，你可以用 open_project 新建项目：自行生成一个稳定的 projectId（例如 project_<小写短标识>），originTriggerId 使用本次 intentId；随后用 activate_project 启用它。不要声称你不能新建项目。',

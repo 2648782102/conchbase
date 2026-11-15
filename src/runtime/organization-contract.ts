@@ -4,6 +4,7 @@ export const ORGANIZATION_CONTRACT_VERSION = 1;
 
 const MAX_DELEGATION_DEPTH = 3;
 const MAX_TTL_EVENTS = 1000;
+const MAX_ACTIVE_WORKERS_PER_PROJECT = 4;
 const MAX_ARRAY_LENGTH = 32;
 const MAX_STRING_LENGTH = 240;
 const MAX_DIGEST_LENGTH = 128;
@@ -789,6 +790,13 @@ export function applyOrganizationAction(
       }
       if (snapshot.workers.some((worker) => worker.id === parsed.workerId)) {
         throw new OrganizationConflictError('Organization worker already exists.');
+      }
+      const sameProject = snapshot.workers.filter((worker) =>
+        worker.projectId === parsed.projectId && worker.state !== 'offboarded');
+      if (sameProject.length >= MAX_ACTIVE_WORKERS_PER_PROJECT) {
+        throw new OrganizationConflictError(
+          `Project already has ${sameProject.length} non-offboarded workers; reuse or offboard one before hiring another.`,
+        );
       }
       if (snapshot.delegations.some((delegation) => delegation.id === parsed.delegationId)) {
         throw new OrganizationConflictError('Organization delegation already exists.');

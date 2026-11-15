@@ -270,3 +270,47 @@ test('serialized organization state and events contain only bounded references',
     );
   }
 });
+
+test('a project refuses a fifth non-offboarded worker', async () => {
+  const { createOrganization, applyOrganizationAction, parseOrganizationAction } = await import('../src/runtime/organization-contract.js');
+  let snapshot = createOrganization('conv_limit');
+  snapshot = applyOrganizationAction(snapshot, parseOrganizationAction({
+    type: 'open_project', expectedSequence: 0,
+    projectId: 'project_limit', originTriggerId: 'int_limit',
+  }));
+  snapshot = applyOrganizationAction(snapshot, parseOrganizationAction({
+    type: 'activate_project', expectedSequence: 1, projectId: 'project_limit',
+  }));
+  for (let index = 0; index < 4; index += 1) {
+    snapshot = applyOrganizationAction(snapshot, parseOrganizationAction({
+      type: 'create_agent',
+      expectedSequence: snapshot.events.length,
+      projectId: 'project_limit',
+      workerId: `wrk_limit_${index}`,
+      delegationId: `del_limit_${index}`,
+      agentRevisionId: `agr_limit_${index}`,
+      displayName: `Limit Worker ${index}`,
+      instructionsDigest: 'sha256:instructions',
+      scope: ['project:limit'],
+      capabilities: ['cap_read_context'],
+      model: { providerId: 'magpie', modelId: 'fixture-model' },
+      maxDelegationDepth: 0,
+      ttlEvents: 10,
+    }));
+  }
+  assert.throws(() => applyOrganizationAction(snapshot, parseOrganizationAction({
+    type: 'create_agent',
+    expectedSequence: snapshot.events.length,
+    projectId: 'project_limit',
+    workerId: 'wrk_limit_extra',
+    delegationId: 'del_limit_extra',
+    agentRevisionId: 'agr_limit_extra',
+    displayName: 'Limit Worker Extra',
+    instructionsDigest: 'sha256:instructions',
+    scope: ['project:limit'],
+    capabilities: ['cap_read_context'],
+    model: { providerId: 'magpie', modelId: 'fixture-model' },
+    maxDelegationDepth: 0,
+    ttlEvents: 10,
+  })), /non-offboarded workers|reuse or offboard/i);
+});
