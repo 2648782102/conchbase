@@ -10,6 +10,7 @@ test('uses loopback defaults', () => {
     magpieBaseUrl: 'http://127.0.0.1:3425',
     defaultModel: 'workbuddy/blind-model-h',
     executionMode: 'restricted',
+    loopBudget: { maxIterations: 6, maxToolCallsPerTurn: 4, deadlineMs: 120_000 },
     allowAuthenticatedRemoteBinding: false,
   });
 });
@@ -24,11 +25,41 @@ test('accepts configured loopback host and decimal port', () => {
       magpieBaseUrl: 'http://127.0.0.1:3425',
       defaultModel: 'workbuddy/blind-model-h',
       executionMode: 'restricted',
+      loopBudget: { maxIterations: 6, maxToolCallsPerTurn: 4, deadlineMs: 120_000 },
       allowAuthenticatedRemoteBinding: false,
     },
   );
   assert.equal(loadRuntimeConfig({ CONCHBASE_HOST: 'localhost' }).host, 'localhost');
   assert.equal(loadRuntimeConfig({}).organizationIntentModel, undefined);
+});
+
+test('accepts operator loop budgets within the documented ranges', () => {
+  const budget = loadRuntimeConfig({
+    CONCHBASE_MAX_ITERATIONS: '30',
+    CONCHBASE_MAX_TOOL_CALLS_PER_TURN: '8',
+    CONCHBASE_LOOP_DEADLINE_MS: '600000',
+  }).loopBudget;
+  assert.deepEqual(budget, { maxIterations: 30, maxToolCallsPerTurn: 8, deadlineMs: 600_000 });
+  assert.deepEqual(loadRuntimeConfig({}).loopBudget, {
+    maxIterations: 6,
+    maxToolCallsPerTurn: 4,
+    deadlineMs: 120_000,
+  });
+});
+
+test('rejects loop budgets outside the documented ranges', () => {
+  for (const env of [
+    { CONCHBASE_MAX_ITERATIONS: '0' },
+    { CONCHBASE_MAX_ITERATIONS: '65' },
+    { CONCHBASE_MAX_ITERATIONS: '2.5' },
+    { CONCHBASE_MAX_ITERATIONS: 'many' },
+    { CONCHBASE_MAX_TOOL_CALLS_PER_TURN: '0' },
+    { CONCHBASE_MAX_TOOL_CALLS_PER_TURN: '17' },
+    { CONCHBASE_LOOP_DEADLINE_MS: '999' },
+    { CONCHBASE_LOOP_DEADLINE_MS: '1800001' },
+  ]) {
+    assert.throws(() => loadRuntimeConfig(env), /must be an integer between/, JSON.stringify(env));
+  }
 });
 
 test('rejects non-loopback hosts', () => {

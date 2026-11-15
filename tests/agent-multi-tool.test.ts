@@ -56,7 +56,20 @@ function createService(
   const write = createBuiltinWriteTools({ root: directory });
   return new TaskService(
     new SqliteTaskStore(path.join(directory, 'runtime.sqlite')),
-    { magpieBaseUrl: 'http://127.0.0.1:3425', defaultModel: 'fixture/model', fetch },
+    {
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/model',
+      fetch,
+      ...(options.maxToolCallsPerTurn
+        ? {
+          loopBudget: {
+            maxIterations: 6,
+            maxToolCallsPerTurn: options.maxToolCallsPerTurn,
+            deadlineMs: 120_000,
+          },
+        }
+        : {}),
+    },
     catalog(),
     {
       tools: {
@@ -64,7 +77,6 @@ function createService(
         has: (id) => read.has(id) || write.has(id),
         invoke: (id, args) => read.has(id) ? read.invoke(id, args) : write.invoke(id, args),
       },
-      ...(options.maxToolCallsPerTurn ? { maxToolCallsPerTurn: options.maxToolCallsPerTurn } : {}),
     },
   );
 }

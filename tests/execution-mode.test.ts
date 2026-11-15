@@ -195,9 +195,14 @@ test('runtime publishes the execution mode', async () => {
   const app = createApp({ logger: false, taskService: service, config });
   try {
     const response = await app.inject({ method: 'GET', url: '/v1/runtime' });
-    const body = response.json<{ executionMode: string; capabilities: string[] }>();
+    const body = response.json<{
+      executionMode: string;
+      capabilities: string[];
+      loopBudget: { maxIterations: number; maxToolCallsPerTurn: number; deadlineMs: number };
+    }>();
     assert.equal(body.executionMode, 'unrestricted');
     assert.ok(body.capabilities.includes('execution-modes'));
+    assert.deepEqual(body.loopBudget, { maxIterations: 6, maxToolCallsPerTurn: 4, deadlineMs: 120_000 });
   } finally {
     await app.close();
     await service.stop();
@@ -211,4 +216,63 @@ test('execution mode configuration rejects unknown values', () => {
     /must be restricted or unrestricted/,
   );
   assert.equal(loadRuntimeConfig({}).executionMode, 'restricted');
+});
+
+async function loopWithBudget(
+  maxIterations: number,
+  finishAfter: number | null = null,
+): Promise<TaskService> {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-budget-'));
+  let turn = 0;
+  const fetchImpl = (async () => {
+    turn += 1;
+    // `finishAfter: null` never收敛, so the run can only end by hitting the
+    // ceiling; that is what the ceiling fixture measures.
+    if (finishAfter === null || turn < finishAfter) return toolCall('write_tool', {});
+    return text('finished');
+  }) as typeof globalThis.fetch;
+  const service = new TaskService(
+    new SqliteTaskStore(path.join(directory, 'runtime.sqlite')),
+    {
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/model',
+      fetch: fetchImpl,
+      executionMode: 'unrestricted',
+      loopBudget: { maxIterations, maxToolCallsPerTurn: 4, deadlineMs: 120_000 },
+    },
+    catalog(),
+    { tools: effectTools([]) },
+  );
+  const agent = await service.createAgent({
+    name: `预算员-${maxIterations}`,
+    instructions: 'Keep going.',
+    providerId: 'magpie',
+    modelId: 'fixture/model',
+    grantedCapabilities: [{ kind: 'tool', name: 'write_tool' }],
+  });
+  const created = await service.createAgentTask({ prompt: 'loop', agentId: agent.id });
+  service.startTask(created.id);
+  return service;
+}
+
+test('a raised iteration ceiling lets a long multi-step run finish', async () => {
+  const service = await loopWithBudget(10, 9);
+  try {
+    const task = await service.waitForTask(service.store.listTasks()[0]!.id);
+    assert.equal(task.state, 'succeeded', task.error ?? '');
+    assert.equal(task.output, 'finished');
+  } finally {
+    await service.stop();
+  }
+});
+
+test('the raised ceiling is still a ceiling', async () => {
+  const service = await loopWithBudget(4, null);
+  try {
+    const task = await service.waitForTask(service.store.listTasks()[0]!.id);
+    assert.equal(task.state, 'failed');
+    assert.match(task.error ?? '', /exceeded 4 iterations/);
+  } finally {
+    await service.stop();
+  }
 });

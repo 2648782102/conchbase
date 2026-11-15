@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { ExecutionMode } from '../../../config/runtime-config.js';
+import type { ExecutionMode, LoopBudget } from '../../../config/runtime-config.js';
 
 export function registerRuntimeRoute(
   app: FastifyInstance,
@@ -10,12 +10,14 @@ export function registerRuntimeRoute(
   conversationEnabled = false,
   agentChatEnabled = false,
   executionMode: ExecutionMode = 'restricted',
+  loopBudget?: LoopBudget,
 ): void {
   app.get('/v1/runtime', async () => ({
     name: 'Conchbase',
     version: '1.0.0',
     state: 'ready',
     executionMode,
+    ...(loopBudget ? { loopBudget } : {}),
     ...(organizationEnabled ? {
       organizationContract: '1.1.0' as const,
       organizationPaths: 18,

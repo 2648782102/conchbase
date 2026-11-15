@@ -292,6 +292,11 @@
       "id": "execution-modes",
       "summary": "ADR 0068 adds CONCHBASE_EXECUTION_MODE. Restricted (default) pauses write and external tools in waiting_approval; unrestricted executes every granted tool immediately. The mode is runtime-wide, fixed at startup, published on GET /v1/runtime, and never widens grantedCapabilities.",
       "evidence": "src/runtime/task-service.ts"
+    },
+    {
+      "id": "operator-loop-budget",
+      "summary": "ADR 0069 makes the Agent loop ceilings operator configuration: CONCHBASE_MAX_ITERATIONS (1-64, default 6), CONCHBASE_MAX_TOOL_CALLS_PER_TURN (1-16, default 4), and CONCHBASE_LOOP_DEADLINE_MS (1000-1800000, default 120000). Values are validated at startup, published as loopBudget on GET /v1/runtime, and never settable by a task, client, Agent revision, or model.",
+      "evidence": "src/config/runtime-config.ts"
     }
   ],
   "validationEvidence": [

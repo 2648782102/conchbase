@@ -19,7 +19,7 @@ import {
 } from './model-catalog.js';
 import { OpenAiChatCompletionsProvider } from './magpie-provider.js';
 import { projectSkills, projectToolProvider } from './capability-grants.js';
-import type { ExecutionMode } from '../config/runtime-config.js';
+import type { ExecutionMode, LoopBudget } from '../config/runtime-config.js';
 import {
   AgentConflictError,
   AgentNotFoundError,
@@ -78,17 +78,25 @@ export interface TaskServiceConfig {
    * `unrestricted` executes every granted tool immediately.
    */
   readonly executionMode?: ExecutionMode;
+  /**
+   * ADR 0069. Operator-set Agent loop ceilings. Resolved once at process start
+   * and never influenced by a task, client, Agent revision, or model.
+   */
+  readonly loopBudget?: LoopBudget;
 }
 
 export interface AgentLoopOptions {
   readonly tools?: ToolProvider;
-  readonly maxIterations?: number;
-  readonly deadlineMs?: number;
   readonly reasoningEffort?: 'low' | 'medium' | 'high';
   readonly preferredChatModelId?: string;
   readonly skills?: readonly { readonly name: string; readonly instructions: string }[];
-  readonly maxToolCallsPerTurn?: number;
 }
+
+const DEFAULT_LOOP_BUDGET: LoopBudget = Object.freeze({
+  maxIterations: 6,
+  maxToolCallsPerTurn: 4,
+  deadlineMs: 120_000,
+});
 
 interface TaskCapabilities {
   readonly tools: ToolProvider | undefined;
@@ -188,6 +196,10 @@ export class TaskService {
 
   get executionMode(): ExecutionMode {
     return this.config.executionMode ?? 'restricted';
+  }
+
+  get loopBudget(): LoopBudget {
+    return this.config.loopBudget ?? DEFAULT_LOOP_BUDGET;
   }
 
   /**
@@ -801,8 +813,8 @@ export class TaskService {
       ...(this.config.fetch ? { fetch: this.config.fetch } : {}),
     });
     const tools = capabilities.tools;
-    const maxIterations = Math.max(1, Math.min(this.loopOptions.maxIterations ?? 6, 12));
-    const deadline = Date.now() + Math.max(1_000, this.loopOptions.deadlineMs ?? 120_000);
+    const maxIterations = this.loopBudget.maxIterations;
+    const deadline = Date.now() + this.loopBudget.deadlineMs;
     let partialOutput = '';
     let turn: Awaited<ReturnType<typeof provider.streamTurn>> = Object.freeze({ kind: 'final', output: '' });
     let completed = false;
@@ -891,7 +903,7 @@ export class TaskService {
   }
 
   private maxToolCallsPerTurn(): number {
-    return Math.max(1, Math.min(this.loopOptions.maxToolCallsPerTurn ?? 4, 8));
+    return this.loopBudget.maxToolCallsPerTurn;
   }
 
   /**

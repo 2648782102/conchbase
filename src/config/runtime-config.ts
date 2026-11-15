@@ -4,6 +4,34 @@ const LOOPBACK_URL_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 export const EXECUTION_MODES = Object.freeze(['restricted', 'unrestricted'] as const);
 export type ExecutionMode = typeof EXECUTION_MODES[number];
 
+export interface LoopBudget {
+  readonly maxIterations: number;
+  readonly maxToolCallsPerTurn: number;
+  readonly deadlineMs: number;
+}
+
+const LOOP_BUDGET_LIMITS = Object.freeze({
+  maxIterations: { fallback: 6, min: 1, max: 64 },
+  maxToolCallsPerTurn: { fallback: 4, min: 1, max: 16 },
+  deadlineMs: { fallback: 120_000, min: 1_000, max: 1_800_000 },
+});
+
+function boundedInteger(
+  raw: string | undefined,
+  name: string,
+  limits: { fallback: number; min: number; max: number },
+): number {
+  if (raw === undefined) return limits.fallback;
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(`${name} must be an integer between ${limits.min} and ${limits.max}.`);
+  }
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < limits.min || value > limits.max) {
+    throw new Error(`${name} must be an integer between ${limits.min} and ${limits.max}.`);
+  }
+  return value;
+}
+
 export interface RuntimeConfig {
   host: string;
   port: number;
@@ -17,6 +45,7 @@ export interface RuntimeConfig {
   skillsDirectory?: string;
   allowToolWrites?: boolean;
   executionMode: ExecutionMode;
+  loopBudget: LoopBudget;
   allowAuthenticatedRemoteBinding: boolean;
   authTokenDigest?: string;
 }
@@ -67,6 +96,23 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     throw new Error('CONCHBASE_EXECUTION_MODE must be restricted or unrestricted.');
   }
   const executionMode = executionModeValue as ExecutionMode;
+  const loopBudget: LoopBudget = Object.freeze({
+    maxIterations: boundedInteger(
+      env.CONCHBASE_MAX_ITERATIONS,
+      'CONCHBASE_MAX_ITERATIONS',
+      LOOP_BUDGET_LIMITS.maxIterations,
+    ),
+    maxToolCallsPerTurn: boundedInteger(
+      env.CONCHBASE_MAX_TOOL_CALLS_PER_TURN,
+      'CONCHBASE_MAX_TOOL_CALLS_PER_TURN',
+      LOOP_BUDGET_LIMITS.maxToolCallsPerTurn,
+    ),
+    deadlineMs: boundedInteger(
+      env.CONCHBASE_LOOP_DEADLINE_MS,
+      'CONCHBASE_LOOP_DEADLINE_MS',
+      LOOP_BUDGET_LIMITS.deadlineMs,
+    ),
+  });
   return {
     host,
     port,
@@ -82,6 +128,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     ...(env.CONCHBASE_SKILLS_DIR ? { skillsDirectory: env.CONCHBASE_SKILLS_DIR } : {}),
     ...(env.CONCHBASE_ALLOW_TOOL_WRITES === '1' ? { allowToolWrites: true } : {}),
     executionMode,
+    loopBudget,
     allowAuthenticatedRemoteBinding,
     ...(authTokenDigest ? { authTokenDigest } : {}),
   };

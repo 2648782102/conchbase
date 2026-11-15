@@ -2647,6 +2647,26 @@ components:
           const: conchbase
         apiVersion:
           const: 1
+    LoopBudget:
+      type: object
+      additionalProperties: false
+      required: [maxIterations, maxToolCallsPerTurn, deadlineMs]
+      description: >-
+        Operator-set Agent loop ceilings, resolved once at process start from the Runtime environment.
+        A task, client, Agent revision, or model cannot change these values.
+      properties:
+        maxIterations:
+          type: integer
+          minimum: 1
+          maximum: 64
+        maxToolCallsPerTurn:
+          type: integer
+          minimum: 1
+          maximum: 16
+        deadlineMs:
+          type: integer
+          minimum: 1000
+          maximum: 1800000
     RuntimeStatus:
       type: object
       additionalProperties: false
@@ -2665,6 +2685,8 @@ components:
             Runtime-wide execution policy. In restricted mode tools declared write or external pause the task
             in waiting_approval before executing; in unrestricted mode every granted tool executes immediately.
             The mode is fixed at process start and cannot be changed by a client, task, Agent, or model.
+        loopBudget:
+          $ref: '#/components/schemas/LoopBudget'
         capabilities:
           type: array
           description: Runtime features currently available, including agents and provider-neutral-model-catalog when task services are enabled.

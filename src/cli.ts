@@ -42,6 +42,9 @@ Configuration:
   CONCHBASE_ALLOW_AUTHENTICATED_REMOTE_BINDING=1   Enable reviewed non-loopback binding
   CONCHBASE_AUTH_TOKEN_DIGEST    sha256 digest of an approved bearer token
   CONCHBASE_EXECUTION_MODE       restricted (default) or unrestricted
+  CONCHBASE_MAX_ITERATIONS       Agent loop iteration ceiling (default 6, max 64)
+  CONCHBASE_MAX_TOOL_CALLS_PER_TURN   Tool calls per turn (default 4, max 16)
+  CONCHBASE_LOOP_DEADLINE_MS     Agent loop wall-clock budget (default 120000)
 `;
 }
 
@@ -100,6 +103,7 @@ async function main(argv: readonly string[]): Promise<void> {
       ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
       defaultModel: config.defaultModel,
       executionMode: config.executionMode,
+      loopBudget: config.loopBudget,
       }, { tools: toolRuntime.tools, skills: toolRuntime.skills.skills });
     const conversationService = new PrimaryConversationService({
       recordIntentText: (intentId, text) => service.store.organization.recordIntentText?.(intentId, text),
@@ -147,6 +151,7 @@ async function main(argv: readonly string[]): Promise<void> {
     ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
     defaultModel: config.defaultModel,
     executionMode: config.executionMode,
+    loopBudget: config.loopBudget,
     }, { tools: toolRuntime.tools, skills: toolRuntime.skills.skills });
   const conversationService = new PrimaryConversationService();
   const controller = new AbortController();

@@ -26,7 +26,8 @@ ADR 0052 accepts the Agent-loop architecture and ADR 0053 fixes its first slice.
 12. **Implemented:** ADR 0065 enforces delegation lifetime on authorize/start/report, retires a worker after two convergence failures, and archives its Agent on offboard.
 13. **Implemented:** ADR 0066 makes `grantedCapabilities` part of the immutable Agent revision and projects the Runtime-wide tool and Skill providers onto that pinned list in `TaskService`. Grants only narrow; an Agent with no grants receives no tools and no Skills, an unregistered grant is inert, and a task keeps its revision's grants after the Agent is edited. Private schema is `user_version = 8`.
 14. **Implemented:** ADR 0068 adds `CONCHBASE_EXECUTION_MODE`. Restricted mode (default) pauses both `write` and `external` tools for approval, closing the prior gap where `external` executed unapproved. Unrestricted mode executes every granted tool immediately. MCP provider no longer drops non-read tools; `discoverySideEffect` sets the class for undeclared discovered tools.
-15. **Blocked:** network tools, external writes, arbitrary shell, plugin hosts, and secret injection. These require their own accepted ADRs and must not be smuggled in as "read" tools.
+15. **Implemented:** ADR 0069 makes the Agent loop budget operator configuration (`CONCHBASE_MAX_ITERATIONS`, `CONCHBASE_MAX_TOOL_CALLS_PER_TURN`, `CONCHBASE_LOOP_DEADLINE_MS`), validated at startup and published as `loopBudget`. A model still cannot influence its own budget.
+16. **Blocked:** network tools, external writes, arbitrary shell, plugin hosts, and secret injection. These require their own accepted ADRs and must not be smuggled in as "read" tools.
 
 Superseded proposal records `0002`–`0008` now live in `docs/decisions/archive/`. They are historical context, not open contracts. Do not re-open them or cite them as current direction; use ADR 0052/0053 and the target documents instead.
 

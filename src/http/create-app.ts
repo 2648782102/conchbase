@@ -84,6 +84,7 @@ export function createApp(options: CreateAppOptions = {}) {
     Boolean(conversation),
     Boolean(agentChat),
     options.config?.executionMode ?? 'restricted',
+    options.config?.loopBudget,
   );
   registerConfigurationRoutes(app, options.taskService);
   registerEventRoutes(app, options.taskService);
