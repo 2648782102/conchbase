@@ -13,6 +13,7 @@ test('uses loopback defaults', () => {
     executionMode: 'restricted',
     workspaceRoot: process.cwd(),
     loopBudget: { maxIterations: 6, maxToolCallsPerTurn: 4, deadlineMs: 120_000 },
+    projectIdleMs: 30 * 60 * 1000,
     allowAuthenticatedRemoteBinding: false,
   });
 });
@@ -29,6 +30,7 @@ test('accepts configured loopback host and decimal port', () => {
       executionMode: 'restricted',
       workspaceRoot: process.cwd(),
       loopBudget: { maxIterations: 6, maxToolCallsPerTurn: 4, deadlineMs: 120_000 },
+      projectIdleMs: 30 * 60 * 1000,
       allowAuthenticatedRemoteBinding: false,
     },
   );
@@ -149,4 +151,20 @@ test('startup creates the configured workspace root before tools use it', () => 
       'every Runtime entry point must create the workspace root',
     );
   }
+});
+
+test('project idle policy is operator configuration with a bounded range', () => {
+  // ADR 0081: convergence is a retention decision, so a model, task, or client
+  // must never be able to shorten it into an immediate archive.
+  assert.equal(loadRuntimeConfig({}).projectIdleMs, 30 * 60 * 1000);
+  assert.equal(loadRuntimeConfig({ CONCHBASE_PROJECT_IDLE_MS: '60000' }).projectIdleMs, 60_000);
+  assert.equal(loadRuntimeConfig({ CONCHBASE_PROJECT_IDLE_MS: '86400000' }).projectIdleMs, 86_400_000);
+  assert.throws(
+    () => loadRuntimeConfig({ CONCHBASE_PROJECT_IDLE_MS: '59999' }),
+    /CONCHBASE_PROJECT_IDLE_MS must be an integer between 60000 and 86400000/,
+  );
+  assert.throws(
+    () => loadRuntimeConfig({ CONCHBASE_PROJECT_IDLE_MS: 'soon' }),
+    /CONCHBASE_PROJECT_IDLE_MS/,
+  );
 });

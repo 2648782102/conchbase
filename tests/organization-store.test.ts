@@ -54,3 +54,12 @@ test('organization store can reinitialize a primary conversation', () => {
   assert.equal(fresh.events.length, 0);
   assert.equal(fresh.bossSession.id, store.get().bossSession.id);
 });
+
+test('the in-memory store keeps report bodies like the SQLite store', () => {
+  // The convergence sweeper reads report text through this optional interface.
+  // When the in-memory store did not implement it, every summary silently said
+  // "body not retained" even though the text had been recorded.
+  const store = new InMemoryOrganizationStore('conversation_reports');
+  store.recordReportText?.('rpt_1', '交付了报告');
+  assert.equal(store.reportTexts?.().get('rpt_1'), '交付了报告');
+});

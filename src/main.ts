@@ -14,6 +14,8 @@ import {
 } from './runtime/organization-intent-parser.js';
 import { createToolRuntime } from './runtime/tool-runtime.js';
 import { defaultWorkerGrants } from './runtime/capability-grants.js';
+import { createConvergenceRuntime } from './runtime/organization-convergence-runtime.js';
+import { AgentChatService } from './runtime/agent-chat.js';
 
 const config = loadRuntimeConfig();
 mkdirSync(path.dirname(config.databasePath), { recursive: true });
@@ -46,6 +48,7 @@ let servingApp = createApp({
   executionRunService,
   conversationService,
 });
+let convergence: { start(): void; stop(): void } | undefined;
 
 if (config.organizationIntentModel || config.bossModel || config.defaultModel) {
   const parser = config.organizationIntentModel
@@ -66,14 +69,33 @@ if (config.organizationIntentModel || config.bossModel || config.defaultModel) {
     workerCapabilityGrants: () => defaultWorkerGrants(toolRuntime.tools, toolRuntime.skills.skills, { allowWrites: config.allowToolWrites === true }),
     conversation: { recordIntentText: (intentId, text) => conversationService.recordIntentText(intentId, text) },
   });
+  // One instance only. AgentChatService caches conversations in memory, so the
+  // API and the convergence sweeper must share it: two instances produced two
+  // divergent views and the Runtime notice never appeared in the user's chat.
+  const agentChat = new AgentChatService(taskService, bossMode);
   servingApp = createApp({
     taskService,
     config,
     bossModeService: bossMode,
+    agentChatService: agentChat,
     executionService,
     executionRunService,
     conversationService,
   });
+  convergence = createConvergenceRuntime({
+    store: taskService.store.organization,
+    taskService,
+    agentChat,
+    policy: { idleAfterMs: config.projectIdleMs, convergeWithOpenAttention: false },
+  });
+  convergence?.start();
 }
 
 await servingApp.listen(config);
+
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.once(signal, () => {
+    convergence?.stop();
+    process.exit(0);
+  });
+}

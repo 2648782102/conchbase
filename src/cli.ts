@@ -15,6 +15,8 @@ import {
 } from './runtime/organization-intent-parser.js';
 import { createToolRuntime } from './runtime/tool-runtime.js';
 import { defaultWorkerGrants } from './runtime/capability-grants.js';
+import { createConvergenceRuntime } from './runtime/organization-convergence-runtime.js';
+import { AgentChatService } from './runtime/agent-chat.js';
 
 function usage(): string {
   return `Conchbase 1.0.0
@@ -115,10 +117,22 @@ async function main(argv: readonly string[]): Promise<void> {
     const bossMode = createBossModeService(service, config, conversationService, toolRuntime);
     const executionService = new ControlledExecutionService();
     const executionRunService = new IsolatedExecutionService({ host: executionService });
+    // AgentChatService caches conversations in memory; the API and the
+    // convergence sweeper must share one instance or a Runtime notice is
+    // written into a cache the user never reads.
+    const agentChat = new AgentChatService(service, bossMode);
+    const convergence = createConvergenceRuntime({
+      store: service.store.organization,
+      taskService: service,
+      agentChat,
+      policy: { idleAfterMs: config.projectIdleMs, convergeWithOpenAttention: false },
+    });
+    convergence.start();
     const app = createApp({
       taskService: service,
       config,
       bossModeService: bossMode,
+      agentChatService: agentChat,
       executionService,
       executionRunService,
       conversationService,
@@ -126,8 +140,15 @@ async function main(argv: readonly string[]): Promise<void> {
     try {
       await app.listen({ host: config.host, port: config.port });
     } catch (cause) {
+      convergence.stop();
       service.close();
       throw cause;
+    }
+    for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+      process.once(signal, () => {
+        convergence.stop();
+        process.exit(0);
+      });
     }
     return;
   }

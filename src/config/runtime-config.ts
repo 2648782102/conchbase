@@ -53,6 +53,12 @@ export interface RuntimeConfig {
   workspaceRoot: string;
   executionMode: ExecutionMode;
   loopBudget: LoopBudget;
+  /**
+   * ADR 0081. How long a project may receive no observable activity before the
+   * Runtime closes it. Operator configuration only: a model, task, or client
+   * can never change the retention policy.
+   */
+  projectIdleMs: number;
   allowAuthenticatedRemoteBinding: boolean;
   authTokenDigest?: string;
 }
@@ -131,6 +137,11 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
       LOOP_BUDGET_LIMITS.deadlineMs,
     ),
   });
+  const projectIdleMs = boundedInteger(
+    env.CONCHBASE_PROJECT_IDLE_MS,
+    'CONCHBASE_PROJECT_IDLE_MS',
+    { fallback: 30 * 60 * 1000, min: 60_000, max: 86_400_000 },
+  );
   return {
     host,
     port,
@@ -148,6 +159,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     workspaceRoot,
     executionMode,
     loopBudget,
+    projectIdleMs,
     allowAuthenticatedRemoteBinding,
     ...(authTokenDigest ? { authTokenDigest } : {}),
   };

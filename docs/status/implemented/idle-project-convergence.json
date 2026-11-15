@@ -1,0 +1,5 @@
+{
+  "id": "idle-project-convergence",
+  "summary": "ADR 0081 implements the idle project lifecycle the Runtime previously only accepted as a direction: a periodic sweeper fingerprints durable project state, refuses convergence while work or attention is live, then offboards workers, quiets, and archives the project in that order, derives a summary from stored reports, and publishes one idempotent Runtime notice into the Boss conversation. The idle window is operator configuration (CONCHBASE_PROJECT_IDLE_MS, published as projectConvergence.idleAfterMs).",
+  "evidence": "src/runtime/organization-convergence.ts"
+}

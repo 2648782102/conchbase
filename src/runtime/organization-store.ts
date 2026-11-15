@@ -31,6 +31,7 @@ export function parseOrganizationLimit(value: number | undefined): number {
 
 export class InMemoryOrganizationStore implements OrganizationStore {
   private snapshot: OrganizationSnapshot | undefined;
+  private readonly reportBodies = new Map<string, string>();
 
   constructor(conversationId = 'primary_conversation') {
     this.snapshot = createOrganization(conversationId);
@@ -60,6 +61,17 @@ export class InMemoryOrganizationStore implements OrganizationStore {
     const events = this.get().events;
     const bounded = parseOrganizationLimit(limit);
     return Object.freeze(events.slice(-bounded));
+  }
+
+  // Parity with the SQLite store: callers such as the convergence sweeper read
+  // report bodies through this optional interface. Omitting it silently turned
+  // every summary into "body not retained" in tests.
+  recordReportText(reportId: string, text: string): void {
+    this.reportBodies.set(reportId, text);
+  }
+
+  reportTexts(): ReadonlyMap<string, string> {
+    return new Map(this.reportBodies);
   }
 }
 

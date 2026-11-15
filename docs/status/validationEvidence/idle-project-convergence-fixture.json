@@ -1,0 +1,6 @@
+{
+  "id": "idle-project-convergence-fixture",
+  "summary": "Executable fixtures assert refusal while a task is running or attention is open, refusal for archived projects, the offboard/quiet/archive order required by the domain, exactly-once convergence, activity resetting the idle clock, summary contents from stored report bodies, a real archive announcing exactly once into the Boss conversation, and operator-configurable idle policy publication.",
+  "evidence": "tests/organization-convergence.test.ts",
+  "executableFixture": true
+}

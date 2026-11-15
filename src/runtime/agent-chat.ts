@@ -578,6 +578,45 @@ export class AgentChatService {
     });
   }
 
+  /**
+   * Appends a Runtime-authored notice to the Boss conversation.
+   *
+   * This is the only way the Runtime speaks on its own. It is deliberately
+   * narrow: only a Boss conversation accepts it, the body is bounded and
+   * screened, and an existing message with the same id is never duplicated so a
+   * periodic sweep cannot spam the user.
+   */
+  announceBossNotice(input: {
+    readonly conversationId: string;
+    readonly body: string;
+    readonly idempotencyKey: string;
+  }): AgentChatMessage {
+    const record = this.load(input.conversationId);
+    if (!record) throw new AgentChatServiceError('Agent Chat conversation not found.', 404);
+    if (!record.isBoss) throw new AgentChatServiceError('Only the Boss conversation accepts Runtime notices.', 409);
+    const key = `runtime-notice:${input.idempotencyKey}`;
+    const existing = record.messages.find((message) => message.id === reference('amsg', `${record.id}:${key}`));
+    if (existing) return existing;
+    const text = input.body.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 4_000);
+    if (text.length === 0) throw new AgentChatServiceError('Runtime notice must not be empty.');
+    if (containsSecretLike(text)) throw new AgentChatServiceError('Runtime notice contains secret-like content.');
+    const notice = message({
+      id: reference('amsg', `${record.id}:${key}`),
+      sequence: record.messages.length + 1,
+      author: 'assistant',
+      body: text,
+      state: 'replied',
+      taskId: null,
+      error: null,
+      phase: 'terminal',
+      updatedAt: this.now(),
+    }, this.now);
+    record.messages.push(notice);
+    record.idempotency.set(key, notice.id);
+    this.persist(record);
+    return notice;
+  }
+
   eventFrame(
     conversationId: string,
     eventId: string,

@@ -11,6 +11,7 @@ export function registerRuntimeRoute(
   agentChatEnabled = false,
   executionMode: ExecutionMode = 'restricted',
   loopBudget?: LoopBudget,
+  projectIdleMs?: number,
 ): void {
   app.get('/v1/runtime', async () => ({
     name: 'Conchbase',
@@ -18,6 +19,11 @@ export function registerRuntimeRoute(
     state: 'ready',
     executionMode,
     ...(loopBudget ? { loopBudget } : {}),
+    ...(projectIdleMs === undefined ? {} : {
+      projectConvergence: {
+        idleAfterMs: projectIdleMs,
+      },
+    }),
     ...(organizationEnabled ? {
       organizationContract: '1.1.0' as const,
       organizationPaths: 18,
