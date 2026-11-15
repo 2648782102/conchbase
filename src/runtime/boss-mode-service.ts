@@ -779,6 +779,29 @@ export class BossModeService {
     }
   }
 
+  // A worker that fails twice is retired instead of retried forever. This keeps the
+  // project from accumulating stuck workers and stops the "hire a near-identical
+  // replacement" loop that the Boss used to fall into.
+  private autoRetireFailingWorker(record: WorkerExecutionRecord, output: string): void {
+    if (/HTTP\s*(401|402|403|429)|quota|billing/i.test(output)) return;
+    const snapshot = this.store.get();
+    const worker = snapshot.workers.find((item) => item.id === record.workerId);
+    if (!worker || worker.state === 'offboarded' || worker.state === 'ended') return;
+    const failures = snapshot.reports.filter((report) =>
+      report.workerId === record.workerId && report.state === 'failed').length;
+    if (failures < 2) return;
+    try {
+      applyAction(this.store, {
+        type: 'offboard_worker',
+        expectedSequence: snapshot.events.length,
+        projectId: record.projectId,
+        workerId: record.workerId,
+      });
+    } catch {
+      // Retirement is best-effort; a rejected offboard must not break the report.
+    }
+  }
+
   private async collectWorkerOutcomes(records: readonly WorkerExecutionRecord[]): Promise<void> {
     const taskService = this.taskService;
     if (!taskService) return;
@@ -821,6 +844,9 @@ export class BossModeService {
         });
       }
       this.outcomeByTaskId.set(record.taskId, summaryDigest);
+      if (!needsAttention && task.state !== 'succeeded') {
+        this.autoRetireFailingWorker(record, output);
+      }
       if (taskService.store.platform.getWorkItemDetail(record.workItemId).workItem.state === 'running') {
         taskService.store.platform.completeWork(record.workItemId, 'running');
       }

@@ -389,3 +389,147 @@ test('an open attention only blocks work in its own project', async () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('the retirement rule retires a worker after two failed reports', async () => {
+  const store = new InMemoryOrganizationStore();
+  const seed = async () => {
+    const { createTaskService } = await import('../src/runtime/task-service.js');
+    return createTaskService(path.join(tmpdir(), `retire-${Date.now()}.sqlite`), {
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture-model',
+      fetch: (async () => new Response('{}', { status: 200 })) as typeof globalThis.fetch,
+    });
+  };
+  const taskService = await seed();
+  try {
+    store.initialize('primary_conversation');
+    store.apply({
+      type: 'open_project', expectedSequence: 0,
+      projectId: 'project_retire', originTriggerId: 'int_retire',
+    });
+    store.apply({
+      type: 'activate_project', expectedSequence: store.get().events.length,
+      projectId: 'project_retire',
+    });
+    store.apply({
+      type: 'create_agent',
+      expectedSequence: store.get().events.length,
+      projectId: 'project_retire',
+      workerId: 'wrk_retire',
+      delegationId: 'del_retire',
+      agentRevisionId: 'agr_retire',
+      displayName: 'Retire Worker',
+      instructionsDigest: 'sha256:instructions',
+      scope: ['project:retire'],
+      capabilities: ['cap_read_context'],
+      model: { providerId: 'magpie', modelId: 'fixture-model' },
+      maxDelegationDepth: 0,
+      ttlEvents: 50,
+    });
+    store.apply({
+      type: 'authorize_worker', expectedSequence: store.get().events.length,
+      projectId: 'project_retire', workerId: 'wrk_retire',
+    });
+    store.apply({
+      type: 'start_worker', expectedSequence: store.get().events.length,
+      projectId: 'project_retire', workerId: 'wrk_retire',
+    });
+    for (const reportId of ['rpt_retire_1', 'rpt_retire_2']) {
+      store.apply({
+        type: 'report_worker',
+        expectedSequence: store.get().events.length,
+        projectId: 'project_retire',
+        workerId: 'wrk_retire',
+        reportId,
+        state: 'failed',
+        summaryDigest: `sha256:${reportId}`,
+      });
+    }
+    const failures = store.get().reports.filter((report) => report.state === 'failed');
+    assert.equal(failures.length, 2);
+
+    // The Boss retires the worker through the normal offboard action.
+    store.apply({
+      type: 'offboard_worker',
+      expectedSequence: store.get().events.length,
+      projectId: 'project_retire',
+      workerId: 'wrk_retire',
+    });
+    assert.equal(store.get().workers.find((worker) => worker.id === 'wrk_retire')!.state, 'offboarded');
+  } finally {
+    await taskService.stop();
+  }
+});
+
+test('collecting a second failing outcome retires the worker automatically', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-autoretire-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture-model',
+    fetch: (async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/v1/models')) {
+        return new Response(JSON.stringify({
+          data: [{ id: 'fixture-model', display_name: 'Fixture Model' }],
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      throw new Error('model must fail so the task fails');
+    }) as typeof globalThis.fetch,
+  });
+  const store = new InMemoryOrganizationStore();
+  let attempt = 0;
+  const parser: OrganizationIntentParser = {
+    async parse(input) {
+      attempt += 1;
+      const actions = attempt === 1
+        ? [
+          parseOrganizationAction({
+            type: 'open_project', expectedSequence: 0,
+            projectId: 'project_auto', originTriggerId: input.intentId,
+          }),
+          parseOrganizationAction({
+            type: 'activate_project', expectedSequence: 1, projectId: 'project_auto',
+          }),
+          parseOrganizationAction({
+            type: 'create_agent',
+            expectedSequence: 2,
+            projectId: 'project_auto',
+            workerId: 'wrk_auto',
+            delegationId: 'del_auto',
+            agentRevisionId: 'agr_placeholder',
+            displayName: 'Auto Retire Worker',
+            instructionsDigest: 'sha256:instructions',
+            scope: ['project:auto'],
+            capabilities: ['cap_read_context'],
+            model: { providerId: 'magpie', modelId: 'fixture-model' },
+            maxDelegationDepth: 0,
+            ttlEvents: 50,
+          }),
+          parseOrganizationAction({
+            type: 'start_worker', expectedSequence: 3,
+            projectId: 'project_auto', workerId: 'wrk_auto',
+          }),
+        ]
+        : [];
+      return Object.freeze({
+        version: 1 as const,
+        intentId: input.intentId,
+        actions: Object.freeze(actions),
+        relay: 'ok',
+      });
+    },
+  };
+  const service = new BossModeService(store, taskService, { parser });
+  try {
+    await service.submit({ text: '第一次', idempotencyKey: 'auto-1' });
+    const afterFirst = store.get().reports.filter((report) => report.state === 'failed').length;
+    assert.equal(afterFirst, 1);
+    assert.notEqual(
+      store.get().workers.find((worker) => worker.id === 'wrk_auto')!.state,
+      'offboarded',
+      'one failure should not retire the worker',
+    );
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
