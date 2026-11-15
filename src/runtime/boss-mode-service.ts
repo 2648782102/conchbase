@@ -235,9 +235,11 @@ export class BossModeService {
     if (recorded) return recorded;
 
     const snapshot = this.store.get();
+    this.backfillReportTexts();
     const organizationFacts = buildBossOrganizationFacts({
       snapshot,
       intentTexts: this.intentTexts(),
+      ...(this.store.reportTexts?.() ? { reportTexts: this.store.reportTexts!() } : {}),
       agentInstructions: (worker) => this.instructionsForRevision(worker.agentRevisionId),
     });
     const parseInput = {
@@ -294,54 +296,11 @@ export class BossModeService {
       const action = actionAt(parsedAction, sequence);
       sequence += 1;
       actions.push(action);
-
-      if (action.type === 'record_intent') {
-        applyAction(this.store, action, action.projectId);
-        executions.push(Object.freeze({ action, status: 'dispatched' as const }));
-        continue;
+      try {
+        await this.applyParsedAction(action, { modelReference, createdWorkers, executions });
+      } catch (cause) {
+        executions.push(Object.freeze({ action, status: 'failed' as const, detail: boundedError(cause) }));
       }
-      if (action.type === 'create_agent') {
-        const execution = await this.createDynamicAgent(action, modelReference);
-        executions.push(execution);
-        if (execution.status === 'created-agent') {
-          const record = this.workerExecutions.get(action.workerId);
-          if (record) createdWorkers.push(record);
-        }
-        continue;
-      }
-      if (action.type === 'start_worker') {
-        if (this.startedWorkers.has(action.workerId) || !this.workerExecutions.has(action.workerId)) {
-          executions.push(Object.freeze({ action, status: 'skipped' as const, detail: 'Worker already started.' }));
-          continue;
-        }
-        const worker = this.store.get().workers.find((item) => item.id === action.workerId);
-        if (worker && ['authorized', 'idle'].includes(worker.state)) applyAction(this.store, action);
-        this.startedWorkers.add(action.workerId);
-        executions.push(this.ensureWorkItem(action));
-        continue;
-      }
-      if (action.type === 'open_project' || action.type === 'activate_project') {
-        applyAction(this.store, action);
-        executions.push(Object.freeze({ action, status: 'dispatched' as const }));
-        continue;
-      }
-      if (action.type === 'quiet_project' || action.type === 'archive_project') {
-        const execution = this.runLifecycleBatch(action);
-        executions.push(execution);
-        continue;
-      }
-      if (action.type === 'resume_project') {
-        const execution = this.runLifecycleBatch(action);
-        executions.push(execution);
-        continue;
-      }
-      if (action.type === 'answer_attention' || action.type === 'withdraw_attention' || action.type === 'expire_attention') {
-        const execution = this.answerAttention(action as Extract<OrganizationAction, { type: 'answer_attention' }>);
-        executions.push(execution);
-        continue;
-      }
-      applyAction(this.store, action);
-      executions.push(Object.freeze({ action, status: 'dispatched' as const }));
     }
 
     const publishAccepted = () => {
@@ -379,10 +338,52 @@ export class BossModeService {
       event.type === 'organization.intent_recorded' && event.data.intentId === resolvedIntentId) === false) {
       this.recordIntent(resolvedIntentId, bodyDigest, actions.length);
     }
-    if (executions.some((execution) => execution.status === 'failed')) {
+    if (executions.length > 0 && executions.every((execution) => execution.status === 'failed')) {
       throw new BossModeServiceError('Boss mode execution failed; see bounded execution details.');
     }
     return result;
+  }
+
+  private async applyParsedAction(
+    action: OrganizationAction,
+    context: {
+      readonly modelReference: { readonly providerId: string; readonly modelId: string } | undefined;
+      readonly createdWorkers: WorkerExecutionRecord[];
+      readonly executions: BossModeExecution[];
+    },
+  ): Promise<void> {
+    if (action.type === 'record_intent') {
+      applyAction(this.store, action, action.projectId);
+      return;
+    }
+    if (action.type === 'create_agent') {
+      if (!context.modelReference) throw new BossModeServiceError('Worker model reference is unavailable.');
+      const execution = await this.createDynamicAgent(action, context.modelReference);
+      context.executions.push(execution);
+      if (execution.status === 'created-agent') {
+        const record = this.workerExecutions.get(action.workerId);
+        if (record) context.createdWorkers.push(record);
+      }
+      return;
+    }
+    if (action.type === 'start_worker') {
+      if (this.startedWorkers.has(action.workerId) || !this.workerExecutions.has(action.workerId)) return;
+      const worker = this.store.get().workers.find((item) => item.id === action.workerId);
+      if (worker && ['authorized', 'idle'].includes(worker.state)) applyAction(this.store, action);
+      this.startedWorkers.add(action.workerId);
+      context.executions.push(this.ensureWorkItem(action));
+      return;
+    }
+    if (action.type === 'quiet_project' || action.type === 'archive_project' || action.type === 'resume_project') {
+      context.executions.push(this.runLifecycleBatch(action));
+      return;
+    }
+    if (action.type === 'answer_attention' || action.type === 'withdraw_attention' || action.type === 'expire_attention') {
+      context.executions.push(this.answerAttention(action as Extract<OrganizationAction, { type: 'answer_attention' }>));
+      return;
+    }
+    applyAction(this.store, action);
+    context.executions.push(Object.freeze({ action, status: 'dispatched' as const }));
   }
 
   get organizationStore(): OrganizationStore {
@@ -404,6 +405,35 @@ export class BossModeService {
     }
     if (typeof this.conversation?.intentTexts === 'function') return this.conversation.intentTexts();
     return new Map();
+  }
+
+  private backfillReportTexts(): void {
+    const taskService = this.taskService;
+    const store = this.store;
+    if (!taskService || typeof store.recordReportText !== 'function') return;
+    const existing = store.reportTexts?.() ?? new Map<string, string>();
+    const snapshot = store.get();
+    const taskByWorker = new Map<string, string>();
+    for (const event of snapshot.events) {
+      if (event.type !== 'organization.worker_execution_recorded') continue;
+      const workerId = typeof event.data.workerId === 'string' ? event.data.workerId : null;
+      const taskId = typeof event.data.taskId === 'string' ? event.data.taskId : null;
+      if (workerId && taskId) taskByWorker.set(workerId, taskId);
+    }
+    for (const report of snapshot.reports) {
+      if (existing.has(report.id)) continue;
+      const taskId = taskByWorker.get(report.workerId);
+      if (!taskId) continue;
+      const task = taskService.store.getTask(taskId);
+      if (!task) continue;
+      const output = task.state === 'succeeded' ? task.output ?? '' : task.error ?? '';
+      if (output.length === 0) continue;
+      try {
+        store.recordReportText(report.id, output.slice(0, 4_000));
+      } catch {
+        return;
+      }
+    }
   }
 
   private recordIntentText(intentIdValue: string, text: string): void {
@@ -502,8 +532,14 @@ export class BossModeService {
       }),
     ];
     for (const candidate of parsed.actions) {
-        const action = candidate.type === 'create_agent'
-        ? Object.freeze({ ...candidate, model: modelReference })
+      const action = candidate.type === 'create_agent'
+        ? Object.freeze({
+          ...candidate,
+          model: isRecord(candidate.model) && typeof candidate.model.providerId === 'string'
+            && typeof candidate.model.modelId === 'string'
+            ? candidate.model
+            : modelReference,
+        })
         : candidate;
       actions.push(actionAt(parseOrganizationAction(action), snapshot.events.length + actions.length));
     }
@@ -705,6 +741,11 @@ export class BossModeService {
       const output = task.state === 'succeeded' ? task.output ?? '' : task.error ?? task.state;
       const summaryDigest = digest(`${record.taskId}:${task.state}:${output}`);
       const reportId = `rpt_${reference(`${record.taskId}:report`)}`;
+      try {
+        this.store.recordReportText?.(reportId, output.slice(0, 4_000));
+      } catch {
+        // Report text is best-effort; the digest remains authoritative for the ledger.
+      }
       const needsAttention = /^\s*ATTENTION:/i.test(output);
       applyAction(this.store, {
         type: 'report_worker',

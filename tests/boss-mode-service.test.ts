@@ -88,6 +88,55 @@ async function withService(action: (service: BossModeService, directory: string)
   }
 }
 
+test('one invalid action does not fail the whole Boss turn', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-partial-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture-model',
+    fetch: (async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/v1/models')) {
+        return new Response(JSON.stringify({
+          data: [{ id: 'fixture-model', display_name: 'Fixture Model' }],
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      throw new Error('unexpected fetch');
+    }) as typeof globalThis.fetch,
+  });
+  const store = new InMemoryOrganizationStore();
+  const parser: OrganizationIntentParser = {
+    async parse(input) {
+      return Object.freeze({
+        version: 1 as const,
+        intentId: input.intentId,
+        actions: Object.freeze([
+          parseOrganizationAction({
+            type: 'open_project',
+            expectedSequence: input.expectedSequence,
+            projectId: 'project_partial',
+            originTriggerId: input.intentId,
+          }),
+          parseOrganizationAction({
+            type: 'activate_project',
+            expectedSequence: input.expectedSequence + 1,
+            projectId: 'project_missing',
+          }),
+        ]),
+        relay: '已尝试开项目，但有一个动作失败。',
+      });
+    },
+  };
+  const service = new BossModeService(store, taskService, { parser });
+  try {
+    const result = await service.submit({ text: '开个项目', idempotencyKey: 'partial-1' });
+    assert.equal(result.state, 'accepted');
+    assert.ok(result.executions.some((entry) => entry.status === 'failed'));
+    assert.ok(store.get().projects.some((project) => project.id === 'project_partial'));
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('boss mode creates a real Agent revision and binds durable work from one intent', async () => {
   await withService(async (service) => {
     const result = await service.submit({

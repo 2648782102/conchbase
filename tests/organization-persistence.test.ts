@@ -167,6 +167,29 @@ test('project intent text survives reopen so the Boss can still explain a projec
   });
 });
 
+test('report text survives reopen and projects into Boss facts', () => {
+  withTemporaryDirectory((directory) => {
+    const filename = path.join(directory, 'runtime.sqlite');
+    const store = new SqliteTaskStore(filename);
+    try {
+      store.organization.initialize('primary_conversation');
+      store.organization.recordReportText?.('rpt_alpha', '项目目标已记录，当前没有员工。');
+    } finally {
+      store.close();
+    }
+
+    const reopened = new SqliteTaskStore(filename);
+    try {
+      assert.equal(
+        reopened.organization.reportTexts?.().get('rpt_alpha'),
+        '项目目标已记录，当前没有员工。',
+      );
+    } finally {
+      reopened.close();
+    }
+  });
+});
+
 test('organization persistence keeps the published contract frozen', () => {
   const spec = readFileSync(path.join(repositoryRoot, 'docs/openapi.yaml'), 'utf8');
   assert.equal([...spec.matchAll(/^  (\/v1\/[^:]+):$/gm)].length, 90);

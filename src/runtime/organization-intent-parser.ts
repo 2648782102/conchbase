@@ -127,10 +127,17 @@ export function parseBossConversationResult(
   const baseSequence = input.snapshot?.events.length ?? input.expectedSequence;
   const actions = rawActions.map((candidate, index) => {
     const projected = projectActionFields(candidate);
+    const withOrigin = Boolean(projected) && typeof projected === 'object' && !Array.isArray(projected)
+      && (projected as Record<string, unknown>).type === 'create_agent'
+      ? normalizeCreateAgentModel(
+        projected as Record<string, unknown>,
+        input.modelReference,
+      )
+      : projected;
     const normalized = Boolean(projected) && typeof projected === 'object' && !Array.isArray(projected)
       && (projected as Record<string, unknown>).type === 'open_project'
-      ? { ...(projected as Record<string, unknown>), originTriggerId: input.intentId }
-      : projected;
+      ? { ...(withOrigin as Record<string, unknown>), originTriggerId: input.intentId }
+      : withOrigin;
     return actionAt(parseOrganizationAction(normalized), baseSequence + index);
   });
   return Object.freeze({
@@ -139,6 +146,19 @@ export function parseBossConversationResult(
     actions: Object.freeze(actions),
     relay: boundedReply,
   });
+}
+
+function normalizeCreateAgentModel(
+  candidate: Record<string, unknown>,
+  fallback: { readonly providerId: string; readonly modelId: string } | undefined,
+): Record<string, unknown> {
+  const model = candidate.model;
+  const valid = Boolean(model) && typeof model === 'object' && !Array.isArray(model)
+    && typeof (model as Record<string, unknown>).providerId === 'string'
+    && typeof (model as Record<string, unknown>).modelId === 'string';
+  if (valid) return candidate;
+  if (!fallback) return candidate;
+  return { ...candidate, model: fallback };
 }
 
 const ACTION_FIELDS: Readonly<Record<string, readonly string[]>> = Object.freeze({

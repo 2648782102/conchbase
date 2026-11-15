@@ -17,6 +17,8 @@ export interface OrganizationStore {
   events(limit?: number): readonly OrganizationEvent[];
   recordIntentText?(intentId: string, text: string): void;
   intentTexts?(): ReadonlyMap<string, string>;
+  recordReportText?(reportId: string, text: string): void;
+  reportTexts?(): ReadonlyMap<string, string>;
 }
 
 export function parseOrganizationLimit(value: number | undefined): number {

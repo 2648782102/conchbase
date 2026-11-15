@@ -47,6 +47,7 @@ export interface BossReportFact {
   readonly workerId: string;
   readonly state: OrganizationReport['state'];
   readonly summaryDigest: string;
+  readonly summary: string;
 }
 
 export interface BossAttentionFact {
@@ -70,6 +71,7 @@ export interface BossOrganizationFacts {
 export interface BuildBossOrganizationFactsInput {
   readonly snapshot: OrganizationSnapshot;
   readonly intentTexts?: ReadonlyMap<string, string>;
+  readonly reportTexts?: ReadonlyMap<string, string>;
   readonly agentInstructions?: (worker: OrganizationWorker) => string | undefined;
 }
 
@@ -133,6 +135,7 @@ export function buildBossOrganizationFacts(
       workerId: report.workerId,
       state: report.state,
       summaryDigest: report.summaryDigest,
+      summary: bounded(input.reportTexts?.get(report.id), '汇报正文未保留。'),
     }))),
     attention: Object.freeze(input.snapshot.attentionRequests.map((request) => Object.freeze({
       id: request.id,

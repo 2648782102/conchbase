@@ -538,3 +538,40 @@ test('Boss conversation parser does not retry upstream failures', async () => {
   );
   assert.equal(calls, 1);
 });
+
+test('Boss parser replaces a malformed agent model with the Runtime reference', async () => {
+  const content = JSON.stringify({
+    reply: '已按 Runtime 模板准备员工。',
+    actions: [{
+      type: 'create_agent',
+      expectedSequence: 0,
+      projectId: 'project_model_fix',
+      workerId: 'wrk_model_fix',
+      delegationId: 'del_model_fix',
+      agentRevisionId: 'agr_placeholder',
+      displayName: 'Model Fixer',
+      instructionsDigest: 'sha256:instructions',
+      scope: ['project:model-fix'],
+      capabilities: ['cap_read_context'],
+      model: 'broken',
+      maxDelegationDepth: 0,
+      ttlEvents: 20,
+    }],
+  });
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/boss-chat',
+    fetch: (async () => new Response(JSON.stringify({
+      choices: [{ message: { content } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof globalThis.fetch,
+  });
+  const result = await parser.parse({
+    intentId: 'int_model_fix',
+    text: '招个人',
+    expectedSequence: 0,
+    modelReference: { providerId: 'magpie', modelId: 'fixture/runtime-model' },
+  });
+  const create = result.actions.find((action) => action.type === 'create_agent');
+  assert.ok(create);
+  assert.deepEqual(create.model, { providerId: 'magpie', modelId: 'fixture/runtime-model' });
+});
