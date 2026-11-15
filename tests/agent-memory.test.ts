@@ -110,3 +110,53 @@ test('sqlite memory survives reopen and keeps one row per key', () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('a retracted key cannot be restored by an automatic write', () => {
+  // Project convergence runs unattended. If it could restore a retracted fact,
+  // deleting a memory would be undone by the next sweep.
+  const store = new InMemoryAgentMemoryStore();
+  const entry = store.write({
+    scope: 'project', scopeId: 'p', key: 'summary', title: '旧', body: '旧正文', origin: 'automatic',
+  });
+  assert.equal(store.remove(entry.id), true);
+  assert.equal(store.isRetracted('project', 'p', 'summary'), true);
+  assert.throws(() => store.write({
+    scope: 'project', scopeId: 'p', key: 'summary', title: '新', body: '新正文', origin: 'automatic',
+  }), /retracted/i);
+  assert.equal(store.list({ scope: 'project', scopeId: 'p' }).length, 0);
+});
+
+test('a conversational write may deliberately restore a retracted key', () => {
+  const store = new InMemoryAgentMemoryStore();
+  const entry = store.write({ scope: 'project', scopeId: 'p', key: 'k', title: 't', body: 'b', origin: 'automatic' });
+  store.remove(entry.id);
+  const restored = store.write({
+    scope: 'project', scopeId: 'p', key: 'k', title: '再次要求', body: '正文', origin: 'conversational',
+  });
+  assert.equal(restored.title, '再次要求');
+  assert.equal(store.isRetracted('project', 'p', 'k'), false);
+});
+
+test('sqlite tombstones survive reopen', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-tombstone-'));
+  const file = path.join(directory, 'memory.sqlite');
+  try {
+    const first = new DatabaseSync(file);
+    const store = new SqliteAgentMemoryStore(first);
+    store.initialize();
+    const entry = store.write({ scope: 'project', scopeId: 'p', key: 'k', title: 't', body: 'b' });
+    store.remove(entry.id);
+    first.close();
+
+    const second = new DatabaseSync(file);
+    const reopened = new SqliteAgentMemoryStore(second);
+    reopened.initialize();
+    assert.equal(reopened.isRetracted('project', 'p', 'k'), true);
+    assert.throws(() => reopened.write({
+      scope: 'project', scopeId: 'p', key: 'k', title: 't2', body: 'b2', origin: 'automatic',
+    }), /retracted/i);
+    second.close();
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

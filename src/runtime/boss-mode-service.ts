@@ -547,6 +547,25 @@ export class BossModeService {
       context.executions.push(this.answerAttention(action as Extract<OrganizationAction, { type: 'answer_attention' }>));
       return;
     }
+    if (action.type === 'resume_worker') {
+      // Resuming a project already resumes its offboarded workers. A plan that
+      // also lists the explicit step is not wrong, so treat it as an idempotent
+      // skip instead of emitting a duplicate worker_resumed event.
+      const worker = this.store.get().workers.find((item) => item.id === action.workerId);
+      if (!worker || worker.state !== 'offboarded') {
+        context.executions.push(Object.freeze({
+          action,
+          status: 'skipped' as const,
+          detail: worker
+            ? `Worker is already ${worker.state}; project resume restores its workers.`
+            : 'Worker does not exist.',
+        }));
+        return;
+      }
+      applyAction(this.store, action);
+      context.executions.push(Object.freeze({ action, status: 'dispatched' as const }));
+      return;
+    }
     applyAction(this.store, action);
     context.executions.push(Object.freeze({ action, status: 'dispatched' as const }));
   }
@@ -661,6 +680,9 @@ export class BossModeService {
         memory.write({
           ...entry,
           sourceIntentId: context.sourceIntentId,
+          // A live, reviewed request may restore a retracted key; only the
+          // automatic path is forbidden from doing so.
+          origin: 'conversational',
           ...(this.memoryReviewer ? { reviewedBy: 'accepted' as const } : {}),
         });
       } catch {

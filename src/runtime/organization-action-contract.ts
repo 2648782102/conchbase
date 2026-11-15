@@ -31,6 +31,12 @@ export type FieldFiller =
   /** The resolved model reference, supplied by the caller. */
   | 'resolved-model'
   /**
+   * The project's active Delegation, supplied by the caller. Resuming needs a
+   * delegation to revalidate, and the model cannot know which one the Runtime
+   * recorded.
+   */
+  | 'project-delegation'
+  /**
    * An opaque identity the Runtime mints when it executes the action. The model
    * cannot know it, so a supplied value is replaced by a schema-valid
    * placeholder that the executor overwrites with the real id.
@@ -69,6 +75,7 @@ const CAPABILITY_PATTERN = /^cap_[a-z0-9][a-z0-9_-]{2,80}$/;
  */
 export const ACTION_FIELD_RULES: Readonly<Record<string, readonly FieldRule[]>> = Object.freeze({
   record_intent: [ID('intentId'), DIGEST('bodyDigest')],
+  resume_project: [{ field: 'revalidatedDelegationId', filler: 'project-delegation' }],
   create_agent: [
     DIGEST('instructionsDigest'),
     // The Runtime replaces this with the created Agent's revision id. A model
@@ -119,7 +126,11 @@ function stableHash(seed: string): string {
 export function repairActionFields(
   action: Readonly<Record<string, unknown>>,
   sequence: number,
-  context: { readonly model?: { readonly providerId: string; readonly modelId: string } } = {},
+  context: {
+    readonly model?: { readonly providerId: string; readonly modelId: string };
+    /** The project's active delegation id, when the caller knows it. */
+    readonly delegationId?: string;
+  } = {},
 ): Readonly<Record<string, unknown>> {
   const type = typeof action.type === 'string' ? action.type : '';
   const rules = rulesFor(type);
@@ -163,6 +174,13 @@ export function repairActionFields(
         if (typeof current !== 'number' || !Number.isFinite(current)) {
           next[rule.field] = rule.value;
         }
+        break;
+      }
+      case 'project-delegation': {
+        // A supplied value is not trusted: the Runtime knows which delegation it
+        // recorded for this project, and resuming must revalidate that one.
+        if (context.delegationId) next[rule.field] = context.delegationId;
+        else delete next[rule.field];
         break;
       }
       case 'resolved-model': {

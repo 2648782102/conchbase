@@ -25,7 +25,9 @@ ADR 0083 shipped Runtime-owned memory with two write sources and a strict parser
 
 6. **Every entry records provenance.** `sourceIntentId` ties an entry to the turn that produced it, and `reviewedBy` records whether an independent reviewer accepted it.
 7. **Two additive public paths.** `GET /v1/memory` lists bounded entries with optional `scope` and `scopeId` filters; `DELETE /v1/memory/{memoryId}` removes one. There is no public write path: memory content can only enter through the Runtime's own validation, so a client cannot inject a fact.
-8. **Deletion is real deletion.** The row is removed rather than tombstoned, and the response reports whether anything was removed. A 404 means the id was never there or is already gone.
+8. **Deletion is real deletion with a retraction record.** The entry row is removed, and a tombstone for its `(scope, scopeId, key)` is kept in `agent_memory_tombstones`. The response reports whether anything was removed; a 404 means the id was never there or is already gone.
+9. **Retraction is sticky for automatic writes.** Project convergence writes with `origin: "automatic"` and is rejected when the key is tombstoned. Otherwise deleting a project's summary would be undone by the next idle sweep, which would make deletion meaningless.
+10. **A live, reviewed request may restore a key.** A conversational write uses `origin: "conversational"` and clears the tombstone, because the user asking again in a conversation is a new deliberate decision rather than a background process overriding them.
 
 ## Options
 
@@ -56,8 +58,18 @@ Consequences: the hard semantic call gets a model, authority stays with the Runt
 
 - `tests/memory-review.test.ts` covers accepted and rejected verdicts, mandatory full coverage, malformed verdict rejection, upstream failure returning null, provenance and review status on write, rejection not persisting, and an unavailable reviewer dropping rather than writing.
 - `tests/memory-api.test.ts` covers listing, scope filtering, deletion, 404 on unknown ids, and the absence of any write path.
+- `tests/agent-memory.test.ts` covers the tombstone rules: an automatic write cannot restore a retracted key, a conversational write can, and tombstones survive a SQLite reopen.
+- `tests/boss-memory-injection.test.ts` proves a retracted entry disappears from the injected prompt index.
+- `tests/organization-convergence.test.ts` proves a project still converges while its retracted memory stays deleted.
 - `npm run check`, `npm test`, and `npm run build` are the required gate.
 
 ## Consequences
 
 The Boss can still propose memory, but a wrong proposal is now (a) likely to be rejected on intent and (b) visible and deletable if it gets through. The memory contract gains an additive `1.9.0` section with two paths; the frozen `1.0.0` contract is untouched. The private schema gains two columns with safe defaults. `migrateOrganizationSchema` adds them idempotently, so the database stays at `user_version = 9` and an existing file opens without a migration step.
+
+## Corrections recorded during live validation
+
+1. **A live run failed with "resume_project is missing revalidatedDelegationId".** The model cannot know which Delegation the Runtime recorded, so `resume_project` now gets that id filled by the Runtime through a `project-delegation` field rule, and a supplied value is replaced rather than trusted. This is the same class as ADR 0074/0077: never reject a plan for a value only the Runtime can produce.
+2. **Resuming a project wrote `worker_resumed` twice.** Project resume already restores its offboarded workers; a plan that also listed the explicit `resume_worker` applied it a second time. It is now an idempotent skip when the worker is no longer `offboarded`, matching how duplicate implicit authorize/start steps are handled.
+3. **Live retraction probe.** With a 60s idle window: a project converged and wrote its summary memory; the entry was deleted through `DELETE /v1/memory/{memoryId}`; the project was resumed and converged again, and memory stayed at zero — the tombstone held.
+

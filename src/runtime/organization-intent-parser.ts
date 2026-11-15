@@ -107,7 +107,13 @@ export function parseStructuredOrganizationResult(
       ? { ...normalized, expectedSequence: baseSequence + index }
       : normalized;
     return actionAt(
-      parseOrganizationAction(repairRawAction(withSequence, baseSequence + index, input.modelReference)),
+      parseOrganizationAction(repairRawAction(
+        withSequence,
+        baseSequence + index,
+        input.modelReference,
+        input.snapshot?.delegations.find((delegation) =>
+          delegation.projectId === (isRecord(withSequence) ? withSequence.projectId : undefined))?.id,
+      )),
       baseSequence + index,
     );
   });
@@ -136,9 +142,13 @@ function repairRawAction(
   value: unknown,
   sequence: number,
   model?: { readonly providerId: string; readonly modelId: string },
+  delegationId?: string,
 ): unknown {
   if (!isRecord(value)) return value;
-  return repairActionFields(value, sequence, model ? { model } : {});
+  return repairActionFields(value, sequence, {
+    ...(model ? { model } : {}),
+    ...(delegationId ? { delegationId } : {}),
+  });
 }
 
 export function parseBossConversationResult(
@@ -165,7 +175,13 @@ export function parseBossConversationResult(
   const memory = parseProposedMemory(value.memory);
   const baseSequence = input.snapshot?.events.length ?? input.expectedSequence;
   const actions = rawActions.map((candidate, index) => {
-    const projected = projectActionFields(repairRawAction(candidate, input.expectedSequence, input.modelReference));
+    const projectId = isRecord(candidate) && typeof candidate.projectId === 'string' ? candidate.projectId : undefined;
+    const projected = projectActionFields(repairRawAction(
+      candidate,
+      input.expectedSequence,
+      input.modelReference,
+      input.snapshot?.delegations.find((delegation) => delegation.projectId === projectId)?.id,
+    ));
     const withOrigin = Boolean(projected) && typeof projected === 'object' && !Array.isArray(projected)
       && (projected as Record<string, unknown>).type === 'create_agent'
       ? normalizeCreateAgentModel(

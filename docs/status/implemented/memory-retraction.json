@@ -1,0 +1,5 @@
+{
+  "id": "memory-retraction",
+  "summary": "ADR 0084 makes retraction sticky: deleting a memory records a tombstone for its (scope, scopeId, key), Runtime-derived writes use origin=automatic and are rejected for tombstoned keys so an idle project sweep cannot restore a deleted fact, while a reviewed conversational write uses origin=conversational and deliberately clears the tombstone. Tombstones persist across SQLite reopen and a retracted entry disappears from the injected prompt index. Live validation also fixed resume_project delegation filling and duplicate worker_resumed events.",
+  "evidence": "src/runtime/agent-memory.ts"
+}

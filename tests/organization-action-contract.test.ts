@@ -43,6 +43,10 @@ const MINIMAL_ACTIONS: Readonly<Record<string, Readonly<Record<string, unknown>>
     type: 'withdraw_attention',
     projectId: 'project_alpha',
   },
+  resume_project: {
+    type: 'resume_project',
+    projectId: 'project_alpha',
+  },
   expire_attention: {
     type: 'expire_attention',
     projectId: 'project_alpha',
@@ -132,6 +136,9 @@ test('every repaired minimal action is accepted by the real validator', async ()
   for (const [type, action] of Object.entries(MINIMAL_ACTIONS)) {
     const repaired = repairActionFields(action, 1, {
       model: { providerId: 'magpie', modelId: 'fixture/model' },
+      // resume_project needs the delegation the Runtime recorded; every other
+      // action ignores this context.
+      delegationId: 'delegation_fixture',
     });
     try {
       parseOrganizationAction(repaired);
@@ -155,4 +162,23 @@ test('a model-supplied agentRevisionId is replaced by a placeholder the executor
   }, 2, { model: { providerId: 'magpie', modelId: 'fixture/model' } });
   assert.notEqual(repaired.agentRevisionId, 'model-guessed-this');
   assert.match(String(repaired.agentRevisionId), /^[a-z][a-z0-9_-]*$/);
+});
+
+test('resume_project gets the project delegation the Runtime recorded', () => {
+  // A live run failed with "resume_project is missing revalidatedDelegationId":
+  // the model cannot know which delegation the Runtime recorded, so the Runtime
+  // must fill it rather than reject an otherwise valid plan.
+  const repaired = repairActionFields(
+    { type: 'resume_project', projectId: 'project_alpha' },
+    3,
+    { delegationId: 'delegation_alpha' },
+  );
+  assert.equal(repaired.revalidatedDelegationId, 'delegation_alpha');
+  // A supplied value is not trusted over what the Runtime recorded.
+  const overridden = repairActionFields(
+    { type: 'resume_project', projectId: 'project_alpha', revalidatedDelegationId: 'model-guess' },
+    3,
+    { delegationId: 'delegation_alpha' },
+  );
+  assert.equal(overridden.revalidatedDelegationId, 'delegation_alpha');
 });

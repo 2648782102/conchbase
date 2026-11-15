@@ -73,12 +73,40 @@ test('a memory-store failure never breaks a Boss turn', async () => {
       list() { throw new Error('disk full'); },
       get() { return null; },
       remove() { return false; },
+      isRetracted() { return false; },
     };
     const { parser, seen } = recordingParser();
     const boss = new BossModeService(store, taskService, { parser, memory: broken, waitForTasks: false });
     const result = await boss.submit({ text: '你好', idempotencyKey: 'memory-2' });
     assert.equal(result.state, 'accepted');
     assert.equal(seen[0]!.memoryIndex, undefined);
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('a retracted entry disappears from the injected index', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-memory-retract-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture-model',
+  });
+  try {
+    const store = new InMemoryOrganizationStore();
+    store.apply({ type: 'open_project', expectedSequence: 0, projectId: 'project_live', originTriggerId: 'int_live' });
+    store.apply({ type: 'activate_project', expectedSequence: 1, projectId: 'project_live' });
+    const memory = new InMemoryAgentMemoryStore();
+    const entry = memory.write({ scope: 'runtime', key: 'tone', title: '要记住的偏好', body: '正文' });
+    const { parser, seen } = recordingParser();
+    const boss = new BossModeService(store, taskService, { parser, memory, waitForTasks: false });
+
+    await boss.submit({ text: '第一次', idempotencyKey: 'retract-1' });
+    assert.match(seen[0]!.memoryIndex ?? '', /要记住的偏好/);
+
+    memory.remove(entry.id);
+    await boss.submit({ text: '第二次', idempotencyKey: 'retract-2' });
+    assert.doesNotMatch(seen[1]!.memoryIndex ?? '', /要记住的偏好/);
   } finally {
     await taskService.stop();
     rmSync(directory, { recursive: true, force: true });

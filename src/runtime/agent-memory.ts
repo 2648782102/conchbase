@@ -46,7 +46,19 @@ export interface AgentMemoryInput {
   readonly body: string;
   readonly sourceIntentId?: string;
   readonly reviewedBy?: MemoryReviewOutcome;
+  /**
+   * Who is asking for this write.
+   *
+   * `automatic` means the Runtime derived it (project convergence). It must
+   * never restore a retracted fact: the user deleted it, and a background sweep
+   * silently putting it back is the worst possible outcome.
+   * `conversational` means a reviewed proposal in a live conversation, which is
+   * a deliberate act and may restore a retracted key.
+   */
+  readonly origin?: MemoryWriteOrigin;
 }
+
+export type MemoryWriteOrigin = 'automatic' | 'conversational';
 
 /**
  * How an entry earned its place.
@@ -63,7 +75,10 @@ export interface AgentMemoryStore {
   write(input: AgentMemoryInput, now?: string): AgentMemoryEntry;
   list(options?: { readonly scope?: MemoryScope; readonly scopeId?: string; readonly limit?: number }): readonly AgentMemoryEntry[];
   get(id: string): AgentMemoryEntry | null;
+  /** Deletes the entry and records a tombstone so it cannot be silently restored. */
   remove(id: string): boolean;
+  /** True when this exact key was retracted by a user. */
+  isRetracted(scope: MemoryScope, scopeId: string, key: string): boolean;
 }
 
 export const MEMORY_LIMITS = Object.freeze({
@@ -108,7 +123,7 @@ export function parseAgentMemoryInput(value: unknown): AgentMemoryInput {
     throw new AgentMemoryValidationError('Memory input must be an object.');
   }
   const record = value as Record<string, unknown>;
-  const allowed = new Set(['scope', 'scopeId', 'key', 'title', 'body', 'sourceIntentId', 'reviewedBy']);
+  const allowed = new Set(['scope', 'scopeId', 'key', 'title', 'body', 'sourceIntentId', 'reviewedBy', 'origin']);
   const unknown = Object.keys(record).filter((field) => !allowed.has(field));
   if (unknown.length > 0) throw new AgentMemoryValidationError(`Unknown memory fields: ${unknown.sort().join(', ')}.`);
   const scope = record.scope;
@@ -129,6 +144,7 @@ export function parseAgentMemoryInput(value: unknown): AgentMemoryInput {
       ? {}
       : { sourceIntentId: bounded(record.sourceIntentId, 'memory.sourceIntentId', 200) }),
     reviewedBy: record.reviewedBy === 'accepted' ? 'accepted' as const : 'unreviewed' as const,
+    origin: record.origin === 'conversational' ? 'conversational' as const : 'automatic' as const,
   });
 }
 
@@ -156,12 +172,20 @@ export function renderMemoryIndex(entries: readonly AgentMemoryEntry[], limit = 
 
 export class InMemoryAgentMemoryStore implements AgentMemoryStore {
   private readonly entries = new Map<string, AgentMemoryEntry>();
+  private readonly tombstoneKeys = new Set<string>();
 
   initialize(): void {}
 
   write(input: AgentMemoryInput, now = new Date().toISOString()): AgentMemoryEntry {
     const parsed = parseAgentMemoryInput(input);
     const id = agentMemoryId(parsed);
+    const tombstone = `${parsed.scope}\u0000${parsed.scopeId ?? ''}\u0000${parsed.key}`;
+    // An automatic write must never undo a user's retraction. A reviewed
+    // conversational proposal may, because it is a new deliberate request.
+    if (parsed.origin !== 'conversational' && this.tombstoneKeys.has(tombstone)) {
+      throw new AgentMemoryValidationError('Memory entry was retracted; automatic writes cannot restore it.');
+    }
+    this.tombstoneKeys.delete(tombstone);
     const entry = Object.freeze({
       version: AGENT_MEMORY_VERSION,
       id,
@@ -192,7 +216,15 @@ export class InMemoryAgentMemoryStore implements AgentMemoryStore {
   }
 
   remove(id: string): boolean {
-    return this.entries.delete(id);
+    const entry = this.entries.get(id);
+    if (!entry) return false;
+    this.entries.delete(id);
+    this.tombstoneKeys.add(`${entry.scope}\u0000${entry.scopeId}\u0000${entry.key}`);
+    return true;
+  }
+
+  isRetracted(scope: MemoryScope, scopeId: string, key: string): boolean {
+    return this.tombstoneKeys.has(`${scope}\u0000${scopeId}\u0000${key}`);
   }
 
   private prune(scope: MemoryScope, scopeId: string): void {
@@ -248,6 +280,13 @@ export class SqliteAgentMemoryStore implements AgentMemoryStore {
       ) STRICT;
       CREATE UNIQUE INDEX IF NOT EXISTS agent_memory_identity ON agent_memory (scope, scope_id, key);
       CREATE INDEX IF NOT EXISTS agent_memory_scope ON agent_memory (scope, scope_id, created_at DESC);
+      CREATE TABLE IF NOT EXISTS agent_memory_tombstones (
+        scope TEXT NOT NULL,
+        scope_id TEXT NOT NULL,
+        key TEXT NOT NULL,
+        retracted_at TEXT NOT NULL,
+        PRIMARY KEY (scope, scope_id, key)
+      ) STRICT;
     `);
   }
 
@@ -255,6 +294,17 @@ export class SqliteAgentMemoryStore implements AgentMemoryStore {
     const parsed = parseAgentMemoryInput(input);
     const id = agentMemoryId(parsed);
     const scopeId = parsed.scopeId ?? '';
+    // An automatic write must never undo a user's retraction; a reviewed
+    // conversational proposal is a new deliberate request and may restore it.
+    if (parsed.origin !== 'conversational'
+      && this.isRetracted(parsed.scope, scopeId, parsed.key)) {
+      throw new AgentMemoryValidationError('Memory entry was retracted; automatic writes cannot restore it.');
+    }
+    if (parsed.origin === 'conversational') {
+      this.database.prepare(
+        'DELETE FROM agent_memory_tombstones WHERE scope = ? AND scope_id = ? AND key = ?',
+      ).run(parsed.scope, scopeId, parsed.key);
+    }
     this.database.prepare(`
       INSERT INTO agent_memory (
         id, scope, scope_id, key, title, body, source_intent_id, reviewed_by, created_at
@@ -317,8 +367,22 @@ export class SqliteAgentMemoryStore implements AgentMemoryStore {
   }
 
   remove(id: string): boolean {
-    const result = this.database.prepare('DELETE FROM agent_memory WHERE id = ?').run(id);
-    return Number(result.changes) > 0;
+    const entry = this.get(id);
+    if (!entry) return false;
+    this.database.prepare('DELETE FROM agent_memory WHERE id = ?').run(id);
+    this.database.prepare(`
+      INSERT INTO agent_memory_tombstones (scope, scope_id, key, retracted_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(scope, scope_id, key) DO UPDATE SET retracted_at = excluded.retracted_at
+    `).run(entry.scope, entry.scopeId, entry.key, new Date().toISOString());
+    return true;
+  }
+
+  isRetracted(scope: MemoryScope, scopeId: string, key: string): boolean {
+    const row = this.database.prepare(`
+      SELECT 1 FROM agent_memory_tombstones WHERE scope = ? AND scope_id = ? AND key = ?
+    `).get(scope, scopeId, key);
+    return row !== undefined;
   }
 
   private prune(scope: MemoryScope, scopeId: string): void {

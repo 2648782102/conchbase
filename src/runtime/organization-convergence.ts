@@ -340,6 +340,10 @@ export class ProjectConvergenceService {
         key: `project_summary:${projectId}`,
         title: `项目 ${projectId} 已完成并归档`,
         body: summary,
+        // Convergence is Runtime-derived. It must never put back a fact the
+        // user deleted; the write is rejected by the store when it is a
+        // tombstoned key.
+        origin: 'automatic',
       });
     } catch {
       // A memory write must never block or undo an archive.

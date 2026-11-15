@@ -268,3 +268,31 @@ test('convergence writes exactly one project memory', async () => {
   await service.sweep();
   assert.equal(memory.list({ scope: 'project', scopeId: 'project_alpha' }).length, 1);
 });
+
+test('convergence does not resurrect a retracted project memory', async () => {
+  // The user deleted this project's summary. The next sweep must not put it
+  // back, or deletion would be meaningless for any project that reconverges.
+  const store = new InMemoryOrganizationStore();
+  seedProject(store);
+  const memory = new InMemoryAgentMemoryStore();
+  const existing = memory.write({
+    scope: 'project', scopeId: 'project_alpha', key: 'project_summary:project_alpha',
+    title: '手动写入的摘要', body: '正文', origin: 'automatic',
+  });
+  memory.remove(existing.id);
+  let now = 800_000;
+  const service = new ProjectConvergenceService({
+    store,
+    policy: { idleAfterMs: 100, convergeWithOpenAttention: false },
+    now: () => now,
+    memory,
+  });
+  await service.sweep();
+  now += 500;
+  assert.equal((await service.sweep()).converged.length, 1, 'the project still converges');
+  assert.equal(
+    memory.list({ scope: 'project', scopeId: 'project_alpha' }).length,
+    0,
+    'but the retracted memory is not restored',
+  );
+});
