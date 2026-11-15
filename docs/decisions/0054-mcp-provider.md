@@ -4,6 +4,8 @@ Status: **accepted implementation contract; first read-only slice implemented**
 
 Date: 2026-11-14 (Asia/Shanghai).
 
+> Update 2026-11-15: [ADR 0067](0067-adopt-official-mcp-sdk.md) replaces the hand-written JSON-RPC layer with the official `@modelcontextprotocol/sdk` stdio transport. The read-only allowlist, bounded configuration, and authority boundary described below are unchanged.
+
 ## Context
 
 ADR 0052 accepts a capability-provider seam for built-in tools, MCP, Skills, and plugins. ADR 0053 implements the loop with built-in read-only tools. The next capability source is MCP: users already run MCP servers, and their tools should become available to Agents without giving a model the ability to launch processes.

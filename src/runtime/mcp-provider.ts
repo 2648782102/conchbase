@@ -1,7 +1,8 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import {
   ToolRejectedError,
   type ToolArguments,
@@ -14,7 +15,6 @@ import {
 const MAX_RESULT_BYTES = 8_192;
 const START_TIMEOUT_MS = 5_000;
 const CALL_TIMEOUT_MS = 5_000;
-const MAX_LINE_BYTES = 256 * 1024;
 const SERVER_ID_PATTERN = /^[a-z][a-z0-9_-]{0,31}$/;
 const TOOL_NAME_PATTERN = /^[a-zA-Z0-9_.-]{1,64}$/;
 
@@ -141,127 +141,95 @@ export function loadMcpConfig(input: unknown): McpConfig {
   return Object.freeze({ servers: Object.freeze(servers) });
 }
 
-interface Pending {
-  resolve(value: unknown): void;
-  reject(cause: Error): void;
-  timer: NodeJS.Timeout;
-}
-
 class McpConnection {
-  private readonly child: ChildProcessWithoutNullStreams;
-  private readonly pending = new Map<number, Pending>();
-  private nextId = 1;
-  private buffer = '';
+  private readonly client: Client;
+  private readonly transport: StdioClientTransport;
   private closed = false;
 
   constructor(declaration: McpServerDeclaration) {
-    this.child = spawn(declaration.command, [...declaration.args], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      shell: false,
+    this.transport = new StdioClientTransport({
+      command: declaration.command,
+      args: [...declaration.args],
+      stderr: 'pipe',
       env: {
         PATH: '',
         NODE_OPTIONS: '',
         ...declaration.env,
       },
     });
-    this.child.stdout.setEncoding('utf8');
-    this.child.stdout.on('data', (chunk: string) => this.onData(chunk));
-    this.child.stderr.resume();
-    this.child.once('exit', () => this.failAll('mcp_server_exited'));
+    this.client = new Client(
+      { name: 'conchbase', version: '1.0.0' },
+      { capabilities: {} },
+    );
   }
 
-  async initialize(timeoutMs: number): Promise<void> {
-    await this.request('initialize', {
-      protocolVersion: '2024-11-05',
-      capabilities: {},
-      clientInfo: { name: 'conchbase', version: '1.0.0' },
-    }, timeoutMs);
-    this.notify('notifications/initialized', {});
+  async initialize(_timeoutMs: number): Promise<void> {
+    await this.client.connect(this.transport);
   }
 
-  async listTools(timeoutMs: number): Promise<readonly { name: string }[]> {
-    const result = await this.request('tools/list', {}, timeoutMs);
-    if (!isRecord(result) || !Array.isArray(result.tools)) throw new ToolRejectedError('mcp_invalid_response');
+  async listTools(_timeoutMs: number): Promise<readonly { name: string }[]> {
+    const result = await this.client.listTools();
+    if (!isRecord(result) || !Array.isArray(result.tools)) {
+      throw new ToolRejectedError('mcp_invalid_response');
+    }
     return result.tools.flatMap((entry) =>
       isRecord(entry) && typeof entry.name === 'string' ? [{ name: entry.name }] : []);
   }
 
   async callTool(name: string, args: ToolArguments, timeoutMs: number): Promise<unknown> {
-    return this.request('tools/call', { name, arguments: args }, timeoutMs);
+    try {
+      return await withTimeout(
+        this.client.callTool({ name, arguments: { ...args } }, undefined, {
+          timeout: timeoutMs,
+        }),
+        timeoutMs,
+        'mcp_timeout',
+      );
+    } catch (cause) {
+      if (cause instanceof ToolRejectedError) throw cause;
+      throw new ToolRejectedError('mcp_call_failed');
+    }
   }
 
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
-    this.failAll('mcp_server_closed');
-    this.child.kill('SIGKILL');
-  }
-
-  private notify(method: string, params: unknown): void {
-    this.child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method, params })}\n`);
-  }
-
-  private request(method: string, params: unknown, timeoutMs: number): Promise<unknown> {
-    const id = this.nextId++;
-    return new Promise<unknown>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new ToolRejectedError('mcp_timeout'));
-      }, timeoutMs);
-      timer.unref?.();
-      this.pending.set(id, { resolve, reject, timer });
-      try {
-        this.child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
-      } catch {
-        clearTimeout(timer);
-        this.pending.delete(id);
-        reject(new ToolRejectedError('mcp_write_failed'));
-      }
-    });
-  }
-
-  private onData(chunk: string): void {
-    this.buffer += chunk;
-    if (this.buffer.length > MAX_LINE_BYTES) {
-      this.failAll('mcp_response_too_large');
-      return;
-    }
-    let newline = this.buffer.indexOf('\n');
-    while (newline >= 0) {
-      const line = this.buffer.slice(0, newline).trim();
-      this.buffer = this.buffer.slice(newline + 1);
-      newline = this.buffer.indexOf('\n');
-      if (line.length === 0) continue;
-      this.handleLine(line);
-    }
-  }
-
-  private handleLine(line: string): void {
-    let payload: unknown;
     try {
-      payload = JSON.parse(line);
+      await this.client.close();
     } catch {
-      return;
+      await this.transport.close().catch(() => undefined);
     }
-    if (!isRecord(payload) || typeof payload.id !== 'number') return;
-    const pending = this.pending.get(payload.id);
-    if (!pending) return;
-    this.pending.delete(payload.id);
-    clearTimeout(pending.timer);
-    if (payload.error !== undefined) {
-      pending.reject(new ToolRejectedError('mcp_call_failed'));
-      return;
-    }
-    pending.resolve(payload.result);
   }
+}
 
-  private failAll(code: string): void {
-    for (const [id, pending] of this.pending) {
-      clearTimeout(pending.timer);
-      pending.reject(new ToolRejectedError(code));
-      this.pending.delete(id);
-    }
-  }
+/**
+ * The SDK applies its own request timeout; this guard makes the bound explicit
+ * and keeps the observable error code stable for the Agent loop.
+ */
+function withTimeout<T>(operation: Promise<T>, timeoutMs: number, code: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new ToolRejectedError(code));
+    }, timeoutMs);
+    timer.unref?.();
+    operation.then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (cause: unknown) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(cause);
+      },
+    );
+  });
 }
 
 function summarize(result: unknown, maxBytes: number): { summary: string; bytes: number } {

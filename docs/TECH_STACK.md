@@ -14,7 +14,7 @@
 | Tool capability kernel | Internal fixture-only registry, exact approvals, per-attempt idempotency, and deterministic audit events | In use as an internal acceptance boundary; never imported by the public ledger |
 | Public tool request/approval ledger | Versioned provider-neutral request records, composition-scoped idempotency, digest-only approvals, and durable SQLite audit events | In use as a `0.6.0` ledger kept by `0.7.0`; no tool execution or real host tool |
 | Provider tool-call observation | Pure OpenAI Chat Completions-compatible non-streaming function-call parser, provider adapter normalization, and one transient HTTP observation route | In use as an ADR 0019 `0.7.0` boundary; no auto-ledger, streaming accumulation, or execution |
-| Tool protocol | MCP TypeScript SDK | Deferred until lifecycle, sandboxing, and per-tool grants are accepted |
+| Tool protocol | Official `@modelcontextprotocol/sdk` for the stdio transport, wrapped by Conchbase's bounded MCP provider | In use under ADR 0067; write-capable and remote MCP transports remain gated |
 | Agent orchestration | Conchbase-owned task state machine with a narrow provider adapter and a deterministic composition executor | In use for one bounded text turn or bounded graph traversal; tool loops and model-driven composition pending |
 | Configuration and Skills | Content-addressed revision id, v1/v2 documents, and future portable profile files | Revision id and configuration write API in use; profile files and Skills lifecycle deferred |
 | Agent profiles | Runtime-local identities, immutable opaque revisions, optimistic updates, default/archive, and task pinning | In use under ADR 0020; portable profile files and more provider adapters deferred |

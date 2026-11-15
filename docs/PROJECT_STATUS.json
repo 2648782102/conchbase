@@ -282,6 +282,11 @@
       "id": "per-agent-capability-grants",
       "summary": "ADR 0066 makes grantedCapabilities part of the immutable Agent revision and projects the Runtime-wide tool and Skill providers onto that pinned grant list. Grants can only narrow; an Agent with no grants receives no tools and no Skills. Private schema advances to user_version = 8.",
       "evidence": "src/runtime/capability-grants.ts"
+    },
+    {
+      "id": "mcp-official-sdk",
+      "summary": "ADR 0067 replaces the hand-written MCP JSON-RPC layer with the official @modelcontextprotocol/sdk stdio transport. Bounded configuration, sanitized environment, namespaced tool ids, per-call timeout, result caps, and Agent-scoped grants are unchanged.",
+      "evidence": "src/runtime/mcp-provider.ts"
     }
   ],
   "validationEvidence": [

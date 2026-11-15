@@ -75,10 +75,18 @@ const forbiddenPackages: readonly string[] = [
   '@types/better-sqlite3',
   'openai',
   '@anthropic-ai/sdk',
-  '@modelcontextprotocol/sdk',
 ];
 
-const forbiddenImport = /(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"](better-sqlite3|sqlite3|openai|@anthropic-ai\/sdk|@modelcontextprotocol\/sdk)['"]/;
+/**
+ * ADR 0067 allows the official MCP SDK for the stdio transport only. Every
+ * other runtime dependency still requires its own accepted ADR.
+ */
+const allowedRuntimeDependencies: readonly string[] = [
+  '@modelcontextprotocol/sdk',
+  'fastify',
+];
+
+const forbiddenImport = /(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"](better-sqlite3|sqlite3|openai|@anthropic-ai\/sdk)['"]/;
 const importPrefix = /(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"]/;
 const forbiddenRuntimeImport = new RegExp(
   `${importPrefix.source}(?:fastify|node:https?|[^'"]*\\/http\\/)[^'"]*['"]`,
@@ -277,7 +285,7 @@ function assertDependencyBoundaries(
 
   assert.deepEqual(
     Object.keys(manifest.dependencies ?? {}).sort(),
-    ['fastify'],
+    [...allowedRuntimeDependencies].sort(),
     `${label} runtime dependencies must remain the accepted baseline`,
   );
   for (const name of forbiddenPackages) {
@@ -436,7 +444,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /ADR 0021/);
   assert.match(handoff, /ADR 0022/);
   assert.match(handoff, /ADR 0023/);
-  assert.match(handoff, /ADRs `0030`–`0066`/);
+  assert.match(handoff, /ADRs `0030`–`0067`/);
   assert.match(handoff, /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-contract\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-store\.ts/);
@@ -517,7 +525,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('README.zh-CN.md'), /仍在最终本地优先目标之外/);
   assert.match(read('README.zh-CN.md'), /ADR 0018/);
   assert.match(read('README.zh-CN.md'), /ADR 0019/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0066\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0067\]/);
   assert.match(read('README.md'), /1\.4\.0/);
   assert.match(read('README.md'), /ADR 0021 adds an opt-in live loopback acceptance test/);
   assert.match(read('README.zh-CN.md'), /ADR 0021/);
@@ -897,7 +905,7 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
     assert.match(read(file), /OBJECTIVE_MODE\.zh-CN\.md/, `${file} must link the Chinese objective brief`);
   }
   assert.match(read('docs/AI_TASK_QUEUE.md'), /Target-mode entry/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0066\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0067\]/);
   assert.match(read('README.md'), /Organization Runtime target/);
   assert.match(read('README.zh-CN.md'), /完整组织运行时目标/);
   assert.match(read('docs/QUICK_START.zh-CN.md'), /ADR 0030–0034/);
@@ -1323,7 +1331,7 @@ test('guardrail helpers reject representative boundary violations', () => {
   );
 
   const badDevManifest: PackageManifest = {
-    dependencies: { fastify: '^5.12.8' },
+    dependencies: { '@modelcontextprotocol/sdk': '^1.32.2', fastify: '^5.12.8' },
     devDependencies: { 'better-sqlite3': '13.0.3' },
   };
   const badLock: PackageLock = {
@@ -1334,7 +1342,11 @@ test('guardrail helpers reject representative boundary violations', () => {
     /must not declare better-sqlite3 as a development dependency/,
   );
   assert.throws(
-    () => assertDependencyBoundaries({ dependencies: { fastify: '^5.12.8' } }, badLock, 'synthetic'),
+    () => assertDependencyBoundaries(
+      { dependencies: { '@modelcontextprotocol/sdk': '^1.32.2', fastify: '^5.12.8' } },
+      badLock,
+      'synthetic',
+    ),
     /must not contain sqlite3 in package-lock.json/,
   );
 });
