@@ -249,6 +249,11 @@
       "evidence": "src/runtime/memory-review.ts"
     },
     {
+      "id": "memory-scope-promotion",
+      "summary": "ADR 0085 closes the previously unwritable runtime memory scope: the Boss may propose runtime scope, but promotion requires an independent reviewer to return runtimeScopeConfirmed alongside accept. No reviewer, an unconfirmed acceptance, or a confirmation attached to a rejection all fail closed. Unconfirmed proposals are dropped rather than silently downgraded, so the model's mistake stays observable.",
+      "evidence": "src/runtime/boss-mode-service.ts"
+    },
+    {
       "id": "multi-tool-turns",
       "summary": "ADR 0058 allows up to maxToolCallsPerTurn tool calls per model turn (default 4, cap 8), executes them in order, requires one approval per write, and rejects turns above the cap.",
       "evidence": "src/runtime/task-service.ts"
@@ -518,6 +523,12 @@
     {
       "id": "memory-review-fixture",
       "summary": "Executable fixtures cover accepted and rejected verdicts, mandatory full index coverage, malformed and secret-like verdict rejection, upstream failure returning null, provenance and review status on write, rejection not persisting, an unavailable reviewer dropping rather than writing, listing with scope filters, deletion with 404, invalid filters, and the absence of a public write route.",
+      "evidence": "tests/memory-review.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "memory-scope-promotion-fixture",
+      "summary": "Executable fixtures cover runtime proposals parsing without being granted, a confirmation surviving verdict parsing, a confirmation attached to a rejection being discarded, persistence only with confirmation, no persistence without confirmation, and no persistence without a reviewer.",
       "evidence": "tests/memory-review.test.ts",
       "executableFixture": true
     },

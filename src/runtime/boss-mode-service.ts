@@ -643,9 +643,16 @@ export class BossModeService {
     // Runtime checks come first: a reviewer cannot resurrect an entry whose
     // scope target does not exist, and it never sees entries the Runtime has
     // already refused.
-    const candidates = entries.filter((entry) => entry.scope === 'project'
-      ? snapshot.projects.some((project) => project.id === entry.scopeId)
-      : snapshot.workers.some((worker) => worker.id === entry.scopeId));
+    const candidates = entries.filter((entry) => {
+      if (entry.scope === 'runtime') {
+        // A global fact needs an independent confirmation, not just a model's
+        // proposal; without a reviewer this cannot be established, so drop it.
+        return Boolean(this.memoryReviewer);
+      }
+      return entry.scope === 'project'
+        ? snapshot.projects.some((project) => project.id === entry.scopeId)
+        : snapshot.workers.some((worker) => worker.id === entry.scopeId);
+    });
     if (candidates.length === 0) return;
     let accepted: readonly AgentMemoryInput[] = candidates;
     if (this.memoryReviewer) {
@@ -673,7 +680,14 @@ export class BossModeService {
         return;
       }
       const verdicts = new Map(review.decisions.map((decision) => [decision.index, decision]));
-      accepted = candidates.filter((_entry, index) => verdicts.get(index)?.verdict === 'accept');
+      accepted = candidates.filter((entry, index) => {
+        const verdict = verdicts.get(index);
+        if (verdict?.verdict !== 'accept') return false;
+        // A runtime-scope entry additionally needs the explicit confirmation,
+        // so a plain "this is durable" cannot silently promote it to global.
+        if (entry.scope === 'runtime' && verdict.runtimeScopeConfirmed !== true) return false;
+        return true;
+      });
     }
     for (const entry of accepted) {
       try {

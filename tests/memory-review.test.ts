@@ -147,3 +147,84 @@ test('an unavailable reviewer drops the proposal rather than writing unreviewed'
   await submitWithBoss({ memory, reviewer: async () => null });
   assert.equal(memory.list({ scope: 'project', scopeId: 'project_alpha' }).length, 0);
 });
+
+async function submitRuntimeProposal(options: {
+  reviewer?: (input: MemoryReviewInput) => Promise<unknown>;
+}) {
+  const memory = new InMemoryAgentMemoryStore();
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-promote-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture-model',
+  });
+  const store = new InMemoryOrganizationStore();
+  store.apply({ type: 'open_project', expectedSequence: 0, projectId: 'project_alpha', originTriggerId: 'int_alpha' });
+  const parser: OrganizationIntentParser = {
+    async parse() {
+      return Object.freeze({
+        version: 1 as const,
+        intentId: 'int_promote',
+        actions: Object.freeze([]),
+        relay: '记住了。',
+        memory: Object.freeze([
+          Object.freeze({ scope: 'runtime' as const, key: 'tone', title: '全局偏好', body: '对所有项目生效。' }),
+        ]),
+      });
+    },
+  };
+  const boss = new BossModeService(store, taskService, {
+    parser,
+    memory,
+    ...(options.reviewer ? { memoryReviewer: options.reviewer as never } : {}),
+    waitForTasks: false,
+  });
+  try {
+    await boss.submit({ text: '以后所有项目都先给结论', idempotencyKey: 'promote-1' });
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+  return memory;
+}
+
+test('a runtime-scope proposal is written only with explicit reviewer confirmation', async () => {
+  const confirmed = await submitRuntimeProposal({
+    reviewer: async () => ({
+      version: 1,
+      decisions: [{ index: 0, verdict: 'accept', reason: '用户明确要求全局', runtimeScopeConfirmed: true }],
+    }),
+  });
+  assert.equal(confirmed.list({ scope: 'runtime' }).length, 1);
+
+  // "Durable" is not the same as "global". Without the extra confirmation the
+  // entry must not leak into every conversation.
+  const unconfirmed = await submitRuntimeProposal({
+    reviewer: async () => ({
+      version: 1,
+      decisions: [{ index: 0, verdict: 'accept', reason: '持久偏好' }],
+    }),
+  });
+  assert.equal(unconfirmed.list({ scope: 'runtime' }).length, 0);
+});
+
+test('without a reviewer a runtime-scope proposal is never written', async () => {
+  // Scope promotion must always be independently checked; no reviewer means no
+  // global facts at all.
+  const memory = await submitRuntimeProposal({});
+  assert.equal(memory.list({ scope: 'runtime' }).length, 0);
+});
+
+test('a runtime scope confirmation survives parsing', () => {
+  // The confirmation was in the allowed-vocabulary gap: it parsed as an unknown
+  // field, so every legitimate global promotion was rejected wholesale.
+  const parsed = parseMemoryReviewResult({
+    decisions: [{ index: 0, verdict: 'accept', reason: '用户明确要求全局', runtimeScopeConfirmed: true }],
+  }, 1);
+  assert.ok(parsed);
+  assert.equal(parsed!.decisions[0]!.runtimeScopeConfirmed, true);
+  // A confirmation alongside a rejection is meaningless and must not survive.
+  const rejected = parseMemoryReviewResult({
+    decisions: [{ index: 0, verdict: 'reject', reason: '一次性要求', runtimeScopeConfirmed: true }],
+  }, 1);
+  assert.equal(rejected!.decisions[0]!.runtimeScopeConfirmed, undefined);
+});

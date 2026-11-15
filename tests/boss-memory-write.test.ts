@@ -41,14 +41,16 @@ test('a project memory proposal is accepted only for an existing project', () =>
   assert.equal(parsed.memory?.[0]?.scopeId, 'project_alpha');
 });
 
-test('runtime scope, unknown fields, and malformed entries are rejected', () => {
+test('runtime scope is accepted as a proposal but never self-authorizing', () => {
   const store = new InMemoryOrganizationStore();
   const base = baseInput(store);
-  // The model must not promote a project detail into an always-on fact.
-  assert.throws(() => parseBossConversationResult(base, {
+  // Parsing accepts the proposal; authority is decided later by the Runtime and
+  // requires an independent reviewer confirmation. See the write tests below.
+  const parsed = parseBossConversationResult(base, {
     reply: 'ok', actions: [],
     memory: [{ scope: 'runtime', key: 'k', title: 't', body: 'b' }],
-  }), OrganizationIntentParseError);
+  });
+  assert.equal(parsed.memory?.[0]?.scope, 'runtime');
   assert.throws(() => parseBossConversationResult(base, {
     reply: 'ok', actions: [],
     memory: [{ scope: 'project', scopeId: 'p', key: 'k', title: 't', body: 'token sk-abcdef' }],

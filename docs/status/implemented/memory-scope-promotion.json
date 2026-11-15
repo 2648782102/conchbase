@@ -1,0 +1,5 @@
+{
+  "id": "memory-scope-promotion",
+  "summary": "ADR 0085 closes the previously unwritable runtime memory scope: the Boss may propose runtime scope, but promotion requires an independent reviewer to return runtimeScopeConfirmed alongside accept. No reviewer, an unconfirmed acceptance, or a confirmation attached to a rejection all fail closed. Unconfirmed proposals are dropped rather than silently downgraded, so the model's mistake stays observable.",
+  "evidence": "src/runtime/boss-mode-service.ts"
+}

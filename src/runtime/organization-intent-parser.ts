@@ -212,9 +212,9 @@ export function parseBossConversationResult(
  *
  * The Boss may only propose; it cannot choose to bypass validation, and a
  * malformed entry is rejected rather than silently dropped so a wiring bug is
- * visible. Runtime scope is deliberately unavailable here: promoting one
- * project's detail into an always-on fact is a decision that needs an explicit
- * user request, not a model's judgement mid-conversation.
+ * visible. Runtime scope is allowed as a *proposal* but is never granted by the
+ * model alone: `BossModeService` requires the independent reviewer to confirm
+ * the user asked for runtime-wide effect, and an unconfirmed entry is dropped.
  */
 function parseProposedMemory(value: unknown): readonly AgentMemoryInput[] {
   if (value === undefined) return Object.freeze([]);
@@ -225,9 +225,6 @@ function parseProposedMemory(value: unknown): readonly AgentMemoryInput[] {
   for (const candidate of value) {
     try {
       const parsed = parseAgentMemoryInput(candidate);
-      if (parsed.scope === 'runtime') {
-        throw new OrganizationIntentParseError('Boss conversation may propose only project or agent memory.');
-      }
       entries.push(parsed);
     } catch (cause) {
       if (cause instanceof OrganizationIntentParseError) throw cause;
@@ -464,7 +461,7 @@ const BOSS_CONVERSATION_INSTRUCTIONS = [
   '能力提升来自 Runtime；你只能提出建议动作，不能直接执行、不能授权、不能读取密钥或文件。',
   'Return only strict JSON with exactly two fields: {"reply":string,"actions":[]}; a third optional field "memory" is described below.',
   'reply 是面向用户的自然语言回复，可以解释建议、说明已准备的动作或提出下一步问题，不要暴露内部推理。',
-  '可选字段 memory 是你建议长期记住的内容，最多 4 条，每条为 {"scope":"project"|"agent","scopeId":string,"key":string,"title":string,"body":string}。只有用户明确要求你记住，或明确纠正了你的做法时才提议；普通对话不要写。Runtime 会校验并可能丢弃，你不能假设它一定被保存。不得提议 scope="runtime"，也不得写入密钥、令牌、路径或个人隐私。',
+  '可选字段 memory 是你建议长期记住的内容，最多 4 条，每条为 {"scope":"project"|"agent","scopeId":string,"key":string,"title":string,"body":string}。只有用户明确要求你记住，或明确纠正了你的做法时才提议；普通对话不要写。Runtime 会校验并可能丢弃，你不能假设它一定被保存。默认只提议 project 或 agent；只有当用户明确说过希望对所有项目生效时才可提议 scope="runtime"，Runtime 会再做独立确认，未确认会被丢弃。不得写入密钥、令牌、路径或个人隐私。',
   '铁律：下“不存在/没有/查不到”这类否定结论之前，必须先读完组织事实里已有字段（尤其 reports 的 summary 与 state、workers、projects）。只能说“我在 X 范围内没看到 Y”，不能断言“系统里没有 Y”。',
   '引用员工汇报时，若 reports[].summary 非空就原样引用并标注 reportId；只有 summary 确实为空时才说未保留。禁止把“我看到的摘要”说成“正文不存在”。',
   '回复要短：先给一句话结论，再给必要证据（ID + 状态 + 关键原文），原文超过 3 行就截断并注明已截断，最后给 1–3 个下一步选项；避免重复同一结论。',

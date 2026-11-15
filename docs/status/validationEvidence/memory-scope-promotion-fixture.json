@@ -1,0 +1,6 @@
+{
+  "id": "memory-scope-promotion-fixture",
+  "summary": "Executable fixtures cover runtime proposals parsing without being granted, a confirmation surviving verdict parsing, a confirmation attached to a rejection being discarded, persistence only with confirmation, no persistence without confirmation, and no persistence without a reviewer.",
+  "evidence": "tests/memory-review.test.ts",
+  "executableFixture": true
+}

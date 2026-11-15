@@ -15,6 +15,13 @@ export interface MemoryReviewDecision {
   readonly index: number;
   readonly verdict: 'accept' | 'reject';
   readonly reason: string;
+  /**
+   * Present only for proposals that ask for runtime-wide scope. The reviewer
+   * must confirm the user explicitly asked for this to apply everywhere;
+   * promoting a project detail into an always-on fact is otherwise the easiest
+   * way for one project's context to contaminate every other conversation.
+   */
+  readonly runtimeScopeConfirmed?: true;
 }
 
 export interface MemoryReviewResult {
@@ -51,7 +58,10 @@ export function memoryReviewInstructions(): string {
     '3. 不与已有记忆明显重复或冲突；',
     '4. 不包含密钥、令牌、密码、私有路径或与业务无关的个人隐私。',
     '若无法确定用户意图是持久偏好，返回 reject 并给出简短理由。宁可漏记，不可错记。',
-    'Return only strict JSON: {"decisions":[{"index":number,"verdict":"accept"|"reject","reason":string}]}.',
+    '如果某个候选的 scope 是 runtime（对所有项目生效），额外判断：用户是否明确说过希望它对所有项目通用？',
+    '只有用户明确表达“以后都这样 / 所有项目都这样”才在对应 decision 上加 "runtimeScopeConfirmed": true；',
+    '否则必须 reject，并在 reason 里说明应改为项目级。默认拒绝全局化。',
+    'Return only strict JSON: {"decisions":[{"index":number,"verdict":"accept"|"reject","reason":string,"runtimeScopeConfirmed"?:true}]}.',
     'decisions 必须覆盖每个候选的 index，且 reason 不超过 120 字。',
   ].join(' ');
 }
@@ -72,7 +82,7 @@ export function parseMemoryReviewResult(
   for (const candidate of raw) {
     if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) return null;
     const entry = candidate as Record<string, unknown>;
-    if (Object.keys(entry).some((key) => !['index', 'verdict', 'reason'].includes(key))) return null;
+    if (Object.keys(entry).some((key) => !['index', 'verdict', 'reason', 'runtimeScopeConfirmed'].includes(key))) return null;
     const index = entry.index;
     if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= proposalCount) return null;
     if (seen.has(index)) return null;
@@ -81,7 +91,15 @@ export function parseMemoryReviewResult(
     if (typeof entry.reason !== 'string') return null;
     const reason = entry.reason.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, MAX_REASON);
     if (containsSecretLike(reason)) return null;
-    decisions.push(Object.freeze({ index, verdict: entry.verdict, reason }));
+    // A scope confirmation is only meaningful alongside acceptance.
+    const confirmed = entry.runtimeScopeConfirmed === true;
+    if (entry.runtimeScopeConfirmed !== undefined && typeof entry.runtimeScopeConfirmed !== 'boolean') return null;
+    decisions.push(Object.freeze({
+      index,
+      verdict: entry.verdict,
+      reason,
+      ...(confirmed && entry.verdict === 'accept' ? { runtimeScopeConfirmed: true as const } : {}),
+    }));
   }
   if (seen.size !== proposalCount) return null;
   return Object.freeze({
