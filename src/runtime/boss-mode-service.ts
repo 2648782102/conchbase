@@ -508,7 +508,7 @@ export class BossModeService {
       return;
     }
     if (action.type === 'quiet_project' || action.type === 'archive_project' || action.type === 'resume_project') {
-      context.executions.push(this.runLifecycleBatch(action));
+      context.executions.push(await this.runLifecycleBatch(action));
       return;
     }
     if (action.type === 'offboard_worker') {
@@ -895,7 +895,10 @@ export class BossModeService {
     } catch {
       // Archiving is best-effort; the offboard itself already succeeded.
     }
-    this.workerExecutions.delete(workerId);
+    // Keep the execution record: resume needs the Agent and revision ids to
+    // recreate a usable Agent. Deleting it here was why a resumed worker came
+    // back with no Agent at all. `startedWorkers` is still cleared so a resume
+    // is allowed to dispatch again.
     this.startedWorkers.delete(workerId);
   }
 
@@ -952,11 +955,14 @@ export class BossModeService {
     if (!taskService || !record) return;
     const previous = taskService.store.getTask(record.taskId);
     if (!previous) return;
+    // Use the current binding, not the previous task's Agent: offboard archived
+    // that Agent and resume replaced it with a fresh one. Reusing the archived
+    // id fails with "Archived Agents cannot start new tasks".
     const task = taskService.store.createAgentTask({
       id: `task_${reference(`${workerId}:resume:${this.store.get().events.length}`)}`,
       prompt: previous.prompt,
-      agentId: previous.agentId!,
-      expectedAgentRevisionId: previous.agentRevisionId!,
+      agentId: record.agentId,
+      expectedAgentRevisionId: record.agentRevisionId,
     });
     const stableKey = `${projectId}:${workerId}:resume:${this.store.get().events.length}`;
     const envelope = taskService.store.work.ingestWorkTrigger({
@@ -984,6 +990,43 @@ export class BossModeService {
     // Starting is the caller's job: `ensureWorkItem` starts the task after it
     // opens the WorkItem, and starting here would make that second start fail
     // with "Task is not queued".
+  }
+
+  /**
+   * Recreates a usable Agent for a resumed worker.
+   *
+   * Offboarding archives the Agent, and an archived Agent cannot back a task.
+   * The recorded revision is the authority for what this worker was allowed to
+   * do, so the replacement is built from it rather than from a model guess.
+   * Returns false when the revision is no longer available; the caller then
+   * reports the resume as incomplete instead of starting work that must fail.
+   */
+  private async recreateResumedAgent(workerId: string): Promise<boolean> {
+    const taskService = this.taskService;
+    const record = this.workerExecutions.get(workerId);
+    if (!taskService || !record) return false;
+    const revision = taskService.store.getAgentRevision(record.agentId, record.agentRevisionId);
+    if (!revision) return false;
+    const worker = this.store.get().workers.find((item) => item.id === workerId);
+    try {
+      const agent = await taskService.createAgent({
+        name: worker?.displayName ?? revision.name,
+        instructions: revision.instructions,
+        providerId: revision.providerId,
+        modelId: revision.modelId,
+        grantedCapabilities: revision.grantedCapabilities,
+      });
+      this.workerExecutions.set(workerId, Object.freeze({
+        ...record,
+        agentId: agent.id,
+        // The recreated Agent owns a new revision id. Keeping the old one makes
+        // createAgentTask reject the task with "Agent revision changed".
+        agentRevisionId: agent.currentRevisionId,
+      }));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** Whether the grants handed to dynamically hired workers include a write tool. */
@@ -1172,7 +1215,7 @@ export class BossModeService {
     return Object.freeze({ action, status: 'dispatched' as const });
   }
 
-  private runLifecycleBatch(action: OrganizationAction): BossModeExecution {
+  private async runLifecycleBatch(action: OrganizationAction): Promise<BossModeExecution> {
     const snapshot = this.store.get();
     const project = snapshot.projects.find((item) => item.id === action.projectId);
     if (!project) return Object.freeze({ action, status: 'failed' as const, detail: 'Project not found.' });
@@ -1185,6 +1228,11 @@ export class BossModeService {
             projectId: project.id,
             workerId: worker.id,
           });
+          // Same rule as an explicit offboard: the Agent revision this worker
+          // used is archived, so the Agent list does not accumulate one Agent
+          // per closed project. Resume recreates a usable Agent from the
+          // recorded revision.
+          this.archiveWorkerAgent(worker.id);
         }
       }
       if (['active', 'resumed'].includes(project.state)) {
@@ -1217,6 +1265,17 @@ export class BossModeService {
           projectId: project.id,
           workerId: worker.id,
         });
+        // Offboarding archived the Agent, and an archived Agent cannot run a
+        // task. Resume therefore recreates one from the revision recorded for
+        // this worker, keeping the original instructions and grants.
+        const restored = await this.recreateResumedAgent(worker.id);
+        if (!restored) {
+          return Object.freeze({
+            action,
+            status: 'failed' as const,
+            detail: `Worker ${worker.id} resumed without a usable Agent revision; the Agent was archived at offboard and could not be recreated.`,
+          });
+        }
         // A resumed worker needs a fresh execution binding: its previous
         // WorkItem is already terminal, so reusing it fails the start
         // transition instead of running the work.

@@ -51,6 +51,7 @@ Consequences: deterministic, restart-safe, and reuses the accepted domain transi
 
 - `tests/organization-convergence.test.ts` covers refusal while work is active, refusal with an open attention, refusal for an already archived project, the offboard/quiet/archive order, exactly-once convergence, activity resetting the idle clock, and summary contents.
 - `tests/organization-convergence-runtime.test.ts` covers a real archive plus one Runtime notice carrying the stored report body.
+- `tests/organization-resume.test.ts` covers the return path: archive offboards and archives the Agent, resume recreates a usable Agent from the recorded revision, and fresh work is dispatched.
 - `tests/organization-store.test.ts` pins report-body parity between the in-memory and SQLite stores; the absence of that parity was a real defect found while writing this slice.
 
 ## Consequences
@@ -63,3 +64,4 @@ The product loop now closes without user action: a finished project quiets, repo
 2. **The summary was built after the offboard.** Offboarding changes worker state, so summarizing afterwards described the project as it no longer was. The summary is now derived from the pre-convergence snapshot.
 3. **The in-memory store silently lost report bodies.** `SqliteOrganizationStore` implemented the optional `recordReportText`/`reportTexts` pair; the in-memory store did not, so every summary said "body not retained". Both stores now behave the same and a test pins the parity.
 4. **Two `AgentChatService` instances split the conversation cache.** The live probe archived the project correctly and wrote the notice, but the user's conversation never showed it: `main.ts` built one instance for the HTTP routes and another for the sweeper. Startup now constructs exactly one instance and passes it to both, and a test asserts both entry points keep that invariant.
+5. **Convergence broke resume.** Archiving a project offboards its workers, but the lifecycle batch did not archive their Agents while an explicit offboard did — two paths with different outcomes for the same transition. Making them consistent then exposed the real defect: resume expected a usable Agent, and none existed. Resume now recreates an Agent from the recorded revision (preserving instructions and grants), rebinds the worker to the new Agent and revision, and reports a bounded failure instead of dispatching work that must fail. `archiveWorkerAgent` also no longer deletes the execution record, because that record is what makes recreation possible.
