@@ -72,7 +72,7 @@ npm run dev
 }
 ```
 
-Runtime 只启动这里声明的绝对路径命令，不继承环境变量，不接受 `shell`，并且只暴露显式列出的 `read` 工具。写入类工具与远程 MCP 传输仍需单独 ADR。
+Runtime 只启动这里声明的绝对路径命令，不继承环境变量，也不接受 `shell`。工具按副作用分成 `read`、`write`、`external` 三类全部注册：它们是否可见取决于 Agent 的授权，是否直接执行取决于执行模式。远程 MCP 传输仍需单独 ADR。
 
 需要让 Agent 参考 Skill 时，把标准 `SKILL.md` 目录放到一处，并用 `CONCHBASE_SKILLS_DIR` 指向父目录：
 
@@ -83,6 +83,28 @@ CONCHBASE_SKILLS_DIR=/path/to/skills npm run dev
 Runtime 只读取每个子目录的 `SKILL.md` 正文，最多注入 8 个 Skill、8 KiB 指令；`allowed-tools`、脚本和附件会被完全忽略。Skill 只是建议性指令，不能覆盖 Runtime 策略、工具授权或审批要求。
 
 独立 Agent 对话不需要在 Conchbase 配置供应商凭证；请在 Magpie 中配置模型、供应商、凭证、路由与 app key，Conchbase 只通过 OpenAI 兼容协议接口访问本机 Magpie。
+
+## 两种执行模式
+
+执行模式是 Runtime 级别的设置，进程启动时固定，客户端、Agent 和模型都无法切换。
+
+```sh
+npm run dev                 # 限制模式（默认）：write 与 external 工具都要审批
+npm run dev:unrestricted    # 完全放开：被授权的工具直接执行，不暂停
+```
+
+`dev:unrestricted` 会先打印实际生效的循环预算，再绑定端口。想自己指定数值时，直接用环境变量覆盖：
+
+| 变量 | 默认 | 范围 | 作用 |
+|---|---|---|---|
+| `CONCHBASE_EXECUTION_MODE` | `restricted` | `restricted` / `unrestricted` | 是否需要审批 |
+| `CONCHBASE_MAX_ITERATIONS` | `6` | 1–64 | Agent 循环最大轮数 |
+| `CONCHBASE_MAX_TOOL_CALLS_PER_TURN` | `4` | 1–16 | 单轮最多工具调用数 |
+| `CONCHBASE_LOOP_DEADLINE_MS` | `120000` | 1000–1800000 | 单任务墙钟预算 |
+
+非法值会让进程启动失败，而不是静默回退。当前生效值可以从 `GET /v1/runtime` 的 `executionMode` 与 `loopBudget` 读到，寄居蟹的运行面板也会实时显示。
+
+完全放开模式适合一次性工作区或沙箱机器；在存有真实凭据和个人数据的机器上请保持限制模式。
 
 Agent 对话 `1.8.0` 提供可续传的 SSE 实时流。先建立流再发消息即可实时看到思考、工具活动与回复：
 

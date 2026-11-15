@@ -81,6 +81,38 @@ test('MCP config rejects unsafe or unbounded declarations', () => {
   assert.throws(() => loadMcpConfig({ servers: [{ id: 'x', command: 'node', args: [], shell: true }] }), /shell|unknown/i);
 });
 
+test('discovered tools carry their description and input schema to the definition', async () => {
+  const provider = await createMcpToolProvider(config({ tools: undefined }));
+  try {
+    const echo = provider.list().find((tool) => tool.id === 'mcp_fixture_echo');
+    assert.ok(echo, 'the discovered echo tool must be registered');
+    assert.equal(echo.description, 'Echo the provided text.');
+    assert.deepEqual(echo.parameters, {
+      type: 'object',
+      properties: { text: { type: 'string' } },
+    });
+  } finally {
+    await provider.close();
+  }
+});
+
+test('a declared tool description overrides the discovery default', async () => {
+  const provider = await createMcpToolProvider({
+    servers: [{
+      id: 'fixture',
+      command: process.execPath,
+      args: [fixtureServer],
+      tools: [{ name: 'echo', sideEffect: 'read', description: 'Operator override.' }],
+    }],
+  });
+  try {
+    const echo = provider.list().find((tool) => tool.id === 'mcp_fixture_echo');
+    assert.equal(echo?.description, 'Operator override.');
+  } finally {
+    await provider.close();
+  }
+});
+
 test('MCP provider truncates oversized text results', async () => {
   const provider = await createMcpToolProvider(config({ maxResultBytes: 8 }));
   try {

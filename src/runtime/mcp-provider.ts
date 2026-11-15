@@ -21,6 +21,16 @@ const TOOL_NAME_PATTERN = /^[a-zA-Z0-9_.-]{1,64}$/;
 export interface McpToolDeclaration {
   readonly name: string;
   readonly sideEffect: ToolSideEffect;
+  /** Optional human-facing description override; discovery supplies one otherwise. */
+  readonly description?: string;
+  /** Optional parameter schema override; discovery supplies one otherwise. */
+  readonly inputSchema?: Readonly<Record<string, unknown>>;
+}
+
+interface McpDiscoveredTool {
+  readonly name: string;
+  readonly description?: string;
+  readonly inputSchema?: Readonly<Record<string, unknown>>;
 }
 
 export interface McpServerDeclaration {
@@ -109,14 +119,30 @@ function parseDeclaration(value: unknown, index: number): McpServerDeclaration {
     }
     tools = value.tools.map((entry, toolIndex) => {
       if (!isRecord(entry)) throw new ToolRejectedError('invalid_mcp_config', `servers[${index}].tools[${toolIndex}] must be an object.`);
-      assertExactKeys(entry, ['name', 'sideEffect'], `servers[${index}].tools[${toolIndex}]`);
+      assertExactKeys(
+        entry,
+        ['name', 'sideEffect', 'description', 'inputSchema'],
+        `servers[${index}].tools[${toolIndex}]`,
+      );
       if (typeof entry.name !== 'string' || !TOOL_NAME_PATTERN.test(entry.name)) {
         throw new ToolRejectedError('invalid_mcp_config', `servers[${index}].tools[${toolIndex}].name is invalid.`);
       }
       if (entry.sideEffect !== 'read' && entry.sideEffect !== 'write' && entry.sideEffect !== 'external') {
         throw new ToolRejectedError('invalid_mcp_config', `servers[${index}].tools[${toolIndex}].sideEffect is invalid.`);
       }
-      return Object.freeze({ name: entry.name, sideEffect: entry.sideEffect });
+      if (entry.description !== undefined
+        && (typeof entry.description !== 'string' || entry.description.length > 512)) {
+        throw new ToolRejectedError('invalid_mcp_config', `servers[${index}].tools[${toolIndex}].description is invalid.`);
+      }
+      if (entry.inputSchema !== undefined && !isRecord(entry.inputSchema)) {
+        throw new ToolRejectedError('invalid_mcp_config', `servers[${index}].tools[${toolIndex}].inputSchema is invalid.`);
+      }
+      return Object.freeze({
+        name: entry.name,
+        sideEffect: entry.sideEffect,
+        ...(typeof entry.description === 'string' ? { description: entry.description } : {}),
+        ...(isRecord(entry.inputSchema) ? { inputSchema: entry.inputSchema } : {}),
+      });
     });
   }
   const boundedTimeout = (input: unknown, fallback: number): number =>
@@ -200,13 +226,21 @@ class McpConnection {
     await this.client.connect(this.transport);
   }
 
-  async listTools(_timeoutMs: number): Promise<readonly { name: string }[]> {
+  async listTools(_timeoutMs: number): Promise<readonly McpDiscoveredTool[]> {
     const result = await this.client.listTools();
     if (!isRecord(result) || !Array.isArray(result.tools)) {
       throw new ToolRejectedError('mcp_invalid_response');
     }
-    return result.tools.flatMap((entry) =>
-      isRecord(entry) && typeof entry.name === 'string' ? [{ name: entry.name }] : []);
+    return result.tools.flatMap((entry) => {
+      if (!isRecord(entry) || typeof entry.name !== 'string') return [];
+      return [{
+        name: entry.name,
+        ...(typeof entry.description === 'string' && entry.description.length > 0
+          ? { description: entry.description }
+          : {}),
+        ...(isRecord(entry.inputSchema) ? { inputSchema: entry.inputSchema } : {}),
+      }];
+    });
   }
 
   async callTool(name: string, args: ToolArguments, timeoutMs: number): Promise<unknown> {
@@ -303,14 +337,18 @@ export async function createMcpToolProvider(input: unknown): Promise<McpToolProv
           .map((tool) => ({
             name: tool.name,
             sideEffect: server.discoverySideEffect ?? ('read' as const),
+            ...(tool.description ? { description: tool.description } : {}),
+            ...(tool.inputSchema ? { inputSchema: tool.inputSchema } : {}),
           }));
       for (const declared of discovered) {
         entries.push({
           definition: Object.freeze({
             id: `mcp_${server.id}_${declared.name.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase()}`,
             version: 1,
-            description: `MCP tool ${declared.name} from ${server.id}.`,
+            description: declared.description?.slice(0, 512)
+              ?? `MCP tool ${declared.name} from ${server.id}.`,
             sideEffect: declared.sideEffect,
+            ...(declared.inputSchema ? { parameters: declared.inputSchema } : {}),
           }),
           server,
           connection,

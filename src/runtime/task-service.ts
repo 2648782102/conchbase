@@ -841,7 +841,7 @@ export class TaskService {
             tools: tools.list().map((tool) => ({
               id: tool.id,
               description: tool.description,
-              parameters: { type: 'object', additionalProperties: true },
+              parameters: tool.parameters ?? { type: 'object', additionalProperties: true },
             })),
           }
           : {}),

@@ -7,11 +7,19 @@ export type ToolSideEffect = 'read' | 'write' | 'external';
 export type ToolScalar = string | number | boolean | null;
 export type ToolArguments = Readonly<Record<string, ToolScalar>>;
 
+/**
+ * A bounded, JSON-Schema-shaped parameter description handed to the model.
+ * It is data, not validation: the Runtime still rejects arguments that do not
+ * fit the tool's own checks.
+ */
+export type ToolParameterSchema = Readonly<Record<string, unknown>>;
+
 export interface ToolDefinition {
   readonly id: string;
   readonly version: 1;
   readonly description: string;
   readonly sideEffect: ToolSideEffect;
+  readonly parameters?: ToolParameterSchema;
 }
 
 export interface ToolExecutionResult {

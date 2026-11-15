@@ -88,3 +88,5 @@ Consequences: operators choose the trade-off consciously; the default stays safe
 Operators gain a deliberate choice between "the model can act, and I confirm consequential actions" and "the model acts freely". The default remains the former. The MCP read-only filter disappears, so models can see the tools that exist; the approval gate, not visibility, becomes the control in restricted mode.
 
 Unrestricted mode is documented as a trust assumption: everything the Agent is granted may execute without review. It is intended for sandboxed machines, disposable workspaces, and operators who accept that risk.
+
+> Update 2026-11-15: the mode is reachable as a single command, `npm run dev:unrestricted`, which sets `CONCHBASE_EXECUTION_MODE=unrestricted` plus a raised loop budget and prints the effective values before binding. It is one script rather than two, so the restricted and unrestricted paths cannot drift. Separately, discovered MCP tools now carry their `description` and `inputSchema` into the tool definition instead of being flattened; before this fix a model could see a write-capable MCP tool but not how to call it.
