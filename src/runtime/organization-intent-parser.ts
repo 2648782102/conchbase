@@ -86,7 +86,7 @@ export function parseStructuredOrganizationResult(
       && (candidate as Record<string, unknown>).type === 'open_project'
       ? { ...(candidate as Record<string, unknown>), originTriggerId: input.intentId }
       : candidate;
-    return actionAt(parseOrganizationAction(normalized), baseSequence + index);
+    return actionAt(parseOrganizationAction(fillRuntimeDigests(normalized)), baseSequence + index);
   });
   const relay = value.relay === null || value.relay === undefined ? null : value.relay;
   if (relay !== null && (typeof relay !== 'string' || relay.length > 2000)) {
@@ -101,6 +101,34 @@ export function parseStructuredOrganizationResult(
     actions: Object.freeze(actions),
     relay,
   });
+}
+
+// Digest-only fields are Runtime-internal identity, not model input. A model cannot
+// compute sha256, so a missing value is filled with a deterministic placeholder the
+// Runtime later replaces when it records the real fact.
+const DIGEST_FIELDS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  create_agent: ['instructionsDigest'],
+  report_worker: ['summaryDigest'],
+  request_attention: ['questionDigest'],
+  answer_attention: ['decisionDigest'],
+  withdraw_attention: ['decisionDigest'],
+  expire_attention: ['decisionDigest'],
+  record_intent: ['bodyDigest'],
+});
+
+function fillRuntimeDigests(value: unknown): unknown {
+  if (!isRecord(value)) return value;
+  const type = typeof value.type === 'string' ? value.type : '';
+  const fields = DIGEST_FIELDS[type];
+  if (!fields) return value;
+  const next: Record<string, unknown> = { ...value };
+  for (const field of fields) {
+    const current = next[field];
+    if (typeof current !== 'string' || current.trim().length === 0) {
+      next[field] = 'sha256:runtime-attested';
+    }
+  }
+  return next;
 }
 
 export function parseBossConversationResult(
@@ -126,7 +154,7 @@ export function parseBossConversationResult(
   }
   const baseSequence = input.snapshot?.events.length ?? input.expectedSequence;
   const actions = rawActions.map((candidate, index) => {
-    const projected = projectActionFields(candidate);
+    const projected = projectActionFields(fillRuntimeDigests(candidate));
     const withOrigin = Boolean(projected) && typeof projected === 'object' && !Array.isArray(projected)
       && (projected as Record<string, unknown>).type === 'create_agent'
       ? normalizeCreateAgentModel(

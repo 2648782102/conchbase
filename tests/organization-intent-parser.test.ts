@@ -606,3 +606,26 @@ test('a create_agent action can supply task-specific instructions', async () => 
   assert.ok(create);
   assert.equal((create as { instructions?: string }).instructions, '恰好输出两句话，不要列表。');
 });
+
+test('Boss parser fills Runtime-owned digest fields the model cannot compute', async () => {
+  const content = JSON.stringify({
+    reply: '已答掉待办。',
+    actions: [{
+      type: 'answer_attention',
+      expectedSequence: 0,
+      projectId: 'project_digest',
+      attentionId: 'att_digest',
+    }],
+  });
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/boss-chat',
+    fetch: (async () => new Response(JSON.stringify({
+      choices: [{ message: { content } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof globalThis.fetch,
+  });
+  const result = await parser.parse({ intentId: 'int_digest', text: '答掉它', expectedSequence: 0 });
+  const answer = result.actions.find((action) => action.type === 'answer_attention');
+  assert.ok(answer);
+  assert.match((answer as { decisionDigest: string }).decisionDigest, /^sha256:/);
+});
