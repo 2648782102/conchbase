@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { AgentDetail } from './agent-profile.js';
 import type { TaskService } from './task-service.js';
+import { agUiEventType } from './ag-ui-events.js';
 import { TaskConflictError, TaskNotFoundError } from './task-store.js';
 import type { TaskSnapshot } from './task-store.js';
 import { chineseAgentDisplayName } from './agent-name.js';
@@ -140,6 +141,12 @@ export interface AgentChatStreamFrame {
   readonly version: typeof AGENT_CHAT_CONTRACT_VERSION;
   readonly conversationId: string;
   readonly kind: 'snapshot' | 'message' | 'health';
+  /**
+   * Additive AG-UI mapping. `kind` remains the Conchbase vocabulary under
+   * ADR 0060; this field lets an AG-UI client map the same frame without a
+   * private adapter. `null` means the frame has no faithful AG-UI equivalent.
+   */
+  readonly agUiType: string | null;
   readonly eventId: string | null;
   readonly messageId: string | null;
   readonly message: AgentChatMessage | null;
@@ -563,6 +570,7 @@ export class AgentChatService {
       version: AGENT_CHAT_CONTRACT_VERSION,
       conversationId,
       kind: 'snapshot',
+      agUiType: agUiEventType({ kind: 'snapshot' }),
       eventId: cursor,
       messageId: null,
       message: null,
@@ -584,6 +592,11 @@ export class AgentChatService {
       version: AGENT_CHAT_CONTRACT_VERSION,
       conversationId,
       kind: 'message',
+      agUiType: agUiEventType({
+        kind: 'message',
+        messageState: message.state,
+        author: message.author,
+      }),
       eventId,
       messageId: message.id,
       message,

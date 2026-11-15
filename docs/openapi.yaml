@@ -5460,7 +5460,7 @@ components:
     AgentChatStreamFrame:
       type: object
       additionalProperties: false
-      required: [version, conversationId, kind, eventId, messageId, message, conversation]
+      required: [version, conversationId, kind, agUiType, eventId, messageId, message, conversation]
       properties:
         version:
           $ref: '#/components/schemas/AgentChatVersion'
@@ -5469,6 +5469,12 @@ components:
         kind:
           type: string
           enum: [snapshot, message, health]
+        agUiType:
+          type: [string, 'null']
+          description: >-
+            Additive AG-UI mapping for this frame. Conchbase keeps its own `kind` vocabulary; this field lets an
+            AG-UI client map the same frame without a private adapter. `null` means the frame has no faithful
+            AG-UI equivalent (transport health frames).
         eventId:
           type: [string, 'null']
         messageId:

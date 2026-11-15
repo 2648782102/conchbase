@@ -6,6 +6,7 @@ import {
 } from '../../../runtime/agent-chat.js';
 import type { AgentChatStreamFrame } from '../../../runtime/agent-chat.js';
 import { EventOrderError } from '../../../runtime/event-log.js';
+import { agUiEventType } from '../../../runtime/ag-ui-events.js';
 
 const STREAM_INTERVAL_MS = 300;
 const HEARTBEAT_MS = 15_000;
@@ -241,6 +242,11 @@ export function registerAgentChatRoutes(
                 version: AGENT_CHAT_CONTRACT_VERSION,
                 conversationId,
                 kind: 'message',
+                agUiType: agUiEventType({
+                  kind: 'message',
+                  messageState: changed.state,
+                  author: changed.author,
+                }),
                 eventId: cursor,
                 messageId: changed.id,
                 message: changed,
@@ -279,6 +285,7 @@ export function registerAgentChatRoutes(
           version: AGENT_CHAT_CONTRACT_VERSION,
           conversationId,
           kind: 'health',
+          agUiType: null,
           eventId: cursor,
           messageId: null,
           message: null,

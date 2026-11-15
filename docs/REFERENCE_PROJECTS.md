@@ -2,6 +2,41 @@
 
 Status: research notes observed on 2026-11-07 (Asia/Shanghai). This is a time-boxed snapshot, not a current ranking, product contract, or accepted architecture. GitHub Trending positions, repository metadata, and README claims change; re-check before treating any item as current evidence. No code was copied from these projects, and their licenses vary. Verify license compatibility before reusing implementation.
 
+
+## Cross-check 2026-11-15: three adopted patterns
+
+A focused review of agent-runtime and client-protocol projects produced three concrete adoptions. These are recorded as implementation notes, not new contracts; none of them changes a published path.
+
+### 1. Tool-result paging (adopted)
+
+Mature MCP clients do not silently truncate a tool result. They tell the model that the result was cut and how to request the next slice. Conchbase previously returned the first 8 KiB with no indication that more existed, which teaches a model that the fragment is the whole answer.
+
+Implemented in `src/runtime/tool-result-paging.ts`: a truncated result carries a footer naming the exact `offset` to continue from, `workspace_read` and `workspace_list` accept that offset, and multi-byte characters are never split. Built-in tools also publish a parameter schema so a model knows which arguments exist.
+
+Rejected: unbounded result passthrough. The byte cap is what keeps a large file from consuming the context budget; only the *silence* around the cap was wrong.
+
+### 2. OpenTelemetry GenAI semantic conventions (adopted)
+
+Conchbase already emits a complete durable event log, but with a private field vocabulary. The OTel GenAI conventions define names such as `gen_ai.provider.name`, `gen_ai.request.model`, and `gen_ai.agent.name`.
+
+Implemented in `src/runtime/otel-genai.ts`: agent-loop events gain additive `otel.*` attributes alongside the existing fields. Nothing is renamed, so every accepted ADR and client keeps working, while an operator can forward events to an OTel-aware backend without a translation layer.
+
+Rejected: converting Conchbase's own event vocabulary to OTel. That would break the frozen contracts for a naming preference. The conventions are also still marked development upstream, so only a stable subset is adopted.
+
+### 3. AG-UI event naming (adopted additively)
+
+AG-UI defines an agent-to-frontend event vocabulary (`RUN_STARTED`, `TEXT_MESSAGE_CONTENT`, `TOOL_CALL_START`, …). Conchbase's Agent Chat SSE stream is the same shape under a private vocabulary accepted by ADR 0060.
+
+Implemented in `src/runtime/ag-ui-events.ts`: each stream frame additionally carries `agUiType`. `kind` remains authoritative for existing clients; `agUiType` lets a third-party AG-UI client map frames without Conchbase maintaining an adapter. Frame kinds with no faithful equivalent (transport health) report `null` rather than a misleading label.
+
+Rejected: replacing the ADR 0060 frame vocabulary. The mapping is additive precisely so no accepted client changes.
+
+### Agents explicitly not adopted as dependencies
+
+- **LangGraph / CrewAI / similar orchestration frameworks.** They own the agent loop. Conchbase's product invariant is that the Runtime owns execution, so adopting one would invert the architecture rather than accelerate it.
+- **AG-UI as a required transport.** Adopt the naming, not the dependency. The existing SSE contract is already implemented and validated on both sides.
+- **OTel SDK in the Runtime.** Emitting convention-shaped attributes is enough; shipping an exporter would add a dependency and a process-lifetime concern the Runtime does not need.
+
 ## Method and scope
 
 - Read [GitHub Trending daily](https://github.com/trending?since=daily), [weekly](https://github.com/trending?since=weekly), and [monthly](https://github.com/trending?since=monthly), then selected agent, MCP, Skills, plugin, and control-surface projects.

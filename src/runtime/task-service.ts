@@ -21,6 +21,11 @@ import { OpenAiChatCompletionsProvider } from './magpie-provider.js';
 import { projectSkills, projectToolProvider } from './capability-grants.js';
 import type { ExecutionMode, LoopBudget } from '../config/runtime-config.js';
 import {
+  OTEL_GENAI_ATTRIBUTES,
+  flattenOtelAttributes,
+  otelGenAiAttributes,
+} from './otel-genai.js';
+import {
   AgentConflictError,
   AgentNotFoundError,
   AgentValidationError,
@@ -822,10 +827,7 @@ export class TaskService {
     for (let iteration = startIteration; iteration < maxIterations; iteration += 1) {
       if (signal.aborted) break;
       if (Date.now() > deadline) throw new Error('Agent loop exceeded its time budget.');
-      this.store.recordEvent(task.id, {
-        ...this.eventInput(task, 'agent_loop.turn_started', 'running', task.attempt),
-        data: { iteration },
-      });
+      this.recordLoopEvent(task, 'agent_loop.turn_started', 'running', { iteration });
       partialOutput = '';
       let deltaIndex = 0;
       turn = await provider.streamTurn({
@@ -859,10 +861,7 @@ export class TaskService {
       if (signal.aborted) break;
       if (turn.kind === 'final') {
         completed = true;
-        this.store.recordEvent(task.id, {
-          ...this.eventInput(task, 'agent_loop.turn_completed', 'running', task.attempt),
-          data: { iteration, kind: 'final' },
-        });
+        this.recordLoopEvent(task, 'agent_loop.turn_completed', 'running', { iteration, kind: 'final' });
         break;
       }
       if (turn.kind === 'tool_call_observation') {
@@ -944,23 +943,22 @@ export class TaskService {
     args: Readonly<Record<string, string | number | boolean | null>>,
     result: { readonly digest: string; readonly bytes: number },
   ): void {
-    this.store.recordEvent(task.id, {
-      ...this.eventInput(task, 'agent_loop.tool_executed', 'running', task.attempt),
-      data: {
-        iteration,
-        toolId,
-        toolVersion: 1,
-        argumentsDigest: digestArguments(args),
-        resultDigest: result.digest,
-        bytes: result.bytes,
-      },
+    this.recordLoopEvent(task, 'agent_loop.tool_executed', 'running', {
+      iteration,
+      toolId,
+      toolVersion: 1,
+      argumentsDigest: digestArguments(args),
+      resultDigest: result.digest,
+      bytes: result.bytes,
     });
   }
 
   private recordToolFailed(task: TaskSnapshot, iteration: number, toolId: string, errorCode: string): void {
-    this.store.recordEvent(task.id, {
-      ...this.eventInput(task, 'agent_loop.tool_failed', 'running', task.attempt),
-      data: { iteration, toolId, toolVersion: 1, errorCode },
+    this.recordLoopEvent(task, 'agent_loop.tool_failed', 'running', {
+      iteration,
+      toolId,
+      toolVersion: 1,
+      errorCode,
     });
   }
 
@@ -976,14 +974,11 @@ export class TaskService {
     for (let index = 0; index < calls.length; index += 1) {
       const call = calls[index]!;
       if (signal.aborted) throw new Error('Task was cancelled.');
-      this.store.recordEvent(task.id, {
-        ...this.eventInput(task, 'agent_loop.tool_requested', 'running', task.attempt),
-        data: {
-          iteration,
-          toolId: call.name,
-          toolVersion: 1,
-          argumentsDigest: digestArguments(call.arguments),
-        },
+      this.recordLoopEvent(task, 'agent_loop.tool_requested', 'running', {
+        iteration,
+        toolId: call.name,
+        toolVersion: 1,
+        argumentsDigest: digestArguments(call.arguments),
       });
       const definition = tools?.list().find((entry) => entry.id === call.name);
       if (!definition) {
@@ -1208,6 +1203,33 @@ export class TaskService {
       ...(task.providerId ? { providerId: task.providerId } : {}),
       ...(task.modelId ? { modelId: task.modelId } : {}),
     };
+  }
+
+  /**
+   * Records a loop event with additive OTel GenAI attributes merged into its
+   * `data`. Event data is a flat scalar record, so the attribute keys carry the
+   * `otel.` namespace themselves rather than nesting an object. Existing
+   * Conchbase fields are never renamed or removed.
+   */
+  private recordLoopEvent(
+    task: TaskSnapshot,
+    type: TaskEventType,
+    state: TaskSnapshot['state'],
+    data: Readonly<Record<string, string | number | boolean | null>>,
+  ): void {
+    const agentName = task.agentId && task.agentRevisionId
+      ? this.store.getAgentRevision(task.agentId, task.agentRevisionId)?.name
+      : undefined;
+    const otel = flattenOtelAttributes(otelGenAiAttributes({
+      ...(task.providerId ? { providerId: task.providerId } : {}),
+      ...(task.modelId ? { modelId: task.modelId } : {}),
+      ...(task.agentId ? { agentId: task.agentId } : {}),
+      ...(agentName ? { agentName } : {}),
+    }, { [OTEL_GENAI_ATTRIBUTES.operationName]: 'invoke_agent' }));
+    this.store.recordEvent(task.id, {
+      ...this.eventInput(task, type, state, task.attempt),
+      data: { ...data, ...otel },
+    });
   }
 
   private toolLedgerEvent(
