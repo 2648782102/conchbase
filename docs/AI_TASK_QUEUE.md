@@ -23,7 +23,8 @@ ADR 0052 accepts the Agent-loop architecture and ADR 0053 fixes its first slice.
 9. **Implemented:** ADR 0062 persists bounded intent text in private SQLite so project goals survive restart, and the Boss prompt now states it may create a project with a generated `projectId`.
 10. **Implemented:** ADR 0063 persists bounded worker report text and projects it into Boss facts, isolates per-action failures so one bad action does not abort a turn, normalizes a malformed agent model, and gives workers real project context.
 11. **Implemented:** ADR 0064 fixes trailing-line ATTENTION detection, accepts task-specific worker instructions, caps a project at four non-offboarded workers, and tightens the Boss prompt.
-12. **Blocked:** network tools, external writes, arbitrary shell, plugin hosts, and secret injection. These require their own accepted ADRs and must not be smuggled in as "read" tools.
+12. **Implemented:** ADR 0065 enforces delegation lifetime on authorize/start/report, retires a worker after two convergence failures, and archives its Agent on offboard.
+13. **Blocked:** network tools, external writes, arbitrary shell, plugin hosts, and secret injection. These require their own accepted ADRs and must not be smuggled in as "read" tools.
 
 Superseded proposal records `0002`–`0008` now live in `docs/decisions/archive/`. They are historical context, not open contracts. Do not re-open them or cite them as current direction; use ADR 0052/0053 and the target documents instead.
 

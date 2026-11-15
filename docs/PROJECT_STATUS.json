@@ -272,6 +272,11 @@
       "id": "boss-self-review-hardening",
       "summary": "ADR 0064 detects ATTENTION on any line, accepts bounded task-specific worker instructions, limits a project to four non-offboarded workers, and tightens the Boss prompt on negative claims and failure classification.",
       "evidence": "src/runtime/organization-contract.ts"
+    },
+    {
+      "id": "worker-lifecycle-enforcement",
+      "summary": "ADR 0065 enforces delegation lifetime and active state on authorize_worker, start_worker and report_worker, retires a worker after two non-billing failures, and archives the Agent when a worker is offboarded.",
+      "evidence": "src/runtime/organization-contract.ts"
     }
   ],
   "validationEvidence": [
@@ -473,6 +478,12 @@
       "id": "durable-intent-text-fixture",
       "summary": "Persistence fixture records intent text, reopens the database, and asserts the text survives.",
       "evidence": "tests/organization-persistence.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "worker-lifecycle-fixture",
+      "summary": "Fixtures assert an expired delegation blocks start_worker, one failure does not retire a worker, and offboarding archives the Agent.",
+      "evidence": "tests/organization-contract.test.ts",
       "executableFixture": true
     }
   ],
