@@ -25,6 +25,13 @@ import { containsSecretLike } from './secret-filter.js';
 
 export const BOSS_MODE_SERVICE_VERSION = 2;
 
+/**
+ * The provider the Boss conversation talks to. Magpie is currently the only
+ * compatibility adapter; when a second adapter is accepted this becomes an
+ * explicit configuration value rather than a literal.
+ */
+export const BOSS_UPSTREAM_PROVIDER_ID = 'magpie';
+
 export class BossModeServiceError extends Error {
   constructor(message: string) {
     super(message);
@@ -73,6 +80,12 @@ export interface BossModeServiceOptions {
   readonly parser?: OrganizationIntentParser;
   readonly now?: () => string;
   readonly waitForTasks?: boolean;
+  /**
+   * The model the Boss conversation is configured to use. When present it wins
+   * over the provider catalog order, so the Boss never silently runs on a model
+   * the operator did not choose.
+   */
+  readonly bossModelReference?: { readonly providerId: string; readonly modelId: string };
   /**
    * Capabilities granted to dynamically hired worker Agents. Defaults to the
    * Runtime's registered read-only built-ins; writes, MCP, and plugin
@@ -198,6 +211,7 @@ export class BossModeService {
   private readonly parser: OrganizationIntentParser;
   private readonly now: () => string;
   private readonly waitForTasks: boolean;
+  private readonly bossModelReference: { readonly providerId: string; readonly modelId: string } | undefined;
   private readonly workerCapabilityGrants: () => readonly CapabilityGrant[];
   private readonly conversation: BossModeServiceOptions['conversation'];
   private readonly onAccepted: BossModeServiceOptions['onAccepted'];
@@ -213,6 +227,7 @@ export class BossModeService {
     this.parser = options.parser ?? createDeterministicOrganizationIntentParser();
     this.now = options.now ?? (() => new Date().toISOString());
     this.waitForTasks = options.waitForTasks ?? true;
+    this.bossModelReference = options.bossModelReference;
     this.workerCapabilityGrants = options.workerCapabilityGrants
       ?? (() => Object.freeze([]));
     this.conversation = options.conversation;
@@ -510,6 +525,14 @@ export class BossModeService {
   }
 
   private async resolveModelReference(): Promise<{ providerId: string; modelId: string }> {
+    // The Boss conversation has its own configured model (`CONCHBASE_BOSS_MODEL`
+    // or the default model). Taking the first catalog entry instead would hand
+    // the Boss a model the operator never chose, and would break whenever that
+    // arbitrary entry is unavailable — which is exactly what happened in a live
+    // probe: the first entry was a model whose quota was exhausted.
+    const configured = this.bossModelReference;
+    if (configured) return configured;
+
     const taskService = this.taskService;
     if (!taskService) throw new BossModeServiceError('Task service is unavailable.');
     try {

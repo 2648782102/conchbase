@@ -4,7 +4,7 @@ import path from 'node:path';
 import { loadRuntimeConfig } from './config/runtime-config.js';
 import { createApp } from './http/create-app.js';
 import { createTaskService } from './runtime/task-service.js';
-import { BossModeService } from './runtime/boss-mode-service.js';
+import { BOSS_UPSTREAM_PROVIDER_ID, BossModeService } from './runtime/boss-mode-service.js';
 import { ControlledExecutionService } from './runtime/controlled-execution.js';
 import { IsolatedExecutionService } from './runtime/isolated-execution.js';
 import { PrimaryConversationService } from './runtime/primary-conversation.js';
@@ -59,6 +59,7 @@ if (config.organizationIntentModel || config.bossModel || config.defaultModel) {
     });
   const bossMode = new BossModeService(taskService.store.organization, taskService, {
     parser,
+    bossModelReference: { providerId: BOSS_UPSTREAM_PROVIDER_ID, modelId: config.bossModel ?? config.defaultModel },
     workerCapabilityGrants: () => defaultWorkerGrants(toolRuntime.tools, toolRuntime.skills.skills),
     conversation: { recordIntentText: (intentId, text) => conversationService.recordIntentText(intentId, text) },
   });

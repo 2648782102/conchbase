@@ -476,15 +476,25 @@ export function createOpenAiCompatibleOrganizationIntentParser(options: {
         throw new OrganizationIntentParseError('Model provider request failed.');
       }
       if (!response.ok) throw new OrganizationIntentParseError(`Model provider returned HTTP ${response.status}.`);
-      let payload: unknown;
-      try {
-        payload = await response.json();
-      } catch {
-        throw new OrganizationIntentParseError('Model provider returned invalid JSON.');
+      // The request asks for `stream: true`, so a conforming upstream answers
+      // with text/event-stream. Reading such a body with `response.json()`
+      // fails on the first `data:` line. Honour the response's own content type
+      // instead of assuming the format from the request.
+      const isStreamed = response.headers.get('content-type')?.includes('text/event-stream') ?? false;
+      let content: unknown;
+      if (isStreamed) {
+        content = await readStructuredStream(response);
+      } else {
+        let payload: unknown;
+        try {
+          payload = await response.json();
+        } catch {
+          throw new OrganizationIntentParseError('Model provider returned invalid JSON.');
+        }
+        content = (payload as {
+          choices?: readonly { message?: { content?: unknown } }[];
+        })?.choices?.[0]?.message?.content;
       }
-      const content = (payload as {
-        choices?: readonly { message?: { content?: unknown } }[];
-      })?.choices?.[0]?.message?.content;
       if (typeof content !== 'string' || content.trim().length === 0) {
         throw new OrganizationIntentParseError('Model provider returned an empty completion.');
       }
@@ -656,6 +666,50 @@ async function readBossJson(response: Response): Promise<unknown> {
   return (payload as {
     choices?: readonly { message?: { content?: unknown } }[];
   })?.choices?.[0]?.message?.content;
+}
+
+/**
+ * Reads an OpenAI-compatible SSE completion into one string. Used by the
+ * structured intent parser, whose request asks for streaming but which must
+ * still work against an upstream that answers with a single JSON body.
+ */
+async function readStructuredStream(response: Response): Promise<string> {
+  if (!response.body) {
+    throw new OrganizationIntentParseError('Model provider returned no response stream.');
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let output = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newline = buffer.indexOf('\n');
+    while (newline >= 0) {
+      const line = buffer.slice(0, newline).replace(/\r$/, '').trim();
+      buffer = buffer.slice(newline + 1);
+      newline = buffer.indexOf('\n');
+      if (line.length === 0 || line.startsWith(':')) continue;
+      if (!line.startsWith('data:')) continue;
+      const data = line.slice(5).trim();
+      if (data === '[DONE]') continue;
+      let payload: unknown;
+      try {
+        payload = JSON.parse(data);
+      } catch {
+        continue;
+      }
+      const delta = (payload as {
+        choices?: readonly { delta?: { content?: unknown } }[];
+      })?.choices?.[0]?.delta?.content;
+      if (typeof delta === 'string' && delta.length > 0) output += delta;
+      if (output.length > 24_000) {
+        throw new OrganizationIntentParseError('Model provider exceeded the reply length limit.');
+      }
+    }
+  }
+  return output;
 }
 
 async function readBossStream(

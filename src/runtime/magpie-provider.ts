@@ -1,5 +1,6 @@
 import type {
   ModelAdapterInput,
+  ProviderMessage,
   ProviderModelTurn,
   StreamingModelTurn,
   StructuredModelAdapter,
@@ -78,6 +79,43 @@ export class ModelProviderError extends Error {
     super(message);
     this.name = 'ModelProviderError';
   }
+}
+
+/**
+ * Translates Conchbase's internal provider-message shape into the OpenAI Chat
+ * Completions wire format. The internal shape uses camelCase (`toolCalls`,
+ * `toolCallId`) because it is a Runtime contract; the wire format is snake_case
+ * and requires `tool_call_id` for every tool result. Sending the internal shape
+ * verbatim makes a model see a tool result it cannot correlate with the call
+ * that produced it, which is why a model would loop on a tool it already ran.
+ */
+function toOpenAiMessages(
+  messages: readonly ProviderMessage[],
+): readonly Record<string, unknown>[] {
+  return messages.map((message) => {
+    if (message.role === 'tool') {
+      return {
+        role: 'tool',
+        tool_call_id: message.toolCallId,
+        content: message.content,
+      };
+    }
+    if (message.role === 'assistant' && message.toolCalls && message.toolCalls.length > 0) {
+      return {
+        role: 'assistant',
+        content: message.content,
+        tool_calls: message.toolCalls.map((call) => ({
+          id: call.id,
+          type: 'function',
+          function: {
+            name: call.name,
+            arguments: JSON.stringify(call.arguments ?? {}),
+          },
+        })),
+      };
+    }
+    return { role: message.role, content: message.content };
+  });
 }
 
 function normalizeBaseUrl(baseUrl: string): string {
@@ -215,7 +253,7 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
         body: JSON.stringify({
           model: this.model,
           stream: true,
-          messages: input.messages ?? [{ role: 'user', content: input.prompt }],
+          messages: toOpenAiMessages(input.messages ?? [{ role: 'user', content: input.prompt }]),
           ...(input.reasoningEffort ? { reasoning_effort: input.reasoningEffort } : {}),
           ...(input.tools && input.tools.length > 0
             ? {

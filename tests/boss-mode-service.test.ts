@@ -609,3 +609,25 @@ test('offboarding a worker archives its Agent so the list stays clean', async ()
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('the configured Boss model wins over provider catalog order', async () => {
+  // Live probe: the catalog's first entry had exhausted quota (HTTP 402), and
+  // taking it silently overrode the operator's configured Boss model.
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-model-'));
+  try {
+    const service = createTaskService(path.join(directory, 'runtime.sqlite'), {
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/model',
+    });
+    const boss = new BossModeService(service.store.organization, service, {
+      bossModelReference: { providerId: 'magpie', modelId: 'chosen-by-operator' },
+    });
+    const resolved = await (boss as unknown as {
+      resolveModelReference(): Promise<{ providerId: string; modelId: string }>;
+    }).resolveModelReference();
+    assert.deepEqual(resolved, { providerId: 'magpie', modelId: 'chosen-by-operator' });
+    service.close();
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

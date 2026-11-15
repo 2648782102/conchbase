@@ -629,3 +629,45 @@ test('Boss parser fills Runtime-owned digest fields the model cannot compute', a
   assert.ok(answer);
   assert.match((answer as { decisionDigest: string }).decisionDigest, /^sha256:/);
 });
+
+test('the structured intent parser reads an SSE reply instead of failing on it', async () => {
+  // The request asks for streaming, so a conforming upstream answers with
+  // text/event-stream. Reading that body with response.json() fails on the
+  // first `data:` line, which previously surfaced as "invalid JSON".
+  const sse = [
+    ': heartbeat',
+    '',
+    'data: ' + JSON.stringify({ choices: [{ delta: { content: '{"actions":' } }] }),
+    '',
+    'data: ' + JSON.stringify({ choices: [{ delta: { content: '[],"reply":"你好"}' } }] }),
+    '',
+    'data: [DONE]',
+    '',
+  ].join('\n');
+  const parser = createOpenAiCompatibleOrganizationIntentParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/model',
+    fetch: (async () => new Response(sse, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    })) as typeof globalThis.fetch,
+  });
+  const result = await parser.parse({ text: '你好', intentId: 'int_fixture', expectedSequence: 0 });
+  assert.deepEqual(result.actions, []);
+});
+
+test('the structured intent parser still accepts a plain JSON body', async () => {
+  const body = JSON.stringify({
+    choices: [{ message: { content: '{"actions":[],"reply":"plain"}' } }],
+  });
+  const parser = createOpenAiCompatibleOrganizationIntentParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/model',
+    fetch: (async () => new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })) as typeof globalThis.fetch,
+  });
+  const result = await parser.parse({ text: 'hi', intentId: 'int_fixture', expectedSequence: 0 });
+  assert.deepEqual(result.actions, []);
+});
