@@ -257,6 +257,11 @@
       "id": "agent-chat-live-stream",
       "summary": "ADR 0060 adds GET /v1/agent-chat/conversations/{conversationId}/events as a resumable SSE projection with a snapshot first frame, bounded replay, heartbeats, and Last-Event-ID support. The Agent Chat contract is 1.8.0 with six paths.",
       "evidence": "src/http/routes/v1/agent-chat.ts"
+    },
+    {
+      "id": "durable-intent-text",
+      "summary": "ADR 0062 persists bounded intent text in organization_intent_texts so project purpose survives restart, and the Boss prompt allows generating a projectId for open_project.",
+      "evidence": "src/runtime/organization-store.sqlite.ts"
     }
   ],
   "validationEvidence": [
@@ -452,6 +457,12 @@
       "id": "agent-chat-live-stream-fixture",
       "summary": "Executable fixtures cover the snapshot frame, projected tool/approval updates, cursor resume, event-id dedup, and invalid cursor 400.",
       "evidence": "tests/agent-chat-stream.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "durable-intent-text-fixture",
+      "summary": "Persistence fixture records intent text, reopens the database, and asserts the text survives.",
+      "evidence": "tests/organization-persistence.test.ts",
       "executableFixture": true
     }
   ],
