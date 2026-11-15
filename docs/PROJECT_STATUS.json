@@ -124,6 +124,11 @@
       "evidence": "docs/decisions/0050-boss-conversation-hardening.md"
     },
     {
+      "id": "boss-memory-proposals",
+      "summary": "ADR 0083 adds a conversational memory proposal channel: the Boss may return an optional memory array of at most four project- or agent-scoped entries. The Runtime validates each entry with the same parser as any write, refuses runtime scope and secret-like values, rejects malformed proposals wholesale, and drops entries whose project or agent target does not exist. The model proposes; the Runtime decides.",
+      "evidence": "src/runtime/organization-intent-parser.ts"
+    },
+    {
       "id": "boss-mode-execution-bridge",
       "summary": "A Runtime-owned Boss-mode bridge parses untrusted structured intent output, commits validated actions, creates real Agent revisions through TaskService, binds durable WorkItems, and returns ordered structured relays.",
       "evidence": "src/runtime/boss-mode-service.ts"
@@ -416,6 +421,12 @@
       "id": "boss-conversation-hardening-fixture",
       "summary": "Executable fixtures cover pure-chat no organization writes, readable organization facts, SSE progress, identity/capability normalization, durable Agent Chat reopen, and in-flight restart recovery.",
       "evidence": "tests/agent-chat-store.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "boss-memory-proposal-fixture",
+      "summary": "Executable fixtures cover accepting a valid project-scoped proposal, refusing runtime scope and secret-like bodies, rejecting malformed or oversize proposals, leaving the no-memory path unchanged, and proving the Runtime persists a valid proposal while dropping one aimed at a nonexistent project.",
+      "evidence": "tests/boss-memory-write.test.ts",
       "executableFixture": true
     },
     {

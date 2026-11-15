@@ -9,6 +9,7 @@ import {
 import { chineseAgentDisplayName } from './agent-name.js';
 import type { BossOrganizationFacts } from './boss-organization-context.js';
 import { containsSecretLike } from './secret-filter.js';
+import { parseAgentMemoryInput, type AgentMemoryInput } from './agent-memory.js';
 
 export const ORGANIZATION_INTENT_PARSER_VERSION = 1;
 
@@ -52,6 +53,12 @@ export interface OrganizationIntentParseResult {
   readonly intentId: string;
   readonly actions: readonly OrganizationAction[];
   readonly relay: string | null;
+  /**
+   * Memory the model proposes to keep. This is a proposal only: the Runtime
+   * validates every entry and decides whether to persist it. It never grants
+   * authority and never changes what the Agent can do.
+   */
+  readonly memory?: readonly AgentMemoryInput[];
 }
 
 export interface OrganizationIntentParser {
@@ -139,7 +146,7 @@ export function parseBossConversationResult(
   value: unknown,
 ): OrganizationIntentParseResult {
   if (!isRecord(value)) throw new OrganizationIntentParseError('Boss conversation output must be an object.');
-  const unknown = Object.keys(value).filter((key) => !['reply', 'actions'].includes(key));
+  const unknown = Object.keys(value).filter((key) => !['reply', 'actions', 'memory'].includes(key));
   if (unknown.length > 0) {
     throw new OrganizationIntentParseError(`Boss conversation output has unknown fields: ${unknown.sort().join(', ')}.`);
   }
@@ -155,6 +162,7 @@ export function parseBossConversationResult(
   if (!Array.isArray(rawActions) || rawActions.length > 16) {
     throw new OrganizationIntentParseError('Boss conversation must return at most 16 actions.');
   }
+  const memory = parseProposedMemory(value.memory);
   const baseSequence = input.snapshot?.events.length ?? input.expectedSequence;
   const actions = rawActions.map((candidate, index) => {
     const projected = projectActionFields(repairRawAction(candidate, input.expectedSequence, input.modelReference));
@@ -179,7 +187,38 @@ export function parseBossConversationResult(
     intentId: input.intentId,
     actions: Object.freeze(actions),
     relay: boundedReply,
+    ...(memory.length > 0 ? { memory } : {}),
   });
+}
+
+/**
+ * Validates memory the Boss proposes.
+ *
+ * The Boss may only propose; it cannot choose to bypass validation, and a
+ * malformed entry is rejected rather than silently dropped so a wiring bug is
+ * visible. Runtime scope is deliberately unavailable here: promoting one
+ * project's detail into an always-on fact is a decision that needs an explicit
+ * user request, not a model's judgement mid-conversation.
+ */
+function parseProposedMemory(value: unknown): readonly AgentMemoryInput[] {
+  if (value === undefined) return Object.freeze([]);
+  if (!Array.isArray(value) || value.length > 4) {
+    throw new OrganizationIntentParseError('Boss conversation memory must be an array of at most 4 entries.');
+  }
+  const entries: AgentMemoryInput[] = [];
+  for (const candidate of value) {
+    try {
+      const parsed = parseAgentMemoryInput(candidate);
+      if (parsed.scope === 'runtime') {
+        throw new OrganizationIntentParseError('Boss conversation may propose only project or agent memory.');
+      }
+      entries.push(parsed);
+    } catch (cause) {
+      if (cause instanceof OrganizationIntentParseError) throw cause;
+      throw new OrganizationIntentParseError('Boss conversation proposed an invalid memory entry.');
+    }
+  }
+  return Object.freeze(entries);
 }
 
 function normalizeCreateAgentModel(
@@ -407,8 +446,9 @@ const BOSS_CONVERSATION_INSTRUCTIONS = [
   '你是 Conchbase 的老板 Agent，和用户进行自然、清楚、有帮助的中文对话。',
   '你拥有组织项目、招聘员工、汇报、归档、恢复等能力，但只有在用户目标确实需要时才主动使用；普通聊天、分析、建议和追问不要产生动作。',
   '能力提升来自 Runtime；你只能提出建议动作，不能直接执行、不能授权、不能读取密钥或文件。',
-  'Return only strict JSON with exactly two fields: {"reply":string,"actions":[]}.',
+  'Return only strict JSON with exactly two fields: {"reply":string,"actions":[]}; a third optional field "memory" is described below.',
   'reply 是面向用户的自然语言回复，可以解释建议、说明已准备的动作或提出下一步问题，不要暴露内部推理。',
+  '可选字段 memory 是你建议长期记住的内容，最多 4 条，每条为 {"scope":"project"|"agent","scopeId":string,"key":string,"title":string,"body":string}。只有用户明确要求你记住，或明确纠正了你的做法时才提议；普通对话不要写。Runtime 会校验并可能丢弃，你不能假设它一定被保存。不得提议 scope="runtime"，也不得写入密钥、令牌、路径或个人隐私。',
   '铁律：下“不存在/没有/查不到”这类否定结论之前，必须先读完组织事实里已有字段（尤其 reports 的 summary 与 state、workers、projects）。只能说“我在 X 范围内没看到 Y”，不能断言“系统里没有 Y”。',
   '引用员工汇报时，若 reports[].summary 非空就原样引用并标注 reportId；只有 summary 确实为空时才说未保留。禁止把“我看到的摘要”说成“正文不存在”。',
   '回复要短：先给一句话结论，再给必要证据（ID + 状态 + 关键原文），原文超过 3 行就截断并注明已截断，最后给 1–3 个下一步选项；避免重复同一结论。',

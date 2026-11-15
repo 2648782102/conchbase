@@ -20,10 +20,11 @@ The Boss Agent receives at most the last eight conversation messages plus a snap
 2. **Three scopes.** `runtime` (applies to every conversation), `project` (tied to one `projectId`), and `agent` (tied to one `agentId`, used for workers the Boss hired). Each entry always has exactly one scope.
 3. **Two levels: index and body.** Every entry has a short `title` plus a bounded `body`. Only a compact index from a bounded query is injected into a prompt; the body is available but is not inlined wholesale.
 4. **Bounded injection, ordered by importance.** The prompt receives at most `MAX_INJECTED` entries, newest-first per scope, with every field length-capped. Memory injection can therefore never grow the prompt without bound.
-5. **Writes happen at named moments only.** Accepted-memory writes occur at three points: project convergence (the close-out report becomes a project memory), an explicit user correction the Runtime can attest, and an explicit user request. There is no per-turn auto-summarization.
-6. **Untrusted text stays untrusted.** A memory body passes the same secret-like filter as other published text, is stripped of control characters, and is rejected if empty or oversized. Memory never grants capability, never changes tool policy, and never authorizes an action.
-7. **Memory is advisory context.** The prompt labels it as recollection that may be stale and instructs the Boss to verify against current organization facts before acting. A memory entry can never override a live `attention` or `worker` fact.
-8. **Deletion is a first-class operation.** Entries can be removed by id; nothing else rewrites or tombstones silently. This keeps the record auditable and lets a user retract something wrong.
+5. **Writes happen at named moments only.** Accepted-memory writes occur at two points: project convergence (the close-out report becomes a project memory), and a conversational proposal the Runtime accepts. There is no per-turn auto-summarization.
+6. **A conversational proposal is untrusted input.** The Boss may return an optional `memory` array of at most four entries. Each entry is validated by the same parser as any other write; `runtime` scope is refused, unknown fields are refused, and a malformed entry rejects the whole proposal. The Runtime additionally drops any entry whose project or agent target does not exist, so a memory can never describe something that was never there. The model proposes; the Runtime decides.
+7. **Untrusted text stays untrusted.** A memory body passes the same secret-like filter as other published text, is stripped of control characters, and is rejected if empty or oversized. Memory never grants capability, never changes tool policy, and never authorizes an action.
+8. **Memory is advisory context.** The prompt labels it as recollection that may be stale and instructs the Boss to verify against current organization facts before acting. A memory entry can never override a live `attention` or `worker` fact.
+9. **Deletion is a first-class operation.** Entries can be removed by id; nothing else rewrites or tombstones silently. This keeps the record auditable and lets a user retract something wrong.
 
 ## Options
 
@@ -53,6 +54,8 @@ Consequences: recall improves across projects, prompt size stays predictable, ev
 ## Validation
 
 - `tests/agent-memory.test.ts` covers scoping, deduplication, bounds, secret-like rejection, deletion, and index rendering.
+- `tests/boss-memory-write.test.ts` covers accepting a valid project proposal, refusing `runtime` scope and secret-like content, rejecting malformed shapes, and dropping a proposal aimed at a project that does not exist.
+- Live probe (2026-11-16): a project converged, and a brand-new conversation recalled it — the Boss named the archived project, its worker, the quoted result, and offered resume/keep/new-goal options.
 - A convergence fixture asserts the project close-out becomes exactly one project memory entry.
 - `npm run check`, `npm test`, and `npm run build` are the required gate.
 

@@ -1,0 +1,6 @@
+{
+  "id": "boss-memory-proposal-fixture",
+  "summary": "Executable fixtures cover accepting a valid project-scoped proposal, refusing runtime scope and secret-like bodies, rejecting malformed or oversize proposals, leaving the no-memory path unchanged, and proving the Runtime persists a valid proposal while dropping one aimed at a nonexistent project.",
+  "evidence": "tests/boss-memory-write.test.ts",
+  "executableFixture": true
+}

@@ -22,7 +22,7 @@ import type { TaskService } from './task-service.js';
 import { type WorkTriggerRequest } from './work-contract.js';
 import { buildBossOrganizationFacts, runtimeCapabilityFacts } from './boss-organization-context.js';
 import { containsSecretLike } from './secret-filter.js';
-import { MEMORY_LIMITS, renderMemoryIndex, type AgentMemoryStore } from './agent-memory.js';
+import { MEMORY_LIMITS, renderMemoryIndex, type AgentMemoryInput, type AgentMemoryStore } from './agent-memory.js';
 
 export const BOSS_MODE_SERVICE_VERSION = 2;
 
@@ -321,6 +321,9 @@ export class BossModeService {
     if (submission.source === 'agent-chat' && direct.actions.length > 0) {
       this.recordIntentText(resolvedIntentId, submission.text);
     }
+    if (direct.memory && direct.memory.length > 0) {
+      this.recordProposedMemory(direct.memory);
+    }
     if (submission.source === 'agent-chat' && direct.actions.length === 0) {
       const accepted: BossModeSubmitResult = Object.freeze({
         version: BOSS_MODE_SERVICE_VERSION,
@@ -582,6 +585,35 @@ export class BossModeService {
     } catch {
       // Memory is an enhancement. A failure must never break a conversation.
       return '';
+    }
+  }
+
+  /**
+   * Persists memory the model proposed, after Runtime checks.
+   *
+   * The model supplies content; the Runtime supplies authority. An entry whose
+   * scope target does not exist is dropped rather than stored as a dangling
+   * fact, and a bad entry never fails the turn it arrived with.
+   */
+  private recordProposedMemory(entries: readonly AgentMemoryInput[]): void {
+    const memory = this.memory;
+    if (!memory) return;
+    let snapshot: OrganizationSnapshot;
+    try {
+      snapshot = this.store.get();
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const target = entry.scope === 'project'
+        ? snapshot.projects.some((project) => project.id === entry.scopeId)
+        : snapshot.workers.some((worker) => worker.id === entry.scopeId);
+      if (!target) continue;
+      try {
+        memory.write(entry);
+      } catch {
+        // Memory is advisory. A rejected write must not break the conversation.
+      }
     }
   }
 
