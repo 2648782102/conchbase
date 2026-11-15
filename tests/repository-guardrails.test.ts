@@ -445,7 +445,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /ADR 0021/);
   assert.match(handoff, /ADR 0022/);
   assert.match(handoff, /ADR 0023/);
-  assert.match(handoff, /ADRs `0030`–`0082`/);
+  assert.match(handoff, /ADRs `0030`–`0083`/);
   assert.match(handoff, /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-contract\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-store\.ts/);
@@ -526,7 +526,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('README.zh-CN.md'), /仍在最终本地优先目标之外/);
   assert.match(read('README.zh-CN.md'), /ADR 0018/);
   assert.match(read('README.zh-CN.md'), /ADR 0019/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0082\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0083\]/);
   assert.match(read('README.md'), /1\.4\.0/);
   assert.match(read('README.md'), /ADR 0021 adds an opt-in live loopback acceptance test/);
   assert.match(read('README.zh-CN.md'), /ADR 0021/);
@@ -906,7 +906,7 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
     assert.match(read(file), /OBJECTIVE_MODE\.zh-CN\.md/, `${file} must link the Chinese objective brief`);
   }
   assert.match(read('docs/AI_TASK_QUEUE.md'), /Target-mode entry/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0082\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0083\]/);
   assert.match(read('README.md'), /Organization Runtime target/);
   assert.match(read('README.zh-CN.md'), /完整组织运行时目标/);
   assert.match(read('docs/QUICK_START.zh-CN.md'), /ADR 0030–0034/);
@@ -1062,7 +1062,7 @@ test('accepted source boundaries reject unaccepted adapters and private-file acc
   const workRouteSource = read('src/http/routes/v1/work.ts');
   assert.doesNotMatch(workRouteSource, /fetch\(|exec|spawn|writeFile|readFile/i);
   assert.doesNotMatch(workRouteSource, /Router|Worker|three-layer|layered|hierarchy/i);
-  assert.match(read('src/runtime/task-store.ts'), /PRAGMA user_version = 8/);
+  assert.match(read('src/runtime/task-store.ts'), /PRAGMA user_version = 9/);
   const ledgerSource = read('src/runtime/tool-request.ts');
   assert.doesNotMatch(ledgerSource, /ToolCapabilityKernel|tool-capability/);
   assert.doesNotMatch(ledgerSource, /tool\.executed|tool\.replayed|tool\.denied|tool\.failed/);

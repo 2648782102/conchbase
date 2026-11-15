@@ -22,6 +22,7 @@ import type { TaskService } from './task-service.js';
 import { type WorkTriggerRequest } from './work-contract.js';
 import { buildBossOrganizationFacts, runtimeCapabilityFacts } from './boss-organization-context.js';
 import { containsSecretLike } from './secret-filter.js';
+import { MEMORY_LIMITS, renderMemoryIndex, type AgentMemoryStore } from './agent-memory.js';
 
 export const BOSS_MODE_SERVICE_VERSION = 2;
 
@@ -97,6 +98,11 @@ export interface BossModeServiceOptions {
     intentTexts?(): ReadonlyMap<string, string>;
   };
   readonly onAccepted?: (result: BossModeSubmitResult) => void;
+  /**
+   * Durable recollection written by the Runtime (for example, a project's
+   * close-out report). Only a bounded index is injected; bodies stay on disk.
+   */
+  readonly memory?: AgentMemoryStore;
 }
 
 interface WorkerExecutionRecord {
@@ -236,6 +242,7 @@ export class BossModeService {
   private readonly workerCapabilityGrants: () => readonly CapabilityGrant[];
   private readonly conversation: BossModeServiceOptions['conversation'];
   private readonly onAccepted: BossModeServiceOptions['onAccepted'];
+  private readonly memory: AgentMemoryStore | undefined;
   private readonly workerExecutions = new Map<string, WorkerExecutionRecord>();
   private readonly startedWorkers = new Set<string>();
   private readonly outcomeByTaskId = new Map<string, string>();
@@ -253,6 +260,7 @@ export class BossModeService {
       ?? (() => Object.freeze([]));
     this.conversation = options.conversation;
     this.onAccepted = options.onAccepted;
+    this.memory = options.memory;
     this.restoreRecords();
     this.coordinator = new OrganizationCoordinator(store, {
       listWorkState: () => this.listWorkState(),
@@ -295,6 +303,7 @@ export class BossModeService {
       expectedSequence: snapshot.events.length,
       snapshot,
       organizationFacts,
+      ...(this.memoryIndex() ? { memoryIndex: this.memoryIndex()! } : {}),
       ...(submission.reasoningEffort ? { reasoningEffort: submission.reasoningEffort } : {}),
       ...(submission.conversation ? { conversation: submission.conversation } : {}),
       ...(submission.onProgress ? { onProgress: (progress: { state: 'streaming'; percent: number; previousText?: string }) => {
@@ -544,6 +553,36 @@ export class BossModeService {
     }
     if (typeof this.conversation?.intentTexts === 'function') return this.conversation.intentTexts();
     return new Map();
+  }
+
+  /**
+   * The compact memory index injected into the Boss prompt.
+   *
+   * Runtime scope applies to every turn; project scope only to the projects
+   * this conversation is currently working with. That keeps a fact learned in
+   * one project from being asserted as a runtime-wide truth.
+   */
+  private memoryIndex(): string {
+    const memory = this.memory;
+    if (!memory) return '';
+    try {
+      const snapshot = this.store.get();
+      const activeProjectIds = new Set(
+        snapshot.projects
+          .filter((project) => project.state === 'active' || project.state === 'resumed')
+          .map((project) => project.id),
+      );
+      const entries = [
+        ...memory.list({ scope: 'runtime', limit: MEMORY_LIMITS.injected }),
+        ...snapshot.projects
+          .filter((project) => activeProjectIds.has(project.id))
+          .flatMap((project) => memory.list({ scope: 'project', scopeId: project.id, limit: 4 })),
+      ];
+      return renderMemoryIndex(entries);
+    } catch {
+      // Memory is an enhancement. A failure must never break a conversation.
+      return '';
+    }
   }
 
   private backfillReportTexts(): void {

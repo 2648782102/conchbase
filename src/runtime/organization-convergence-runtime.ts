@@ -2,6 +2,7 @@ import { BOSS_AGENT_ID, type AgentChatService } from './agent-chat.js';
 import type { OrganizationSnapshot } from './organization-contract.js';
 import type { OrganizationStore } from './organization-store.js';
 import type { TaskService } from './task-service.js';
+import type { AgentMemoryStore } from './agent-memory.js';
 import {
   createOpenAiCompatibleProjectSummaryGenerator,
   type ProjectSummaryDocument,
@@ -21,6 +22,7 @@ export interface ConvergenceRuntimeOptions {
   readonly sweepIntervalMs?: number;
   readonly now?: () => number;
   readonly onWorkerOffboarded?: (workerId: string) => void;
+  readonly memory?: AgentMemoryStore;
   /** Model used for the close-out report. Omitted means deterministic only. */
   readonly summaryModel?: {
     readonly baseUrl: string;
@@ -83,6 +85,7 @@ export function createConvergenceRuntime(
       });
     },
     ...(options.onWorkerOffboarded ? { onWorkerOffboarded: options.onWorkerOffboarded } : {}),
+    ...(options.memory ? { memory: options.memory } : {}),
     ...(summarize ? { summarize } : {}),
     projectPurpose: (projectId: string) => {
       const snapshot = options.store.get();

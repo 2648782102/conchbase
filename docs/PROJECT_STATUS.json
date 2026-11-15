@@ -4,7 +4,7 @@
   "pairedRepository": "pagurus",
   "project": "Conchbase / 海螺",
   "release": "1.0.0",
-  "statusUpdatedAt": "2026-11-15",
+  "statusUpdatedAt": "2026-11-16",
   "objectiveMode": "target-mode",
   "developmentBoundaryAdr": "0026-ai-handoff-readiness-development-boundary.md",
   "publicContract": {
@@ -39,7 +39,7 @@
     },
     "workContractVersion": 2,
     "databaseUserVersion": 3,
-    "currentPrivateDatabaseUserVersion": 7,
+    "currentPrivateDatabaseUserVersion": 9,
     "sourceOfTruth": [
       "docs/openapi.yaml",
       "docs/API.md",
@@ -309,6 +309,11 @@
       "evidence": "src/runtime/boss-mode-service.ts"
     },
     {
+      "id": "runtime-agent-memory",
+      "summary": "ADR 0083 adds a Runtime-owned memory store with runtime/project/agent scopes, per-(scope,scopeId,key) deduplication, per-scope retention bounds, secret-like rejection, deletion by id, and a compact title-only index injected into the Boss prompt ahead of organization facts. Convergence writes exactly one project memory from the close-out report. Private schema advances to user_version = 9.",
+      "evidence": "src/runtime/agent-memory.ts"
+    },
+    {
       "id": "runtime-authority",
       "summary": "Conchbase owns the agent loop, Agent identities/revisions, task state, durable work, permissions, and private SQLite state.",
       "evidence": "docs/decisions/0001-runtime-as-execution-authority.md"
@@ -554,6 +559,12 @@
       "id": "provider-conformance-fixture",
       "summary": "An executable credential-free local HTTP fixture covers catalog, non-streaming, streaming, observation, error, limit, and cancellation compatibility for the current adapter.",
       "evidence": "tests/provider-conformance.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "runtime-agent-memory-fixture",
+      "summary": "Executable fixtures cover scope isolation, deduplication, retention bounds, secret-like and oversize rejection, bounded title-only index rendering, deletion, SQLite reopen persistence, convergence writing exactly one project memory, prompt injection limited to runtime plus active-project memory, and a broken memory store never breaking a Boss turn.",
+      "evidence": "tests/agent-memory.test.ts",
       "executableFixture": true
     },
     {

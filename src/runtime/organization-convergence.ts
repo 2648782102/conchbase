@@ -8,6 +8,7 @@ import {
   type ProjectSummaryDocument,
   type ProjectSummaryFacts,
 } from './project-summary.js';
+import type { AgentMemoryStore } from './agent-memory.js';
 
 export const ORGANIZATION_CONVERGENCE_VERSION = 1;
 
@@ -218,6 +219,11 @@ export interface ProjectConvergenceOptions {
   readonly summarize?: (facts: ProjectSummaryFacts) => Promise<ProjectSummaryDocument | null>;
   /** Project purpose text, when the caller has it. */
   readonly projectPurpose?: (projectId: string) => string | undefined;
+  /**
+   * Durable memory. A converged project writes exactly one memory entry so the
+   * Boss can recall it later without replaying the event log.
+   */
+  readonly memory?: AgentMemoryStore;
 }
 
 export interface ConvergenceSweepResult {
@@ -244,6 +250,7 @@ export class ProjectConvergenceService {
   private readonly announce: (summary: string, projectId: string) => void;
   private readonly summarize: ((facts: ProjectSummaryFacts) => Promise<ProjectSummaryDocument | null>) | undefined;
   private readonly projectPurpose: (projectId: string) => string | undefined;
+  private readonly memory: AgentMemoryStore | undefined;
   /** Project id -> { fingerprint, since } for the last observed activity. */
   private readonly observed = new Map<string, { fingerprint: string; since: number }>();
   private timer: NodeJS.Timeout | undefined;
@@ -258,6 +265,7 @@ export class ProjectConvergenceService {
     this.announce = options.announce ?? (() => undefined);
     this.summarize = options.summarize;
     this.projectPurpose = options.projectPurpose ?? (() => undefined);
+    this.memory = options.memory;
   }
 
   start(): void {
@@ -308,6 +316,7 @@ export class ProjectConvergenceService {
       } catch {
         // Persistence is best-effort here; the archive must still happen.
       }
+      this.rememberProject(project.id, summary);
       for (const action of plan.actions) {
         this.store.apply(action);
         if (action.type === 'offboard_worker') this.onWorkerOffboarded(action.workerId);
@@ -320,6 +329,21 @@ export class ProjectConvergenceService {
       if (!activeIds.has(projectId)) this.observed.delete(projectId);
     }
     return Object.freeze({ converged: Object.freeze(converged) });
+  }
+
+  private rememberProject(projectId: string, summary: string): void {
+    if (!this.memory) return;
+    try {
+      this.memory.write({
+        scope: 'project',
+        scopeId: projectId,
+        key: `project_summary:${projectId}`,
+        title: `项目 ${projectId} 已完成并归档`,
+        body: summary,
+      });
+    } catch {
+      // A memory write must never block or undo an archive.
+    }
   }
 
   private async buildSummary(

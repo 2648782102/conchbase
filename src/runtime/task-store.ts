@@ -37,6 +37,7 @@ import { SqlitePlatformStore, migratePlatformSchema, type PlatformStore } from '
 import { SqliteOrganizationStore, migrateOrganizationSchema } from './organization-store.sqlite.js';
 import type { OrganizationStore } from './organization-store.js';
 import { SqliteAgentChatStore, migrateAgentChatSchema, type AgentChatStore } from './agent-chat-store.js';
+import { SqliteAgentMemoryStore, type AgentMemoryStore } from './agent-memory.js';
 
 export interface TaskSnapshot {
   readonly id: string;
@@ -157,6 +158,7 @@ export interface TaskStore {
   readonly platform: PlatformStore;
   readonly organization: OrganizationStore;
   readonly agentChat: AgentChatStore;
+  readonly memory: AgentMemoryStore;
   saveLoopState(taskId: string, state: string | null): void;
   getLoopState(taskId: string): string | null;
   close(): void;
@@ -391,6 +393,7 @@ export class SqliteTaskStore implements TaskStore {
   readonly platform: PlatformStore;
   readonly organization: OrganizationStore;
   readonly agentChat: AgentChatStore;
+  readonly memory: AgentMemoryStore;
   private readonly database: DatabaseSync;
   private readonly clock: () => string;
   private isOrganizationBootstrapTransaction = false;
@@ -402,6 +405,7 @@ export class SqliteTaskStore implements TaskStore {
     this.platform = new SqlitePlatformStore(this.database, this.work);
     this.organization = new SqliteOrganizationStore(this.database, () => this.isOrganizationBootstrapTransaction);
     this.agentChat = new SqliteAgentChatStore(this.database);
+    this.memory = new SqliteAgentMemoryStore(this.database);
     try {
       this.database.exec('PRAGMA busy_timeout = 0;');
       this.database.exec('PRAGMA foreign_keys = ON;');
@@ -490,6 +494,7 @@ export class SqliteTaskStore implements TaskStore {
       migratePlatformSchema(this.database);
       migrateOrganizationSchema(this.database);
       migrateAgentChatSchema(this.database);
+      this.memory.initialize();
       this.database.exec(`
         CREATE TABLE IF NOT EXISTS agent_loop_state (
           task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
@@ -499,7 +504,7 @@ export class SqliteTaskStore implements TaskStore {
       this.organization.initialize('primary_conversation');
       this.agentChat.initialize();
       this.database.exec('INSERT OR IGNORE INTO agent_state (singleton, default_agent_id) VALUES (1, NULL)');
-      this.database.exec('PRAGMA user_version = 8; COMMIT;');
+      this.database.exec('PRAGMA user_version = 9; COMMIT;');
       this.isOrganizationBootstrapTransaction = false;
       this.bootstrapConfiguration();
     } catch (cause) {
@@ -1053,7 +1058,7 @@ export class SqliteTaskStore implements TaskStore {
 
   private migrateAgentSchema(): void {
     const versionRow = this.database.prepare('PRAGMA user_version').get() as { user_version: number };
-    if (versionRow.user_version > 8) {
+    if (versionRow.user_version > 9) {
       throw new Error(`Database schema version ${versionRow.user_version} is newer than this runtime supports.`);
     }
     for (const [table, column] of [

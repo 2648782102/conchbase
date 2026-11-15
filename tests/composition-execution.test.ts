@@ -161,6 +161,8 @@ class CancelOnFirstNodeStore implements TaskStore {
 
   get agentChat() { return this.inner.agentChat; }
 
+  get memory() { return this.inner.memory; }
+
   saveLoopState(taskId: string, state: string | null) { return this.inner.saveLoopState(taskId, state); }
   getLoopState(taskId: string) { return this.inner.getLoopState(taskId); }
 

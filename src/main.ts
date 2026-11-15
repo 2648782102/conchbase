@@ -65,6 +65,7 @@ if (config.organizationIntentModel || config.bossModel || config.defaultModel) {
     });
   const bossMode = new BossModeService(taskService.store.organization, taskService, {
     parser,
+    memory: taskService.store.memory,
     bossModelReference: { providerId: BOSS_UPSTREAM_PROVIDER_ID, modelId: config.bossModel ?? config.defaultModel },
     workerCapabilityGrants: () => defaultWorkerGrants(toolRuntime.tools, toolRuntime.skills.skills, { allowWrites: config.allowToolWrites === true }),
     conversation: { recordIntentText: (intentId, text) => conversationService.recordIntentText(intentId, text) },
@@ -87,6 +88,7 @@ if (config.organizationIntentModel || config.bossModel || config.defaultModel) {
     taskService,
     agentChat,
     policy: { idleAfterMs: config.projectIdleMs, convergeWithOpenAttention: false },
+    memory: taskService.store.memory,
     summaryModel: {
       baseUrl: config.magpieBaseUrl,
       model: config.bossModel ?? config.defaultModel,

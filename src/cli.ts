@@ -79,6 +79,7 @@ function createBossModeService(
       : undefined;
   return new BossModeService(service.store.organization, service, {
     ...(parser ? { parser } : {}),
+    memory: service.store.memory,
     bossModelReference: { providerId: BOSS_UPSTREAM_PROVIDER_ID, modelId: config.bossModel ?? config.defaultModel },
     workerCapabilityGrants: () => defaultWorkerGrants(toolRuntime.tools, toolRuntime.skills.skills, { allowWrites: config.allowToolWrites === true }),
     conversation: { recordIntentText: (intentId, text) => conversation.recordIntentText(intentId, text) },
@@ -126,6 +127,7 @@ async function main(argv: readonly string[]): Promise<void> {
       taskService: service,
       agentChat,
       policy: { idleAfterMs: config.projectIdleMs, convergeWithOpenAttention: false },
+      memory: service.store.memory,
       summaryModel: {
         baseUrl: config.magpieBaseUrl,
         model: config.bossModel ?? config.defaultModel,

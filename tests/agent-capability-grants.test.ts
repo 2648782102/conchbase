@@ -266,7 +266,7 @@ test('Agent API round-trips grants and rejects invalid grant shapes', async () =
   }
 });
 
-test('a user_version 7 database migrates to 8 with empty grants', () => {
+test('a user_version 7 database migrates to the current schema with empty grants', () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-grants-migrate-'));
   const filename = path.join(directory, 'runtime.sqlite');
   const seeded = new SqliteTaskStore(filename);
@@ -295,7 +295,7 @@ test('a user_version 7 database migrates to 8 with empty grants', () => {
     try {
       assert.equal(
         (reopened.prepare('PRAGMA user_version').get() as { user_version: number }).user_version,
-        8,
+        9,
       );
     } finally {
       reopened.close();

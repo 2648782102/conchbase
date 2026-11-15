@@ -1,0 +1,6 @@
+{
+  "id": "runtime-agent-memory-fixture",
+  "summary": "Executable fixtures cover scope isolation, deduplication, retention bounds, secret-like and oversize rejection, bounded title-only index rendering, deletion, SQLite reopen persistence, convergence writing exactly one project memory, prompt injection limited to runtime plus active-project memory, and a broken memory store never breaking a Boss turn.",
+  "evidence": "tests/agent-memory.test.ts",
+  "executableFixture": true
+}

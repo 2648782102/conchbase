@@ -9,6 +9,7 @@ import {
   summarizeProject,
 } from '../src/runtime/organization-convergence.js';
 import type { OrganizationSnapshot } from '../src/runtime/organization-contract.js';
+import { InMemoryAgentMemoryStore } from '../src/runtime/agent-memory.js';
 
 function seedProject(store: InMemoryOrganizationStore): void {
   store.apply({
@@ -242,4 +243,28 @@ test('a failing summarizer never blocks convergence', async () => {
   assert.equal(result.converged.length, 1, 'a provider outage must not keep a project alive');
   assert.equal(store.get().projects[0]?.state, 'archived');
   assert.match(result.converged[0]!.summary, /1 名员工/);
+});
+
+test('convergence writes exactly one project memory', async () => {
+  const store = new InMemoryOrganizationStore();
+  seedProject(store);
+  const memory = new InMemoryAgentMemoryStore();
+  let now = 600_000;
+  const service = new ProjectConvergenceService({
+    store,
+    policy: { idleAfterMs: 100, convergeWithOpenAttention: false },
+    now: () => now,
+    memory,
+  });
+  await service.sweep();
+  now += 500;
+  assert.equal((await service.sweep()).converged.length, 1);
+  const entries = memory.list({ scope: 'project', scopeId: 'project_alpha' });
+  assert.equal(entries.length, 1);
+  assert.match(entries[0]!.title, /project_alpha/);
+  assert.match(entries[0]!.body, /1 名员工/);
+  // Re-sweeping must not create a second entry for the same project.
+  now += 500;
+  await service.sweep();
+  assert.equal(memory.list({ scope: 'project', scopeId: 'project_alpha' }).length, 1);
 });
