@@ -87,6 +87,11 @@ if (config.organizationIntentModel || config.bossModel || config.defaultModel) {
     taskService,
     agentChat,
     policy: { idleAfterMs: config.projectIdleMs, convergeWithOpenAttention: false },
+    summaryModel: {
+      baseUrl: config.magpieBaseUrl,
+      model: config.bossModel ?? config.defaultModel,
+      ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
+    },
   });
   convergence?.start();
 }

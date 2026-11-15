@@ -3,6 +3,11 @@ import type { OrganizationSnapshot } from './organization-contract.js';
 import type { OrganizationStore } from './organization-store.js';
 import type { TaskService } from './task-service.js';
 import {
+  createOpenAiCompatibleProjectSummaryGenerator,
+  type ProjectSummaryDocument,
+  type ProjectSummaryFacts,
+} from './project-summary.js';
+import {
   ProjectConvergenceService,
   type ConvergencePolicy,
   type ProjectConvergenceOptions,
@@ -16,6 +21,12 @@ export interface ConvergenceRuntimeOptions {
   readonly sweepIntervalMs?: number;
   readonly now?: () => number;
   readonly onWorkerOffboarded?: (workerId: string) => void;
+  /** Model used for the close-out report. Omitted means deterministic only. */
+  readonly summaryModel?: {
+    readonly baseUrl: string;
+    readonly model: string;
+    readonly appKey?: string;
+  };
 }
 
 function nonterminal(state: string): boolean {
@@ -52,6 +63,13 @@ export async function latestBossConversation(
 export function createConvergenceRuntime(
   options: ConvergenceRuntimeOptions,
 ): ProjectConvergenceService {
+  const summarize = options.summaryModel
+    ? createOpenAiCompatibleProjectSummaryGenerator({
+      baseUrl: options.summaryModel.baseUrl,
+      model: options.summaryModel.model,
+      ...(options.summaryModel.appKey ? { appKey: options.summaryModel.appKey } : {}),
+    })
+    : undefined;
   const service = new ProjectConvergenceService({
     store: options.store,
     ...(options.policy ? { policy: options.policy } : {}),
@@ -65,6 +83,13 @@ export function createConvergenceRuntime(
       });
     },
     ...(options.onWorkerOffboarded ? { onWorkerOffboarded: options.onWorkerOffboarded } : {}),
+    ...(summarize ? { summarize } : {}),
+    projectPurpose: (projectId: string) => {
+      const snapshot = options.store.get();
+      const project = snapshot.projects.find((item) => item.id === projectId);
+      if (!project) return undefined;
+      return options.store.intentTexts?.().get(project.originTriggerId);
+    },
     // Announcements are only delivered when the user already has a Boss
     // conversation. Creating one on their behalf would put a message in a
     // place they never opened.

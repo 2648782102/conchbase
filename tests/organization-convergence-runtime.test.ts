@@ -111,9 +111,9 @@ test('an archived project reports itself into the Boss conversation once', async
       now: () => now,
       onWorkerOffboarded: () => { invoked = true; },
     });
-    convergence.sweep();
+    await convergence.sweep();
     now += 500;
-    const result = convergence.sweep();
+    const result = await convergence.sweep();
     assert.equal(result.converged.length, 1);
     assert.equal(invoked, true);
     assert.equal(store.get().projects.find((project) => project.id === 'project_report')?.state, 'archived');
@@ -121,7 +121,7 @@ test('an archived project reports itself into the Boss conversation once', async
     // The announcement is asynchronous; the durable archive already happened.
     for (let attempt = 0; attempt < 50; attempt += 1) {
       const view = agentChat.view(conversation.id);
-      const notices = view.messages.filter((message) => message.body.includes('静默收敛'));
+      const notices = view.messages.filter((message) => /项目 project_report：/.test(message.body));
       if (notices.length > 0) {
         assert.match(notices[0]!.body, /交付了测试报告/);
         break;
@@ -129,7 +129,7 @@ test('an archived project reports itself into the Boss conversation once', async
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     const view = agentChat.view(conversation.id);
-    assert.equal(view.messages.filter((message) => message.body.includes('静默收敛')).length, 1,
+    assert.equal(view.messages.filter((message) => /项目 project_report：/.test(message.body)).length, 1,
       'a convergence announces exactly once');
   } finally {
     await taskService.stop();

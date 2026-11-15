@@ -126,6 +126,11 @@ async function main(argv: readonly string[]): Promise<void> {
       taskService: service,
       agentChat,
       policy: { idleAfterMs: config.projectIdleMs, convergeWithOpenAttention: false },
+      summaryModel: {
+        baseUrl: config.magpieBaseUrl,
+        model: config.bossModel ?? config.defaultModel,
+        ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
+      },
     });
     convergence.start();
     const app = createApp({

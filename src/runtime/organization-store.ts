@@ -19,6 +19,12 @@ export interface OrganizationStore {
   intentTexts?(): ReadonlyMap<string, string>;
   recordReportText?(reportId: string, text: string): void;
   reportTexts?(): ReadonlyMap<string, string>;
+  /**
+   * A project-level close-out summary, written once at convergence. Distinct
+   * from worker report text: it describes the whole project, not one task.
+   */
+  recordProjectSummary?(projectId: string, document: string): void;
+  projectSummaries?(): ReadonlyMap<string, string>;
 }
 
 export function parseOrganizationLimit(value: number | undefined): number {
@@ -32,6 +38,7 @@ export function parseOrganizationLimit(value: number | undefined): number {
 export class InMemoryOrganizationStore implements OrganizationStore {
   private snapshot: OrganizationSnapshot | undefined;
   private readonly reportBodies = new Map<string, string>();
+  private readonly projectSummaryBodies = new Map<string, string>();
 
   constructor(conversationId = 'primary_conversation') {
     this.snapshot = createOrganization(conversationId);
@@ -72,6 +79,14 @@ export class InMemoryOrganizationStore implements OrganizationStore {
 
   reportTexts(): ReadonlyMap<string, string> {
     return new Map(this.reportBodies);
+  }
+
+  recordProjectSummary(projectId: string, document: string): void {
+    this.projectSummaryBodies.set(projectId, document);
+  }
+
+  projectSummaries(): ReadonlyMap<string, string> {
+    return new Map(this.projectSummaryBodies);
   }
 }
 

@@ -329,6 +329,11 @@
       "evidence": "scripts/status-slices.mjs"
     },
     {
+      "id": "structured-project-close-out",
+      "summary": "ADR 0082 gives convergence a structured close-out report instead of concatenated worker bodies: one bounded model call over project-local facts produces headline/outcomes/openIssues/nextSteps, the Runtime rejects unknown fields, oversize text, empty headlines and secret-like values, persists the accepted document under organization_project_summaries, and renders the published text from it. A deterministic summary with real counts is the floor, so a provider outage never blocks convergence.",
+      "evidence": "src/runtime/project-summary.ts"
+    },
+    {
       "id": "structured-reporting",
       "summary": "Structured reports, attention requests, blocked/failed facts, and completion events are validated organization facts and enter primary relays in deterministic order.",
       "evidence": "src/runtime/organization-execution.ts"
@@ -555,6 +560,12 @@
       "id": "skill-provider-fixture",
       "summary": "Executable fixtures cover front-matter parsing, missing front matter, empty-body skipping, allowed-tools being ignored, size and count bounds, symlink rejection, and Agent loop injection.",
       "evidence": "tests/skill-provider.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "structured-project-close-out-fixture",
+      "summary": "Executable fixtures cover accepted model output, rejection of unknown fields/empty headlines/secret-like text, deterministic counts, generator HTTP and JSON failures, project-local fact scoping, using and persisting a model summary during convergence, and proving a throwing summarizer still archives the project.",
+      "evidence": "tests/project-summary.test.ts",
       "executableFixture": true
     },
     {

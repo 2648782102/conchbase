@@ -1,5 +1,13 @@
 import type { OrganizationAction, OrganizationSnapshot } from './organization-contract.js';
 import type { OrganizationStore } from './organization-store.js';
+import {
+  PROJECT_SUMMARY_VERSION,
+  deterministicProjectSummary,
+  projectSummaryFacts,
+  renderProjectSummary,
+  type ProjectSummaryDocument,
+  type ProjectSummaryFacts,
+} from './project-summary.js';
 
 export const ORGANIZATION_CONVERGENCE_VERSION = 1;
 
@@ -202,6 +210,14 @@ export interface ProjectConvergenceOptions {
   readonly onWorkerOffboarded?: (workerId: string) => void;
   /** Publishes the short summary into the Boss conversation. */
   readonly announce?: (summary: string, projectId: string) => void;
+  /**
+   * Optional model-backed summary. Returning null (or throwing) falls back to
+   * the deterministic summary: convergence must never be blocked by a provider
+   * outage, or a finished project would stay active forever.
+   */
+  readonly summarize?: (facts: ProjectSummaryFacts) => Promise<ProjectSummaryDocument | null>;
+  /** Project purpose text, when the caller has it. */
+  readonly projectPurpose?: (projectId: string) => string | undefined;
 }
 
 export interface ConvergenceSweepResult {
@@ -226,6 +242,8 @@ export class ProjectConvergenceService {
   private readonly hasActiveWork: (projectId: string) => boolean;
   private readonly onWorkerOffboarded: (workerId: string) => void;
   private readonly announce: (summary: string, projectId: string) => void;
+  private readonly summarize: ((facts: ProjectSummaryFacts) => Promise<ProjectSummaryDocument | null>) | undefined;
+  private readonly projectPurpose: (projectId: string) => string | undefined;
   /** Project id -> { fingerprint, since } for the last observed activity. */
   private readonly observed = new Map<string, { fingerprint: string; since: number }>();
   private timer: NodeJS.Timeout | undefined;
@@ -238,17 +256,17 @@ export class ProjectConvergenceService {
     this.hasActiveWork = options.hasActiveWork ?? (() => false);
     this.onWorkerOffboarded = options.onWorkerOffboarded ?? (() => undefined);
     this.announce = options.announce ?? (() => undefined);
+    this.summarize = options.summarize;
+    this.projectPurpose = options.projectPurpose ?? (() => undefined);
   }
 
   start(): void {
     if (this.timer) return;
     this.timer = setInterval(() => {
-      try {
-        this.sweep();
-      } catch {
-        // A sweep failure must not kill the Runtime. The next tick retries with
-        // the same durable state.
-      }
+      // The tick is async only because the summary may call a model. Failures
+      // are contained inside `sweep`, so an unhandled rejection cannot kill the
+      // Runtime.
+      void this.sweep().catch(() => undefined);
     }, this.sweepIntervalMs);
     this.timer.unref?.();
   }
@@ -259,7 +277,7 @@ export class ProjectConvergenceService {
     this.timer = undefined;
   }
 
-  sweep(): ConvergenceSweepResult {
+  async sweep(): Promise<ConvergenceSweepResult> {
     const snapshot = this.store.get();
     const now = this.now();
     const activeIds = new Set<string>();
@@ -283,7 +301,13 @@ export class ProjectConvergenceService {
       if (!plan) continue;
       // Summarize from the pre-convergence snapshot: offboarding changes worker
       // state, and the report must describe the project as it actually ended.
-      const summary = summarizeProject(snapshot, project.id, this.store.reportTexts?.());
+      const document = await this.buildSummary(snapshot, project.id);
+      const summary = renderProjectSummary(document);
+      try {
+        this.store.recordProjectSummary?.(project.id, JSON.stringify(document));
+      } catch {
+        // Persistence is best-effort here; the archive must still happen.
+      }
       for (const action of plan.actions) {
         this.store.apply(action);
         if (action.type === 'offboard_worker') this.onWorkerOffboarded(action.workerId);
@@ -296,6 +320,27 @@ export class ProjectConvergenceService {
       if (!activeIds.has(projectId)) this.observed.delete(projectId);
     }
     return Object.freeze({ converged: Object.freeze(converged) });
+  }
+
+  private async buildSummary(
+    snapshot: OrganizationSnapshot,
+    projectId: string,
+  ): Promise<ProjectSummaryDocument> {
+    const facts = projectSummaryFacts(snapshot, projectId, {
+      ...(this.projectPurpose(projectId) === undefined
+        ? {}
+        : { purpose: this.projectPurpose(projectId)! }),
+      ...(this.store.reportTexts?.() ? { reportTexts: this.store.reportTexts!() } : {}),
+    });
+    if (this.summarize) {
+      try {
+        const generated = await this.summarize(facts);
+        if (generated) return generated;
+      } catch {
+        // Fall through to the deterministic summary.
+      }
+    }
+    return deterministicProjectSummary(facts);
   }
 
   private fingerprint(snapshot: OrganizationSnapshot, projectId: string): string {

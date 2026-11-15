@@ -129,6 +129,23 @@ export class SqliteOrganizationStore implements OrganizationStore {
     ).all() as unknown as { report_id: string; body: string }[];
     return new Map(rows.map((row) => [row.report_id, row.body] as const));
   }
+
+  recordProjectSummary(projectId: string, document: string): void {
+    this.database.prepare(`
+      INSERT INTO organization_project_summaries (project_id, document, recorded_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(project_id) DO UPDATE SET
+        document = excluded.document,
+        recorded_at = excluded.recorded_at
+    `).run(projectId, document, new Date().toISOString());
+  }
+
+  projectSummaries(): ReadonlyMap<string, string> {
+    const rows = this.database.prepare(
+      'SELECT project_id, document FROM organization_project_summaries',
+    ).all() as unknown as { project_id: string; document: string }[];
+    return new Map(rows.map((row) => [row.project_id, row.document] as const));
+  }
 }
 
 export function migrateOrganizationSchema(database: DatabaseSync): void {
@@ -155,6 +172,11 @@ export function migrateOrganizationSchema(database: DatabaseSync): void {
     CREATE TABLE IF NOT EXISTS organization_report_texts (
       report_id TEXT PRIMARY KEY,
       body TEXT NOT NULL,
+      recorded_at TEXT NOT NULL
+    ) STRICT;
+    CREATE TABLE IF NOT EXISTS organization_project_summaries (
+      project_id TEXT PRIMARY KEY,
+      document TEXT NOT NULL,
       recorded_at TEXT NOT NULL
     ) STRICT;
   `);
