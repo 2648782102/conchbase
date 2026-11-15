@@ -575,3 +575,34 @@ test('Boss parser replaces a malformed agent model with the Runtime reference', 
   assert.ok(create);
   assert.deepEqual(create.model, { providerId: 'magpie', modelId: 'fixture/runtime-model' });
 });
+test('a create_agent action can supply task-specific instructions', async () => {
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/boss-chat',
+    fetch: (async () => new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({
+        reply: 'ok',
+        actions: [{
+          type: 'create_agent',
+          expectedSequence: 0,
+          projectId: 'project_instr',
+          workerId: 'wrk_instr',
+          delegationId: 'del_instr',
+          agentRevisionId: 'agr_placeholder',
+          displayName: 'Instr Worker',
+          instructionsDigest: 'sha256:instructions',
+          instructions: '恰好输出两句话，不要列表。',
+          scope: ['project:instr'],
+          capabilities: ['cap_read_context'],
+          model: { providerId: 'magpie', modelId: 'fixture-model' },
+          maxDelegationDepth: 0,
+          ttlEvents: 20,
+        }],
+      }) } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof globalThis.fetch,
+  });
+  const parsed = await parser.parse({ intentId: 'int_instr', text: '招人', expectedSequence: 0 });
+  const create = parsed.actions.find((action) => action.type === 'create_agent');
+  assert.ok(create);
+  assert.equal((create as { instructions?: string }).instructions, '恰好输出两句话，不要列表。');
+});

@@ -72,6 +72,7 @@ export interface OrganizationWorker {
   readonly agentRevisionId: string;
   readonly displayName: string;
   readonly instructionsDigest: string;
+  readonly instructions?: string;
   readonly model: OrganizationModelReference;
   readonly state: WorkerState;
 }
@@ -139,6 +140,7 @@ export interface CreateAgentAction extends OrganizationActionBase<'create_agent'
   readonly agentRevisionId: string;
   readonly displayName: string;
   readonly instructionsDigest: string;
+  readonly instructions?: string;
   readonly scope: readonly string[];
   readonly capabilities: readonly string[];
   readonly model: OrganizationModelReference;
@@ -463,13 +465,17 @@ export function parseOrganizationAction(input: unknown): OrganizationAction {
           'ttlEvents',
         ],
         'create_agent',
-        ['parentDelegationId'],
+        ['parentDelegationId', 'instructions'],
       );
       const parentDelegationId =
         input.parentDelegationId === undefined
           ? undefined
           : opaqueReference(input.parentDelegationId, 'parentDelegationId');
       const common = parseCommonAction(input, actionType);
+      const instructions =
+        input.instructions === undefined
+          ? undefined
+          : boundedString(input.instructions, 'instructions', 4_000);
       return Object.freeze({
         ...common,
         workerId: opaqueReference(input.workerId, 'workerId'),
@@ -478,6 +484,7 @@ export function parseOrganizationAction(input: unknown): OrganizationAction {
         agentRevisionId: opaqueReference(input.agentRevisionId, 'agentRevisionId'),
         displayName: boundedString(input.displayName, 'displayName', 80),
         instructionsDigest: boundedDigest(input.instructionsDigest, 'instructionsDigest'),
+        ...(instructions === undefined ? {} : { instructions }),
         scope: parseScope(input.scope),
         capabilities: parseCapabilities(input.capabilities),
         model: parseModel(input.model),

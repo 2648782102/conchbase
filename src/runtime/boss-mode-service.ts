@@ -607,7 +607,7 @@ export class BossModeService {
     if (!taskService) return Object.freeze({ action, status: 'failed' as const, detail: 'Task service is unavailable.' });
     try {
       const displayName = chineseAgentDisplayName(action.displayName);
-      const instructions = [
+      const instructions = action.instructions?.trim() || [
         `你是${displayName}。`,
         `Work only within project scope: ${action.scope.join(', ')}.`,
         'Return a concise bounded result. Prefix output with ATTENTION: only when human input is required.',
@@ -760,7 +760,7 @@ export class BossModeService {
       } catch {
         // Report text is best-effort; the digest remains authoritative for the ledger.
       }
-      const needsAttention = /^\s*ATTENTION:/i.test(output);
+      const needsAttention = /(?:^|\n)\s*ATTENTION:/i.test(output);
       applyAction(this.store, {
         type: 'report_worker',
         expectedSequence: this.store.get().events.length,

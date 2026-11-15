@@ -203,3 +203,71 @@ test('boss mode emits organizing progress before committing proposed actions', a
     assert.ok(service.snapshot().events.some((event) => event.type === 'organization.intent_recorded'));
   });
 });
+
+test('ATTENTION on the last line still opens an attention request', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-attention-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture-model',
+    fetch: (async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/v1/models')) {
+        return new Response(JSON.stringify({
+          data: [{ id: 'fixture-model', display_name: 'Fixture Model' }],
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(
+        'data: {"choices":[{"delta":{"content":"结论：未闭环。\\n\\nATTENTION: 需要人工重启验证。"},"finish_reason":null}]}\n\ndata: [DONE]\n\n',
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      );
+    }) as typeof globalThis.fetch,
+  });
+  const store = new InMemoryOrganizationStore();
+  const parser: OrganizationIntentParser = {
+    async parse(input) {
+      return Object.freeze({
+        version: 1 as const,
+        intentId: input.intentId,
+        actions: Object.freeze([
+          parseOrganizationAction({
+            type: 'open_project', expectedSequence: input.expectedSequence,
+            projectId: 'project_attention', originTriggerId: input.intentId,
+          }),
+          parseOrganizationAction({
+            type: 'activate_project', expectedSequence: input.expectedSequence + 1,
+            projectId: 'project_attention',
+          }),
+          parseOrganizationAction({
+            type: 'create_agent',
+            expectedSequence: input.expectedSequence + 2,
+            projectId: 'project_attention',
+            workerId: 'wrk_attention',
+            delegationId: 'del_attention',
+            agentRevisionId: 'agr_placeholder',
+            displayName: 'Attention Worker',
+            instructionsDigest: 'sha256:instructions',
+            scope: ['project:attention'],
+            capabilities: ['cap_read_context'],
+            model: { providerId: 'magpie', modelId: 'fixture-model' },
+            maxDelegationDepth: 0,
+            ttlEvents: 30,
+          }),
+          parseOrganizationAction({
+            type: 'start_worker', expectedSequence: input.expectedSequence + 3,
+            projectId: 'project_attention', workerId: 'wrk_attention',
+          }),
+        ]),
+        relay: '已启动员工。',
+      });
+    },
+  };
+  const service = new BossModeService(store, taskService, { parser });
+  try {
+    await service.submit({ text: '开项目并启动员工', idempotencyKey: 'attention-1' });
+    const snapshot = store.get();
+    assert.ok(snapshot.reports.some((report) => report.state === 'attention'));
+    assert.ok(snapshot.attentionRequests.some((request) => request.state === 'open'));
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
