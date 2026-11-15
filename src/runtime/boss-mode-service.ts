@@ -388,6 +388,12 @@ export class BossModeService {
       context.executions.push(this.runLifecycleBatch(action));
       return;
     }
+    if (action.type === 'offboard_worker') {
+      applyAction(this.store, action);
+      context.executions.push(Object.freeze({ action, status: 'dispatched' as const }));
+      this.archiveWorkerAgent(action.workerId);
+      return;
+    }
     if (action.type === 'answer_attention' || action.type === 'withdraw_attention' || action.type === 'expire_attention') {
       context.executions.push(this.answerAttention(action as Extract<OrganizationAction, { type: 'answer_attention' }>));
       return;
@@ -733,6 +739,24 @@ export class BossModeService {
       agentId,
     });
     return record;
+  }
+
+  // Offboarding a worker revokes its delegation; the Agent revision it used has no
+  // further purpose, so archive it instead of leaving it in the Agent list forever.
+  private archiveWorkerAgent(workerId: string): void {
+    const store = this.taskService?.store;
+    if (!store) return;
+    const record = this.workerExecutions.get(workerId);
+    if (!record) return;
+    try {
+      const agent = store.getAgent(record.agentId);
+      if (!agent || agent.archived) return;
+      store.archiveAgent(record.agentId);
+    } catch {
+      // Archiving is best-effort; the offboard itself already succeeded.
+    }
+    this.workerExecutions.delete(workerId);
+    this.startedWorkers.delete(workerId);
   }
 
   private blockStartedWorker(action: Extract<OrganizationAction, { type: 'start_worker' }>): boolean {

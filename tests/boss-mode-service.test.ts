@@ -533,3 +533,79 @@ test('collecting a second failing outcome retires the worker automatically', asy
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('offboarding a worker archives its Agent so the list stays clean', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-archive-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture-model',
+    fetch: (async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/v1/models')) {
+        return new Response(JSON.stringify({
+          data: [{ id: 'fixture-model', display_name: 'Fixture Model' }],
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response('data: {"choices":[{"delta":{"content":"done"},"finish_reason":null}]}\n\ndata: [DONE]\n\n', {
+        status: 200, headers: { 'content-type': 'text/event-stream' },
+      });
+    }) as typeof globalThis.fetch,
+  });
+  const store = new InMemoryOrganizationStore();
+  let phase = 0;
+  const parser: OrganizationIntentParser = {
+    async parse(input) {
+      phase += 1;
+      const actions = phase === 1
+        ? [
+          parseOrganizationAction({
+            type: 'open_project', expectedSequence: 0,
+            projectId: 'project_archive', originTriggerId: input.intentId,
+          }),
+          parseOrganizationAction({
+            type: 'activate_project', expectedSequence: 1, projectId: 'project_archive',
+          }),
+          parseOrganizationAction({
+            type: 'create_agent',
+            expectedSequence: 2,
+            projectId: 'project_archive',
+            workerId: 'wrk_archive',
+            delegationId: 'del_archive',
+            agentRevisionId: 'agr_placeholder',
+            displayName: 'Archive Worker',
+            instructionsDigest: 'sha256:instructions',
+            scope: ['project:archive'],
+            capabilities: ['cap_read_context'],
+            model: { providerId: 'magpie', modelId: 'fixture-model' },
+            maxDelegationDepth: 0,
+            ttlEvents: 50,
+          }),
+        ]
+        : [parseOrganizationAction({
+          type: 'offboard_worker',
+          expectedSequence: store.get().events.length,
+          projectId: 'project_archive',
+          workerId: 'wrk_archive',
+        })];
+      return Object.freeze({
+        version: 1 as const,
+        intentId: input.intentId,
+        actions: Object.freeze(actions),
+        relay: 'ok',
+      });
+    },
+  };
+  const service = new BossModeService(store, taskService, { parser, waitForTasks: false });
+  try {
+    await service.submit({ text: '建项目并招人', idempotencyKey: 'archive-1' });
+    const beforeArchive = taskService.store.listAgents();
+    assert.equal(beforeArchive.length, 1);
+    assert.equal(beforeArchive[0]!.archived, false);
+
+    await service.submit({ text: '下线该员工', idempotencyKey: 'archive-2' });
+    const afterArchive = taskService.store.listAgents();
+    assert.equal(afterArchive[0]!.archived, true);
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
