@@ -889,6 +889,28 @@ export class AgentChatService {
           if (index >= 0) activity[index] = done;
           if (byTool.get(toolId)?.length === 0) byTool.delete(toolId);
         }
+      } else if (event.type === 'agent_loop.tool_reused') {
+        // ADR 0071: the read was served from an earlier identical result. It is
+        // still a successful tool activity, but the label says so instead of
+        // pretending a new execution happened.
+        const toolId = boundedString(event.data.toolId, 'unknown');
+        const current = byTool.get(toolId)?.shift();
+        const detail = current?.detail ?? toolId;
+        const reused: AgentChatActivity = Object.freeze({
+          id: current?.id ?? `${event.id}:${toolId}`,
+          kind: 'tool',
+          label: `${toolLabel(toolId)}（复用）`,
+          state: 'succeeded',
+          detail,
+        });
+        if (current) {
+          const index = activity.findIndex((entry) => entry.id === current.id);
+          if (index >= 0) activity[index] = reused;
+          else activity.push(reused);
+          if (byTool.get(toolId)?.length === 0) byTool.delete(toolId);
+        } else {
+          activity.push(reused);
+        }
       } else if (event.type === 'agent_loop.tool_failed') {
         const toolId = boundedString(event.data.toolId, 'unknown');
         const current = byTool.get(toolId)?.shift();

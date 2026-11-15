@@ -297,6 +297,11 @@
       "id": "operator-loop-budget",
       "summary": "ADR 0069 makes the Agent loop ceilings operator configuration: CONCHBASE_MAX_ITERATIONS (1-64, default 6), CONCHBASE_MAX_TOOL_CALLS_PER_TURN (1-16, default 4), and CONCHBASE_LOOP_DEADLINE_MS (1000-1800000, default 120000). Values are validated at startup, published as loopBudget on GET /v1/runtime, and never settable by a task, client, Agent revision, or model.",
       "evidence": "src/config/runtime-config.ts"
+    },
+    {
+      "id": "identical-read-reuse",
+      "summary": "ADR 0071 reuses a read-tool result already produced in the same task attempt instead of executing the identical call again. The model still receives the content with a reuse note, an agent_loop.tool_reused event records the reuse, Agent Chat shows it as 复用, and the cache is cleared when the attempt ends. Writes and external calls keep their approval and idempotency behaviour.",
+      "evidence": "src/runtime/task-service.ts"
     }
   ],
   "validationEvidence": [

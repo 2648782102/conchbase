@@ -172,6 +172,7 @@ export class TaskService {
   private readonly catalog: ModelCatalogClient;
   private readonly loopOptions: AgentLoopOptions;
   private readonly effortByTaskId = new Map<string, 'low' | 'medium' | 'high'>();
+  private readonly readResults = new Map<string, { readonly summary: string; readonly digest: string }>();
 
   constructor(
     store: TaskStore,
@@ -507,6 +508,7 @@ export class TaskService {
     const execution = this.execute(task, controller.signal).finally(() => {
       this.active.delete(taskId);
       this.inFlight.delete(execution);
+      this.clearReadResults(taskId);
     });
     this.inFlight.add(execution);
   }
@@ -537,6 +539,7 @@ export class TaskService {
     const execution = this.resumeApprovedTool(task, controller.signal).finally(() => {
       this.active.delete(taskId);
       this.inFlight.delete(execution);
+      this.clearReadResults(taskId);
     });
     this.inFlight.add(execution);
     return this.store.getTask(taskId)!;
@@ -936,6 +939,29 @@ export class TaskService {
       && event.data.argumentsDigest === digest);
   }
 
+  /**
+   * ADR 0071. Read results already produced in the current attempt, keyed by
+   * `taskId:toolId:argumentsDigest`. Scoped to the process and cleared when the
+   * attempt ends, so a retry always sees fresh data. Reads only: replaying one
+   * has no side effect, while writes and external calls keep their existing
+   * approval and idempotency behaviour.
+   */
+
+  private clearReadResults(taskId: string): void {
+    const prefix = `${taskId}:`;
+    for (const key of [...this.readResults.keys()]) {
+      if (key.startsWith(prefix)) this.readResults.delete(key);
+    }
+  }
+
+  private readResultKey(
+    task: TaskSnapshot,
+    toolId: string,
+    args: Readonly<Record<string, string | number | boolean | null>>,
+  ): string {
+    return `${task.id}:${task.attempt}:${toolId}:${digestArguments(args)}`;
+  }
+
   private recordToolExecuted(
     task: TaskSnapshot,
     iteration: number,
@@ -1011,9 +1037,37 @@ export class TaskService {
         );
         return 'paused';
       }
+      // ADR 0071: an identical read already produced in this attempt is reused
+      // rather than executed again. The model still gets the content, but the
+      // Runtime does not spend a second execution or its side of the budget.
+      if (definition.sideEffect === 'read') {
+        const key = this.readResultKey(task, call.name, call.arguments);
+        const cached = this.readResults.get(key);
+        if (cached) {
+          this.recordLoopEvent(task, 'agent_loop.tool_reused', 'running', {
+            iteration,
+            toolId: call.name,
+            toolVersion: 1,
+            argumentsDigest: digestArguments(call.arguments),
+            resultDigest: cached.digest,
+          });
+          messages.push({
+            role: 'tool',
+            toolCallId: call.id,
+            content: `[reused: identical call, same result as before]\n${cached.summary}`,
+          });
+          continue;
+        }
+      }
       try {
         const result = await tools!.invoke(call.name, call.arguments);
         this.recordToolExecuted(task, iteration, call.name, call.arguments, result);
+        if (definition.sideEffect === 'read') {
+          this.readResults.set(this.readResultKey(task, call.name, call.arguments), {
+            summary: result.summary,
+            digest: result.digest,
+          });
+        }
         messages.push({ role: 'tool', toolCallId: call.id, content: result.summary });
       } catch (cause) {
         const code = cause instanceof ToolRejectedError ? cause.code : 'tool_failed';

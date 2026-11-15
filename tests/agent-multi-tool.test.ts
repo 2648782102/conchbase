@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -96,10 +96,13 @@ async function waitFor(
 
 test('multiple read tools execute in one turn', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-multi-read-'));
+  mkdirSync(path.join(directory, 'sub'));
   const service = createService(directory, scripted([
+    // Two distinct reads in one turn must both execute. Identical reads are
+    // deduplicated per ADR 0071 and covered by tests/read-reuse.test.ts.
     () => calls([
       { name: 'workspace_list', args: { path: '.' } },
-      { name: 'workspace_list', args: { path: '.' } },
+      { name: 'workspace_list', args: { path: 'sub' } },
     ]),
     () => text('done'),
   ]));
