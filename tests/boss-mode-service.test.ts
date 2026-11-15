@@ -271,3 +271,121 @@ test('ATTENTION on the last line still opens an attention request', async () => 
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('an open attention only blocks work in its own project', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-attention-scope-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture-model',
+    fetch: (async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/v1/models')) {
+        return new Response(JSON.stringify({
+          data: [{ id: 'fixture-model', display_name: 'Fixture Model' }],
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response('data: {"choices":[{"delta":{"content":"done"},"finish_reason":null}]}\n\ndata: [DONE]\n\n', {
+        status: 200, headers: { 'content-type': 'text/event-stream' },
+      });
+    }) as typeof globalThis.fetch,
+  });
+  const store = new InMemoryOrganizationStore();
+  const parser: OrganizationIntentParser = {
+    async parse(input) {
+      return Object.freeze({
+        version: 1 as const,
+        intentId: input.intentId,
+        actions: Object.freeze([
+          parseOrganizationAction({
+            type: 'open_project', expectedSequence: input.expectedSequence,
+            projectId: 'project_free', originTriggerId: input.intentId,
+          }),
+          parseOrganizationAction({
+            type: 'activate_project', expectedSequence: input.expectedSequence + 1,
+            projectId: 'project_free',
+          }),
+          parseOrganizationAction({
+            type: 'create_agent',
+            expectedSequence: input.expectedSequence + 2,
+            projectId: 'project_free',
+            workerId: 'wrk_free',
+            delegationId: 'del_free',
+            agentRevisionId: 'agr_placeholder',
+            displayName: 'Free Worker',
+            instructionsDigest: 'sha256:instructions',
+            scope: ['project:free'],
+            capabilities: ['cap_read_context'],
+            model: { providerId: 'magpie', modelId: 'fixture-model' },
+            maxDelegationDepth: 0,
+            ttlEvents: 30,
+          }),
+          parseOrganizationAction({
+            type: 'start_worker', expectedSequence: input.expectedSequence + 3,
+            projectId: 'project_free', workerId: 'wrk_free',
+          }),
+        ]),
+        relay: '已在新项目中启动员工。',
+      });
+    },
+  };
+  let service: BossModeService;
+  try {
+    service = new BossModeService(store, taskService, { parser, waitForTasks: false });
+    // Seed an open attention in an unrelated project.
+    store.apply({
+      type: 'open_project', expectedSequence: store.get().events.length,
+      projectId: 'project_blocked', originTriggerId: 'int_blocked',
+    });
+    store.apply({
+      type: 'activate_project', expectedSequence: store.get().events.length,
+      projectId: 'project_blocked',
+    });
+    store.apply({
+      type: 'create_agent',
+      expectedSequence: store.get().events.length,
+      projectId: 'project_blocked',
+      workerId: 'wrk_blocked',
+      delegationId: 'del_blocked',
+      agentRevisionId: 'agr_blocked',
+      displayName: 'Blocked Worker',
+      instructionsDigest: 'sha256:instructions',
+      scope: ['project:blocked'],
+      capabilities: ['cap_read_context'],
+      model: { providerId: 'magpie', modelId: 'fixture-model' },
+      maxDelegationDepth: 0,
+      ttlEvents: 10,
+    });
+    store.apply({
+      type: 'authorize_worker', expectedSequence: store.get().events.length,
+      projectId: 'project_blocked', workerId: 'wrk_blocked',
+    });
+    store.apply({
+      type: 'start_worker', expectedSequence: store.get().events.length,
+      projectId: 'project_blocked', workerId: 'wrk_blocked',
+    });
+    store.apply({
+      type: 'report_worker',
+      expectedSequence: store.get().events.length,
+      projectId: 'project_blocked',
+      workerId: 'wrk_blocked',
+      reportId: 'rpt_blocked',
+      state: 'attention',
+      summaryDigest: 'sha256:blocked',
+    });
+    store.apply({
+      type: 'request_attention', expectedSequence: store.get().events.length,
+      projectId: 'project_blocked', workerId: 'wrk_blocked',
+      attentionId: 'att_blocked', questionDigest: 'sha256:question',
+    });
+
+    const result = await service.submit({ text: '在新项目里招人并开工', idempotencyKey: 'scope-1' });
+    assert.equal(result.state, 'accepted');
+    const free = store.get().workers.find((worker) => worker.id === 'wrk_free');
+    assert.ok(free);
+    assert.notEqual(free.state, 'authorized');
+    assert.equal(result.executions.some((entry) =>
+      entry.status === 'skipped' && /Open attention/.test(entry.detail ?? '')), false);
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

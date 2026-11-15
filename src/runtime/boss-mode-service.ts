@@ -369,9 +369,19 @@ export class BossModeService {
     if (action.type === 'start_worker') {
       if (this.startedWorkers.has(action.workerId) || !this.workerExecutions.has(action.workerId)) return;
       const worker = this.store.get().workers.find((item) => item.id === action.workerId);
-      if (worker && ['authorized', 'idle'].includes(worker.state)) applyAction(this.store, action);
+      const mutated = Boolean(worker && ['authorized', 'idle'].includes(worker.state));
+      if (mutated) applyAction(this.store, action);
       this.startedWorkers.add(action.workerId);
-      context.executions.push(this.ensureWorkItem(action));
+      const execution = this.ensureWorkItem(action);
+      context.executions.push(execution);
+      if (execution.status === 'skipped' && mutated) {
+        // The worker was already marked running; leaving it there would strand a
+        // "running" worker with no task. Report a failure so the UI sees the truth.
+        const blocked = this.blockStartedWorker(action);
+        if (blocked) {
+          context.executions.push(Object.freeze({ action, status: 'failed' as const, detail: execution.detail ?? 'Worker could not start.' }));
+        }
+      }
       return;
     }
     if (action.type === 'quiet_project' || action.type === 'archive_project' || action.type === 'resume_project') {
@@ -725,14 +735,40 @@ export class BossModeService {
     return record;
   }
 
+  private blockStartedWorker(action: Extract<OrganizationAction, { type: 'start_worker' }>): boolean {
+    const worker = this.store.get().workers.find((item) => item.id === action.workerId);
+    if (!worker || worker.state !== 'running') return false;
+    try {
+      applyAction(this.store, {
+        type: 'report_worker',
+        expectedSequence: this.store.get().events.length,
+        projectId: action.projectId,
+        workerId: action.workerId,
+        reportId: `rpt_${reference(`${action.workerId}:start-blocked:${this.store.get().events.length}`)}`,
+        state: 'failed',
+        summaryDigest: digest(`start-blocked:${action.workerId}`),
+      });
+      this.startedWorkers.delete(action.workerId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private ensureWorkItem(action: Extract<OrganizationAction, { type: 'start_worker' }>): BossModeExecution {
     const record = this.workerExecutions.get(action.workerId);
     if (!record) return Object.freeze({ action, status: 'skipped' as const, detail: 'No validated Agent revision.' });
     const platform = this.taskService?.store.platform;
     if (!platform) return Object.freeze({ action, status: 'failed' as const, detail: 'Platform store is unavailable.' });
     const snapshot = this.store.get();
-    if (snapshot.attentionRequests.some((request) => request.state === 'open')) {
-      return Object.freeze({ action, status: 'skipped' as const, detail: 'Open attention blocks new work.' });
+    const blocking = snapshot.attentionRequests.find((request) =>
+      request.state === 'open' && request.projectId === action.projectId);
+    if (blocking) {
+      return Object.freeze({
+        action,
+        status: 'skipped' as const,
+        detail: `Open attention ${blocking.id} in this project blocks new work until it is answered or withdrawn.`,
+      });
     }
     try {
       platform.startWork(record.workItemId, 'open');
