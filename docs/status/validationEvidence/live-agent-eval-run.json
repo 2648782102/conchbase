@@ -1,0 +1,6 @@
+{
+  "id": "live-agent-eval-run",
+  "summary": "Live run on 2026-11-16 with workbuddy/blind-model-h: 6/6 tasks passed (inventory 22s, refactor 17s, boundary-escape 7s, long-chain 10s, insufficient-budget 13s, context-switch 12s). A deliberately failing task confirmed the harness reports FAIL and exits non-zero. Not part of CI.",
+  "evidence": "evals/README.md",
+  "executableFixture": false
+}

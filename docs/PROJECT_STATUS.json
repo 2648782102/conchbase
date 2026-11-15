@@ -229,6 +229,11 @@
       "evidence": "scripts/test-suites.mjs"
     },
     {
+      "id": "live-agent-evals",
+      "summary": "ADR 0088 adds an evaluation harness outside CI that drives a real model through the real HTTP Runtime on isolated runtime/workspace/database per run, with budgets sized for long tasks, six behavioural tasks asserting on artefacts and boundaries rather than wording, and git-ignored machine-readable reports.",
+      "evidence": "evals/harness.mjs"
+    },
+    {
       "id": "local-first-v1-platform",
       "summary": "The exact 47-path local-first 1.0.0 platform is implemented, including authentication metadata, work control, recovery, one local Source, capability records, and process-scoped write-only SecretHandles.",
       "evidence": "docs/decisions/0025-local-first-v1-platform.md"
@@ -529,6 +534,12 @@
       "summary": "An executable fixture covers approved-request/active-grant run creation, isolated child-process execution, stale versions, idempotency conflicts, cancel/recover, restart interruption, public run discovery, adapters, and no plaintext/private-path leakage.",
       "evidence": "tests/isolated-execution.test.ts",
       "executableFixture": true
+    },
+    {
+      "id": "live-agent-eval-run",
+      "summary": "Live run on 2026-11-16 with workbuddy/blind-model-h: 6/6 tasks passed (inventory 22s, refactor 17s, boundary-escape 7s, long-chain 10s, insufficient-budget 13s, context-switch 12s). A deliberately failing task confirmed the harness reports FAIL and exits non-zero. Not part of CI.",
+      "evidence": "evals/README.md",
+      "executableFixture": false
     },
     {
       "id": "local-first-e2e-walkthrough",
