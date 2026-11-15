@@ -448,10 +448,12 @@ export function createOpenAiCompatibleBossConversationParser(options: {
   readonly appKey?: string;
   readonly fetch?: typeof globalThis.fetch;
   readonly timeoutMs?: number;
+  readonly maxAttempts?: number;
 }): OrganizationIntentParser {
   const base = options.baseUrl.replace(/\/+$/, '');
   const endpoint = `${base}/v1/chat/completions`;
   const fetchImpl = options.fetch ?? globalThis.fetch;
+  const maxAttempts = Math.max(1, Math.min(options.maxAttempts ?? 2, 3));
   const headers: Record<string, string> = {
     Accept: 'application/json',
     'Content-Type': 'application/json',
@@ -459,67 +461,92 @@ export function createOpenAiCompatibleBossConversationParser(options: {
   };
   if (options.appKey) headers.Authorization = `Bearer ${options.appKey}`;
 
+  const requestOnce = async (
+    input: OrganizationIntentParserInput,
+    attempt: number,
+  ): Promise<string> => {
+    const timeout = AbortSignal.timeout(options.timeoutMs ?? 120_000);
+    const signal = input.signal ? AbortSignal.any([input.signal, timeout]) : timeout;
+    const stream = attempt === 1;
+    let response: Response;
+    try {
+      response = await fetchImpl(endpoint, {
+        method: 'POST',
+        headers,
+        signal,
+        body: JSON.stringify({
+          model: input.modelReference?.modelId ?? options.model,
+          stream,
+          messages: [
+            { role: 'system', content: BOSS_CONVERSATION_INSTRUCTIONS },
+            ...(attempt > 1
+              ? [{
+                role: 'system' as const,
+                content: '上一次回复不是严格 JSON，本次回复未采用。这次必须只输出一个 JSON 对象，形如 {"reply":"...","actions":[]}，不要包含任何解释、前缀、Markdown 代码围栏或注释。',
+              }]
+              : []),
+            {
+              role: 'user',
+              content: JSON.stringify({
+                intentId: input.intentId,
+                text: input.text,
+                expectedSequence: input.expectedSequence,
+                最近对话: (input.conversation ?? []).slice(-8).map((message) => ({
+                  author: message.author,
+                  body: message.body.slice(0, 2000),
+                })),
+                projectIds: (input.snapshot?.projects ?? []).map((project) => project.id),
+                workerIds: (input.snapshot?.workers ?? []).map((worker) => worker.id),
+                openAttentionIds: (input.snapshot?.attentionRequests ?? [])
+                  .filter((request) => request.state === 'open')
+                  .map((request) => request.id),
+                organization: input.organizationFacts ?? null,
+              }),
+            },
+          ],
+        }),
+      });
+    } catch (cause) {
+      if (input.signal?.aborted) throw cause;
+      throw new OrganizationIntentParseError('Boss model provider request failed; upstream is unavailable.');
+    }
+    if (!response.ok) {
+      throw new OrganizationIntentParseError(`Boss model provider returned HTTP ${response.status}; upstream is unavailable.`);
+    }
+    const isStreamed = response.headers.get('content-type')?.includes('text/event-stream');
+    const content = isStreamed
+      ? await readBossStream(response, input.onProgress)
+      : await readBossJson(response);
+    if (typeof content !== 'string' || content.trim().length === 0) {
+      throw new OrganizationIntentParseError('Boss model provider returned an empty completion.');
+    }
+    return content;
+  };
+
   return {
     async parse(input) {
-      const timeout = AbortSignal.timeout(options.timeoutMs ?? 120_000);
-      const signal = input.signal ? AbortSignal.any([input.signal, timeout]) : timeout;
-      let response: Response;
-      try {
-        response = await fetchImpl(endpoint, {
-          method: 'POST',
-          headers,
-          signal,
-          body: JSON.stringify({
-            model: input.modelReference?.modelId ?? options.model,
-            stream: true,
-            messages: [
-              { role: 'system', content: BOSS_CONVERSATION_INSTRUCTIONS },
-              {
-                role: 'user',
-                content: JSON.stringify({
-                  intentId: input.intentId,
-                  text: input.text,
-                  expectedSequence: input.expectedSequence,
-                  最近对话: (input.conversation ?? []).slice(-8).map((message) => ({
-                    author: message.author,
-                    body: message.body.slice(0, 2000),
-                  })),
-                  projectIds: (input.snapshot?.projects ?? []).map((project) => project.id),
-                  workerIds: (input.snapshot?.workers ?? []).map((worker) => worker.id),
-                  openAttentionIds: (input.snapshot?.attentionRequests ?? [])
-                    .filter((request) => request.state === 'open')
-                    .map((request) => request.id),
-                  organization: input.organizationFacts ?? null,
-                }),
-              },
-            ],
-          }),
-        });
-      } catch (cause) {
-        if (input.signal?.aborted) throw cause;
-        throw new OrganizationIntentParseError('Boss model provider request failed; upstream is unavailable.');
+      let fallbackSource: string | null = null;
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        const content = await requestOnce(input, attempt);
+        let structured: unknown;
+        let usable = false;
+        try {
+          structured = JSON.parse(extractJsonObject(content));
+          usable = isRecord(structured)
+            && Array.isArray(structured.actions)
+            && typeof structured.reply === 'string';
+        } catch {
+          usable = false;
+        }
+        if (usable) {
+          return parseBossConversationResult(input, structured);
+        }
+        if (fallbackSource === null) fallbackSource = content;
+        if (attempt < maxAttempts) {
+          input.onProgress?.({ state: 'streaming', percent: 0, previousText: '' });
+        }
       }
-      if (!response.ok) {
-        throw new OrganizationIntentParseError(`Boss model provider returned HTTP ${response.status}; upstream is unavailable.`);
-      }
-      const streamed = response.headers.get('content-type')?.includes('text/event-stream');
-      const content = streamed
-        ? await readBossStream(response, input.onProgress)
-        : await readBossJson(response);
-      if (typeof content !== 'string' || content.trim().length === 0) {
-        throw new OrganizationIntentParseError('Boss model provider returned an empty completion.');
-      }
-      let structured: unknown;
-      try {
-        structured = JSON.parse(extractJsonObject(content));
-      } catch {
-        return parseBossPlainTextFallback(input, content);
-      }
-      if (isRecord(structured) && structured.actions === undefined
-        && typeof structured.reply === 'string') {
-        return parseBossPlainTextFallback(input, structured.reply);
-      }
-      return parseBossConversationResult(input, structured);
+      return parseBossPlainTextFallback(input, fallbackSource ?? '');
     },
   };
 }

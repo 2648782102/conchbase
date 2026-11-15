@@ -479,3 +479,62 @@ test('Boss conversation parser accepts strict JSON wrapped in a Markdown code fe
   });
   assert.equal(result.relay, '我在。');
 });
+
+test('Boss conversation parser retries once when the model skips JSON, then succeeds', async () => {
+  let calls = 0;
+  const fetchImpl = (async () => {
+    calls += 1;
+    const content = calls === 1
+      ? '我先直接说结论：这两个项目都没有记录目标。'
+      : JSON.stringify({ reply: '这两个项目都没有记录目标。', actions: [] });
+    return new Response(JSON.stringify({ choices: [{ message: { content } }] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as typeof globalThis.fetch;
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/boss-chat',
+    fetch: fetchImpl,
+  });
+  const result = await parser.parse({ intentId: 'int_retry', text: 'hello', expectedSequence: 0 });
+  assert.equal(calls, 2);
+  assert.equal(result.relay, '这两个项目都没有记录目标。');
+  assert.deepEqual(result.actions, []);
+});
+
+test('Boss conversation parser falls back to the first plain text when every retry fails', async () => {
+  let calls = 0;
+  const fetchImpl = (async () => {
+    calls += 1;
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: `第 ${calls} 次仍然没有 JSON` } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }) as typeof globalThis.fetch;
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/boss-chat',
+    fetch: fetchImpl,
+  });
+  const result = await parser.parse({ intentId: 'int_retry_fail', text: 'hello', expectedSequence: 0 });
+  assert.equal(calls, 2);
+  assert.equal(result.relay, '第 1 次仍然没有 JSON');
+  assert.deepEqual(result.actions, []);
+});
+
+test('Boss conversation parser does not retry upstream failures', async () => {
+  let calls = 0;
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/boss-chat',
+    fetch: (async () => {
+      calls += 1;
+      return new Response('{}', { status: 503 });
+    }) as typeof globalThis.fetch,
+  });
+  await assert.rejects(
+    () => parser.parse({ intentId: 'int_upstream', text: 'hello', expectedSequence: 0 }),
+    /HTTP 503/,
+  );
+  assert.equal(calls, 1);
+});

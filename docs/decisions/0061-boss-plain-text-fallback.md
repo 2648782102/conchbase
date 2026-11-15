@@ -19,6 +19,8 @@ The JSON envelope exists to carry **optional** organization actions. A reply wit
 5. The fallback never infers or fabricates organization actions. Organization authority is unchanged: actions still require a valid, fully parsed, Runtime-validated envelope.
 6. Genuine upstream failures (non-2xx, empty completion, incomplete stream, oversize output, secret-like content) keep their existing classifications and are not masked by the fallback.
 7. No public path, schema, or contract version changes. This is an internal parsing policy.
+8. Before falling back, the Runtime retries **once** when the first response is not a usable envelope (default `maxAttempts = 2`, hard cap 3). The retry is non-streaming and adds an explicit system instruction to emit only the JSON object. Retries apply only to format problems: non-2xx responses, empty completions, incomplete streams, oversize output, and secret-like content are not retried. If every attempt fails, the **first** plain-text response is published so the user still sees the model's answer.
+9. Retries reuse the same bounded timeout budget per attempt and honour the caller's abort signal; a retry never fabricates actions.
 
 ## Options
 
