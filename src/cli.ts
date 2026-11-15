@@ -41,6 +41,7 @@ Configuration:
   CONCHBASE_DB                   Runtime SQLite path (default .conchbase/runtime.sqlite)
   CONCHBASE_ALLOW_AUTHENTICATED_REMOTE_BINDING=1   Enable reviewed non-loopback binding
   CONCHBASE_AUTH_TOKEN_DIGEST    sha256 digest of an approved bearer token
+  CONCHBASE_EXECUTION_MODE       restricted (default) or unrestricted
 `;
 }
 
@@ -98,6 +99,7 @@ async function main(argv: readonly string[]): Promise<void> {
       magpieBaseUrl: config.magpieBaseUrl,
       ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
       defaultModel: config.defaultModel,
+      executionMode: config.executionMode,
       }, { tools: toolRuntime.tools, skills: toolRuntime.skills.skills });
     const conversationService = new PrimaryConversationService({
       recordIntentText: (intentId, text) => service.store.organization.recordIntentText?.(intentId, text),
@@ -144,6 +146,7 @@ async function main(argv: readonly string[]): Promise<void> {
     magpieBaseUrl: config.magpieBaseUrl,
     ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
     defaultModel: config.defaultModel,
+    executionMode: config.executionMode,
     }, { tools: toolRuntime.tools, skills: toolRuntime.skills.skills });
   const conversationService = new PrimaryConversationService();
   const controller = new AbortController();

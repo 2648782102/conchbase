@@ -29,6 +29,12 @@ export interface McpServerDeclaration {
   readonly args: readonly string[];
   readonly env?: Readonly<Record<string, string>>;
   readonly tools?: readonly McpToolDeclaration[];
+  /**
+   * Side-effect class applied to tools discovered from `tools/list` when the
+   * server did not declare them individually. MCP does not report a trustworthy
+   * side-effect class, so undeclared tools default to `read`.
+   */
+  readonly discoverySideEffect?: ToolSideEffect;
   readonly startTimeoutMs?: number;
   readonly callTimeoutMs?: number;
   readonly maxResultBytes?: number;
@@ -57,7 +63,21 @@ function assertExactKeys(value: Record<string, unknown>, allowed: readonly strin
 
 function parseDeclaration(value: unknown, index: number): McpServerDeclaration {
   if (!isRecord(value)) throw new ToolRejectedError('invalid_mcp_config', `servers[${index}] must be an object.`);
-  assertExactKeys(value, ['id', 'command', 'args', 'env', 'tools', 'startTimeoutMs', 'callTimeoutMs', 'maxResultBytes'], `servers[${index}]`);
+  assertExactKeys(
+    value,
+    [
+      'id',
+      'command',
+      'args',
+      'env',
+      'tools',
+      'discoverySideEffect',
+      'startTimeoutMs',
+      'callTimeoutMs',
+      'maxResultBytes',
+    ],
+    `servers[${index}]`,
+  );
   const id = value.id;
   if (typeof id !== 'string' || !SERVER_ID_PATTERN.test(id)) {
     throw new ToolRejectedError('invalid_mcp_config', `servers[${index}].id must be a bounded lowercase identifier.`);
@@ -103,12 +123,25 @@ function parseDeclaration(value: unknown, index: number): McpServerDeclaration {
     typeof input === 'number' && Number.isInteger(input) && input >= 100 && input <= 60_000 ? input : fallback;
   const boundedBytes = (input: unknown, fallback: number): number =>
     typeof input === 'number' && Number.isInteger(input) && input >= 1 && input <= MAX_RESULT_BYTES ? input : fallback;
+  const discoverySideEffect = value.discoverySideEffect;
+  if (
+    discoverySideEffect !== undefined
+    && discoverySideEffect !== 'read'
+    && discoverySideEffect !== 'write'
+    && discoverySideEffect !== 'external'
+  ) {
+    throw new ToolRejectedError(
+      'invalid_mcp_config',
+      `servers[${index}].discoverySideEffect is invalid.`,
+    );
+  }
   return Object.freeze({
     id,
     command,
     args: Object.freeze([...value.args as string[]]),
     ...(env ? { env: Object.freeze(env) } : {}),
     ...(tools ? { tools: Object.freeze(tools) } : {}),
+    ...(discoverySideEffect ? { discoverySideEffect } : {}),
     startTimeoutMs: boundedTimeout(value.startTimeoutMs, START_TIMEOUT_MS),
     callTimeoutMs: boundedTimeout(value.callTimeoutMs, CALL_TIMEOUT_MS),
     maxResultBytes: boundedBytes(value.maxResultBytes, MAX_RESULT_BYTES),
@@ -267,15 +300,17 @@ export async function createMcpToolProvider(input: unknown): Promise<McpToolProv
       const discovered = server.tools && server.tools.length > 0
         ? server.tools
         : (await connection.listTools(server.startTimeoutMs ?? START_TIMEOUT_MS))
-          .map((tool) => ({ name: tool.name, sideEffect: 'read' as const }));
+          .map((tool) => ({
+            name: tool.name,
+            sideEffect: server.discoverySideEffect ?? ('read' as const),
+          }));
       for (const declared of discovered) {
-        if (declared.sideEffect !== 'read') continue;
         entries.push({
           definition: Object.freeze({
             id: `mcp_${server.id}_${declared.name.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase()}`,
             version: 1,
             description: `MCP tool ${declared.name} from ${server.id}.`,
-            sideEffect: 'read',
+            sideEffect: declared.sideEffect,
           }),
           server,
           connection,

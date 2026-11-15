@@ -19,6 +19,7 @@ import {
 } from './model-catalog.js';
 import { OpenAiChatCompletionsProvider } from './magpie-provider.js';
 import { projectSkills, projectToolProvider } from './capability-grants.js';
+import type { ExecutionMode } from '../config/runtime-config.js';
 import {
   AgentConflictError,
   AgentNotFoundError,
@@ -72,6 +73,11 @@ export interface TaskServiceConfig {
   readonly magpieAppKey?: string;
   readonly defaultModel: string;
   readonly fetch?: typeof globalThis.fetch;
+  /**
+   * ADR 0068. `restricted` pauses consequential tool calls for approval;
+   * `unrestricted` executes every granted tool immediately.
+   */
+  readonly executionMode?: ExecutionMode;
 }
 
 export interface AgentLoopOptions {
@@ -178,6 +184,20 @@ export class TaskService {
 
   get preferredChatModelId(): string | undefined {
     return this.loopOptions.preferredChatModelId ?? (this.config.defaultModel || undefined);
+  }
+
+  get executionMode(): ExecutionMode {
+    return this.config.executionMode ?? 'restricted';
+  }
+
+  /**
+   * A tool pauses for human approval only in restricted mode and only when it
+   * is consequential. Scope (`grantedCapabilities`) is decided elsewhere and is
+   * never widened by the execution mode.
+   */
+  private requiresApproval(definition: { readonly sideEffect: string }): boolean {
+    if (this.executionMode === 'unrestricted') return false;
+    return definition.sideEffect === 'write' || definition.sideEffect === 'external';
   }
 
   getConfigurationState(): ConfigurationState {
@@ -959,7 +979,7 @@ export class TaskService {
         messages.push({ role: 'tool', toolCallId: call.id, content: 'error: unknown_tool' });
         continue;
       }
-      if (definition.sideEffect === 'write') {
+      if (this.requiresApproval(definition)) {
         if (this.writeAlreadyApplied(task, call.name, call.arguments)) {
           messages.push({
             role: 'tool',

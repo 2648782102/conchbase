@@ -20,6 +20,7 @@ test('read-only status routes return the documented API shapes', async () => {
       name: 'Conchbase',
       version: '1.0.0',
       state: 'ready',
+      executionMode: 'restricted',
       capabilities: [],
     });
 
@@ -49,6 +50,7 @@ test('read-only status routes return the documented API shapes', async () => {
       'local-source-policy',
       'capability-directory',
       'write-only-secret-handles',
+      'execution-modes',
     ]);
   } finally {
     await configured.close();

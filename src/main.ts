@@ -27,6 +27,7 @@ const taskService = createTaskService(config.databasePath, {
   magpieBaseUrl: config.magpieBaseUrl,
   ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
   defaultModel: config.defaultModel,
+  executionMode: config.executionMode,
   }, { tools: toolRuntime.tools, skills: toolRuntime.skills.skills });
 const executionService = new ControlledExecutionService();
 const executionRunService = new IsolatedExecutionService({ host: executionService });

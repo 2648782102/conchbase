@@ -287,6 +287,11 @@
       "id": "mcp-official-sdk",
       "summary": "ADR 0067 replaces the hand-written MCP JSON-RPC layer with the official @modelcontextprotocol/sdk stdio transport. Bounded configuration, sanitized environment, namespaced tool ids, per-call timeout, result caps, and Agent-scoped grants are unchanged.",
       "evidence": "src/runtime/mcp-provider.ts"
+    },
+    {
+      "id": "execution-modes",
+      "summary": "ADR 0068 adds CONCHBASE_EXECUTION_MODE. Restricted (default) pauses write and external tools in waiting_approval; unrestricted executes every granted tool immediately. The mode is runtime-wide, fixed at startup, published on GET /v1/runtime, and never widens grantedCapabilities.",
+      "evidence": "src/runtime/task-service.ts"
     }
   ],
   "validationEvidence": [

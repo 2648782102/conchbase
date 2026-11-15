@@ -29,14 +29,16 @@ function config(overrides: Record<string, unknown> = {}) {
   };
 }
 
-test('MCP provider discovers namespaced read tools and calls them', async () => {
+test('MCP provider registers every declared side-effect class', async () => {
   const provider = await createMcpToolProvider(config());
   try {
     const ids = provider.list().map((tool) => tool.id);
     assert.ok(ids.includes('mcp_fixture_echo'));
     assert.ok(ids.includes('mcp_fixture_fail'));
-    assert.ok(!ids.includes('mcp_fixture_write_thing'));
-    assert.ok(provider.list().every((tool) => tool.sideEffect === 'read'));
+    assert.ok(ids.includes('mcp_fixture_write_thing'));
+    const byId = new Map(provider.list().map((tool) => [tool.id, tool.sideEffect]));
+    assert.equal(byId.get('mcp_fixture_echo'), 'read');
+    assert.equal(byId.get('mcp_fixture_write_thing'), 'write');
     const result = await provider.invoke('mcp_fixture_echo', { text: 'hello' });
     assert.equal(result.ok, true);
     assert.match(result.summary, /echo:hello/);
@@ -45,11 +47,12 @@ test('MCP provider discovers namespaced read tools and calls them', async () => 
   }
 });
 
-test('MCP provider rejects unknown and non-read tools', async () => {
+test('MCP provider rejects unknown tools and still invokes declared writes', async () => {
   const provider = await createMcpToolProvider(config());
   try {
     await assert.rejects(async () => provider.invoke('mcp_fixture_missing', {}), /unknown tool|Tool call/i);
-    await assert.rejects(async () => provider.invoke('mcp_fixture_write_thing', {}), /unknown tool|Tool call/i);
+    const written = await provider.invoke('mcp_fixture_write_thing', {});
+    assert.equal(written.ok, true);
   } finally {
     await provider.close();
   }

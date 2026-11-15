@@ -1,6 +1,9 @@
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 const LOOPBACK_URL_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 
+export const EXECUTION_MODES = Object.freeze(['restricted', 'unrestricted'] as const);
+export type ExecutionMode = typeof EXECUTION_MODES[number];
+
 export interface RuntimeConfig {
   host: string;
   port: number;
@@ -13,6 +16,7 @@ export interface RuntimeConfig {
   mcpConfigPath?: string;
   skillsDirectory?: string;
   allowToolWrites?: boolean;
+  executionMode: ExecutionMode;
   allowAuthenticatedRemoteBinding: boolean;
   authTokenDigest?: string;
 }
@@ -58,6 +62,11 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
   if (magpieAppKey !== undefined && !/^magpie-[a-zA-Z0-9_-]+$/.test(magpieAppKey)) {
     throw new Error('CONCHBASE_MAGPIE_APP_KEY has an invalid format.');
   }
+  const executionModeValue = env.CONCHBASE_EXECUTION_MODE ?? 'restricted';
+  if (!EXECUTION_MODES.includes(executionModeValue as ExecutionMode)) {
+    throw new Error('CONCHBASE_EXECUTION_MODE must be restricted or unrestricted.');
+  }
+  const executionMode = executionModeValue as ExecutionMode;
   return {
     host,
     port,
@@ -72,6 +81,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     ...(env.CONCHBASE_MCP_CONFIG ? { mcpConfigPath: env.CONCHBASE_MCP_CONFIG } : {}),
     ...(env.CONCHBASE_SKILLS_DIR ? { skillsDirectory: env.CONCHBASE_SKILLS_DIR } : {}),
     ...(env.CONCHBASE_ALLOW_TOOL_WRITES === '1' ? { allowToolWrites: true } : {}),
+    executionMode,
     allowAuthenticatedRemoteBinding,
     ...(authTokenDigest ? { authTokenDigest } : {}),
   };

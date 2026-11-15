@@ -357,6 +357,7 @@ test('live injected responses equal the documented response fixtures', async () 
           agentChatPaths: runtime.json().agentChatPaths,
         }
         : {}),
+      executionMode: runtime.json().executionMode,
     });
   } finally {
     await app.close();
