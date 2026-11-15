@@ -312,6 +312,16 @@
       "id": "boss-model-selection",
       "summary": "ADR 0073 makes the configured Boss model authoritative for the Boss conversation instead of taking the provider catalog's first entry, and makes the structured intent parser honour the response content type so a streaming upstream no longer fails with \"invalid JSON\".",
       "evidence": "src/runtime/boss-mode-service.ts"
+    },
+    {
+      "id": "runtime-owned-sequence",
+      "summary": "ADR 0074 fills expectedSequence and Runtime-owned ids (reportId, attentionId) before validation, so a model that omits a value only the Runtime can know no longer fails a valid plan.",
+      "evidence": "src/runtime/organization-intent-parser.ts"
+    },
+    {
+      "id": "worker-rerun-binding",
+      "summary": "ADR 0075 binds fresh WorkItem and task when a terminal worker is re-run, stops suppressing legitimate re-runs, awaits re-dispatched work, names the first concrete failure reason, and keeps diagnostics for non-Error throwables.",
+      "evidence": "src/runtime/boss-mode-service.ts"
     }
   ],
   "validationEvidence": [

@@ -631,3 +631,48 @@ test('the configured Boss model wins over provider catalog order', async () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('a worker prompt tells the worker to read real data with tools instead of guessing', async () => {
+  // Live probe: a worker asked to count Markdown files reported 100 when the
+  // real count was 22. Its prompt said "do not list directories", which
+  // discouraged the very tool use the task required.
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-worker-prompt-'));
+  const prompts: string[] = [];
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture-model',
+    fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/v1/models')) {
+        return new Response(JSON.stringify({ data: [{ id: 'fixture-model' }] }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      }
+      const body = JSON.parse(String(init?.body ?? '{}')) as {
+        messages?: readonly { role: string; content: string }[];
+      };
+      const user = body.messages?.find((message) => message.role === 'user');
+      if (user) prompts.push(user.content);
+      return new Response(
+        `data: ${JSON.stringify({ choices: [{ delta: { content: '完成' } }] })}\n\ndata: [DONE]\n\n`,
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      );
+    }) as typeof globalThis.fetch,
+  });
+  try {
+    const store = new InMemoryOrganizationStore();
+    const service = new BossModeService(store, taskService, {
+      parser: fixtureParser(),
+      waitForTasks: false,
+    });
+    await service.submit({ text: '开项目并派活', idempotencyKey: 'worker-prompt-1' });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const workerPrompt = prompts.find((prompt) => prompt.includes('为项目'));
+    assert.ok(workerPrompt, 'a worker task prompt must have been sent');
+    assert.match(workerPrompt!, /需要文件内容、目录列表或匹配项时，用可用的读取工具取得/);
+    assert.match(workerPrompt!, /必须来自工具结果；取不到就说明原因，不要推测/);
+    assert.doesNotMatch(workerPrompt!, /不要为找它们去翻文件。\n请直接/);
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

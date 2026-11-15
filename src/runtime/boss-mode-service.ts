@@ -193,8 +193,22 @@ function validateSubmission(input: unknown): BossModeSubmitInput {
 }
 
 function boundedError(cause: unknown): string {
-  const message = cause instanceof Error ? cause.message : 'Unknown execution failure.';
-  return message.slice(0, 240).replace(/[\u0000-\u001f\u007f]/g, ' ');
+  // A thrown non-Error still carries a diagnostic: stringify it rather than
+  // collapsing every such case into one opaque sentence.
+  let message: string;
+  if (cause instanceof Error) {
+    message = cause.message;
+  } else if (typeof cause === 'string') {
+    message = cause;
+  } else {
+    try {
+      message = JSON.stringify(cause) ?? String(cause);
+    } catch {
+      message = String(cause);
+    }
+  }
+  const bounded = message.trim().length > 0 ? message : 'Unknown execution failure.';
+  return bounded.slice(0, 240).replace(/[\u0000-\u001f\u007f]/g, ' ');
 }
 
 function actionAt(action: OrganizationAction, expectedSequence: number): OrganizationAction {
@@ -364,7 +378,14 @@ export class BossModeService {
       this.recordIntent(resolvedIntentId, bodyDigest, actions.length);
     }
     if (executions.length > 0 && executions.every((execution) => execution.status === 'failed')) {
-      throw new BossModeServiceError('Boss mode execution failed; see bounded execution details.');
+      // Surface the first concrete reason. A summary that only says "failed"
+      // forces the operator to go digging, and hides actionable causes such as
+      // an inactive delegation or a closed project.
+      const firstDetail = executions
+        .map((execution) => execution.detail?.trim())
+        .find((detail) => detail && detail.length > 0);
+      const reason = firstDetail ? `: ${boundedError(firstDetail)}` : '';
+      throw new BossModeServiceError(`Boss mode execution failed${reason}`);
     }
     return result;
   }
@@ -392,13 +413,30 @@ export class BossModeService {
       return;
     }
     if (action.type === 'start_worker') {
-      if (this.startedWorkers.has(action.workerId) || !this.workerExecutions.has(action.workerId)) return;
+      if (!this.workerExecutions.has(action.workerId)) return;
+      // A worker that already started once must still be able to run again: the
+      // Boss re-runs a worker by starting it, and skipping here silently drops
+      // that request while the fresh task runs unobserved.
+      if (this.startedWorkers.has(action.workerId)) {
+        const latest = this.workerExecutions.get(action.workerId)!;
+        const latestTask = this.taskService?.store.getTask(latest.taskId);
+        if (latestTask && !['succeeded', 'failed', 'cancelled', 'interrupted'].includes(latestTask.state)) {
+          return;
+        }
+        this.startedWorkers.delete(action.workerId);
+      }
       const worker = this.store.get().workers.find((item) => item.id === action.workerId);
       const mutated = Boolean(worker && ['authorized', 'idle'].includes(worker.state));
       if (mutated) applyAction(this.store, action);
       this.startedWorkers.add(action.workerId);
       const execution = this.ensureWorkItem(action);
       context.executions.push(execution);
+      // A re-run dispatches a new task; it must be awaited like a fresh hire,
+      // otherwise the Boss reports on the old result and never sees the new one.
+      if (execution.status === 'dispatched') {
+        const record = this.workerExecutions.get(action.workerId);
+        if (record) context.createdWorkers.push(record);
+      }
       if (execution.status === 'skipped' && mutated) {
         // The worker was already marked running; leaving it there would strand a
         // "running" worker with no task. Report a failure so the UI sees the truth.
@@ -722,7 +760,10 @@ export class BossModeService {
       `项目目标：${projectPurpose}`,
       `授权范围：${scope}`,
       `可用能力：${capabilities}`,
-      '重要：组织事实（项目、员工、委派、汇报）只存在于 Runtime 的组织记录里，不在工作区文件中；不要通过列目录或搜索文件寻找项目上下文，也不要反复取同样的信息。',
+      '组织结构（项目、员工、委派、汇报记录）只存在于 Runtime 里，不在工作区文件中，不要为找它们去翻文件。',
+      '项目数据在工作区：需要文件内容、目录列表或匹配项时，用可用的读取工具取得。',
+      '具体事实（数字、文件名、路径）必须来自工具结果；取不到就说明原因，不要推测。',
+      '不要用相同参数重复调用同一个工具。',
       '请直接基于上述上下文给出简洁结论，通常一轮即可完成。',
       ...(hasExplicitFormat
         ? ['严格按系统指令中的输出格式作答；系统指令禁止的内容不得输出，包括 ATTENTION 行。']
@@ -813,6 +854,73 @@ export class BossModeService {
     }
   }
 
+  /**
+   * Returns a fresh binding when the recorded WorkItem is already terminal.
+   * A terminal WorkItem cannot be started again, so replaying it would fail
+   * instead of running the work.
+   */
+  private rebindIfTerminal(
+    record: WorkerExecutionRecord,
+    projectId: string,
+  ): WorkerExecutionRecord | null {
+    const platform = this.taskService?.store.platform;
+    if (!platform) return null;
+    let state: string;
+    try {
+      state = platform.getWorkItemDetail(record.workItemId).workItem.state;
+    } catch {
+      return null;
+    }
+    if (state === 'open' || state === 'paused') return null;
+    this.rebindResumedWorker(record.workerId, projectId);
+    return this.workerExecutions.get(record.workerId) ?? null;
+  }
+
+  /**
+   * Binds a resumed worker to a new task and WorkItem. The previous execution
+   * belongs to a terminal WorkItem, so the only correct way to run the work
+   * again is a fresh binding rather than replaying the old one.
+   */
+  private rebindResumedWorker(workerId: string, projectId: string): void {
+    const taskService = this.taskService;
+    const record = this.workerExecutions.get(workerId);
+    if (!taskService || !record) return;
+    const previous = taskService.store.getTask(record.taskId);
+    if (!previous) return;
+    const task = taskService.store.createAgentTask({
+      id: `task_${reference(`${workerId}:resume:${this.store.get().events.length}`)}`,
+      prompt: previous.prompt,
+      agentId: previous.agentId!,
+      expectedAgentRevisionId: previous.agentRevisionId!,
+    });
+    const stableKey = `${projectId}:${workerId}:resume:${this.store.get().events.length}`;
+    const envelope = taskService.store.work.ingestWorkTrigger({
+      source: { sourceId: 'boss-mode', kind: 'fake' },
+      trigger: {
+        triggerId: `boss_${reference(stableKey)}`,
+        threadKey: `boss:${stableKey}`,
+        payloadDigest: digest(stableKey),
+        occurredAt: this.now(),
+      },
+      mandate: {
+        scope: ['project:' + projectId],
+        allowedOperations: ['observe'],
+        capabilitiesDigest: digest(`capabilities:${stableKey}`),
+      },
+      model: { providerId: previous.providerId ?? 'magpie', modelId: previous.modelId ?? previous.model },
+      agentRevisionId: task.agentRevisionId!,
+      configurationRevisionId: task.configurationRevisionId,
+    });
+    this.workerExecutions.set(workerId, Object.freeze({
+      ...record,
+      taskId: task.id,
+      workItemId: envelope.workItem.id,
+    }));
+    // Starting is the caller's job: `ensureWorkItem` starts the task after it
+    // opens the WorkItem, and starting here would make that second start fail
+    // with "Task is not queued".
+  }
+
   private ensureWorkItem(action: Extract<OrganizationAction, { type: 'start_worker' }>): BossModeExecution {
     const record = this.workerExecutions.get(action.workerId);
     if (!record) return Object.freeze({ action, status: 'skipped' as const, detail: 'No validated Agent revision.' });
@@ -829,6 +937,14 @@ export class BossModeService {
       });
     }
     try {
+      // A worker that already ran has a terminal WorkItem. Starting it again
+      // must bind a fresh WorkItem and task instead of replaying a finished one.
+      const rebound = this.rebindIfTerminal(record, action.projectId);
+      if (rebound) {
+        platform.startWork(rebound.workItemId, 'open');
+        this.taskService?.startTask(rebound.taskId);
+        return Object.freeze({ action, status: 'dispatched' as const });
+      }
       platform.startWork(record.workItemId, 'open');
       this.taskService?.startTask(record.taskId);
       return Object.freeze({ action, status: 'dispatched' as const });
@@ -976,10 +1092,16 @@ export class BossModeService {
           projectId: project.id,
           workerId: worker.id,
         });
-        const record = this.workerExecutions.get(worker.id);
-        if (record && this.taskService) {
-          const retry = this.taskService.retryTask(record.taskId);
-          this.taskService.startTask(retry.id);
+        // A resumed worker needs a fresh execution binding: its previous
+        // WorkItem is already terminal, so reusing it fails the start
+        // transition instead of running the work.
+        this.rebindResumedWorker(worker.id, project.id);
+        const fresh = this.workerExecutions.get(worker.id);
+        if (fresh) {
+          // The project-resume path starts the work itself; the start_worker
+          // path does it after opening the WorkItem.
+          this.taskService?.store.platform.startWork(fresh.workItemId, 'open');
+          this.taskService?.startTask(fresh.taskId);
         }
       }
       return Object.freeze({ action, status: 'dispatched' as const });

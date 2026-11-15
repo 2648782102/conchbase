@@ -671,3 +671,94 @@ test('the structured intent parser still accepts a plain JSON body', async () =>
   const result = await parser.parse({ text: 'hi', intentId: 'int_fixture', expectedSequence: 0 });
   assert.deepEqual(result.actions, []);
 });
+
+test('an action without expectedSequence is filled by the Runtime, not rejected', async () => {
+  // The Runtime owns this value; a model omitting it produced
+  // "create_agent is missing expectedSequence" in live use.
+  const reply = JSON.stringify({
+    reply: '好的',
+    actions: [{
+      type: 'create_agent',
+      projectId: 'project_fixture',
+      workerId: 'worker_fixture',
+      delegationId: 'delegation_fixture',
+      parentDelegationId: 'delegation_parent',
+      agentRevisionId: 'agr_fixture',
+      displayName: '统计员',
+      instructionsDigest: `sha256:${'a'.repeat(64)}`,
+      scope: ['project:project_fixture'],
+      capabilities: ['cap_read_context'],
+      model: { providerId: 'magpie', modelId: 'fixture/model' },
+      maxDelegationDepth: 0,
+      ttlEvents: 100,
+    }],
+  });
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/model',
+    fetch: (async () => new Response(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: reply } }] })}\n\ndata: [DONE]\n\n`,
+      { status: 200, headers: { 'content-type': 'text/event-stream' } },
+    )) as typeof globalThis.fetch,
+  });
+  const result = await parser.parse({
+    text: '招个人统计文件',
+    intentId: 'int_fixture',
+    expectedSequence: 7,
+  });
+  assert.equal(result.actions.length, 1);
+  assert.equal(result.actions[0]!.type, 'create_agent');
+  assert.equal(result.actions[0]!.expectedSequence, 7);
+});
+
+test('a wrong expectedSequence is corrected by the Runtime', async () => {
+  const reply = JSON.stringify({
+    reply: '好的',
+    actions: [{
+      type: 'archive_project',
+      expectedSequence: 999,
+      projectId: 'project_fixture',
+    }],
+  });
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/model',
+    fetch: (async () => new Response(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: reply } }] })}\n\ndata: [DONE]\n\n`,
+      { status: 200, headers: { 'content-type': 'text/event-stream' } },
+    )) as typeof globalThis.fetch,
+  });
+  const result = await parser.parse({
+    text: '归档',
+    intentId: 'int_fixture',
+    expectedSequence: 3,
+  });
+  assert.equal(result.actions[0]!.expectedSequence, 3);
+});
+
+test('a report action without a reportId gets a Runtime-owned id', async () => {
+  const reply = JSON.stringify({
+    reply: '已汇报',
+    actions: [{
+      type: 'report_worker',
+      projectId: 'project_fixture',
+      workerId: 'wrk_fixture',
+      state: 'ready',
+      summaryDigest: `sha256:${'b'.repeat(64)}`,
+    }],
+  });
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/model',
+    fetch: (async () => new Response(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: reply } }] })}\n\ndata: [DONE]\n\n`,
+      { status: 200, headers: { 'content-type': 'text/event-stream' } },
+    )) as typeof globalThis.fetch,
+  });
+  const result = await parser.parse({ text: '汇报', intentId: 'int_fixture', expectedSequence: 1 });
+  const action = result.actions[0]!;
+  assert.equal(action.type, 'report_worker');
+  const reportId = (action as unknown as { reportId: string }).reportId;
+  assert.match(reportId, /^[a-z][a-z0-9_-]*$/);
+  assert.ok(reportId.length > 0);
+});

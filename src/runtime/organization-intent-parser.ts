@@ -86,7 +86,16 @@ export function parseStructuredOrganizationResult(
       && (candidate as Record<string, unknown>).type === 'open_project'
       ? { ...(candidate as Record<string, unknown>), originTriggerId: input.intentId }
       : candidate;
-    return actionAt(parseOrganizationAction(fillRuntimeDigests(normalized)), baseSequence + index);
+    // ADR 0074: the Runtime owns `expectedSequence`, so fill it before
+    // validation. Validating first would reject a plan for omitting a value the
+    // model cannot compute.
+    const withSequence = isRecord(normalized)
+      ? { ...normalized, expectedSequence: baseSequence + index }
+      : normalized;
+    return actionAt(
+      parseOrganizationAction(fillRuntimeDigests(withSequence)),
+      baseSequence + index,
+    );
   });
   const relay = value.relay === null || value.relay === undefined ? null : value.relay;
   if (relay !== null && (typeof relay !== 'string' || relay.length > 2000)) {
@@ -116,17 +125,41 @@ const DIGEST_FIELDS: Readonly<Record<string, readonly string[]>> = Object.freeze
   record_intent: ['bodyDigest'],
 });
 
+/**
+ * Identity fields the Runtime owns. A model cannot mint an opaque id that the
+ * Runtime will accept, so a missing one is filled deterministically here rather
+ * than rejecting an otherwise valid action. Supplied values are replaced.
+ */
+const RUNTIME_ID_FIELDS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  report_worker: ['reportId'],
+  request_attention: ['attentionId'],
+  answer_attention: ['attentionId'],
+  withdraw_attention: ['attentionId'],
+  expire_attention: ['attentionId'],
+  record_intent: ['intentId'],
+});
+
 function fillRuntimeDigests(value: unknown): unknown {
   if (!isRecord(value)) return value;
   const type = typeof value.type === 'string' ? value.type : '';
   const fields = DIGEST_FIELDS[type];
-  if (!fields) return value;
+  const idFields = RUNTIME_ID_FIELDS[type];
+  if (!fields && !idFields) return value;
   const next: Record<string, unknown> = { ...value };
-  for (const field of fields) {
+  for (const field of fields ?? []) {
     const current = next[field];
     if (typeof current !== 'string' || current.trim().length === 0) {
       next[field] = 'sha256:runtime-attested';
     }
+  }
+  for (const field of idFields ?? []) {
+    // Deterministic per action so a replay of the same plan stays idempotent.
+    const seed = `${type}:${String(next.projectId ?? '')}:${String(next.workerId ?? '')}:${JSON.stringify(next.scope ?? '')}`;
+    let hash = 0;
+    for (let index = 0; index < seed.length; index += 1) {
+      hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
+    }
+    next[field] = `runtime_${type}_${hash.toString(16).padStart(8, '0')}`;
   }
   return next;
 }
@@ -166,7 +199,10 @@ export function parseBossConversationResult(
       && (projected as Record<string, unknown>).type === 'open_project'
       ? { ...(withOrigin as Record<string, unknown>), originTriggerId: input.intentId }
       : withOrigin;
-    return actionAt(parseOrganizationAction(normalized), baseSequence + index);
+    const withSequence = isRecord(normalized)
+      ? { ...normalized, expectedSequence: baseSequence + index }
+      : normalized;
+    return actionAt(parseOrganizationAction(withSequence), baseSequence + index);
   });
   return Object.freeze({
     version: ORGANIZATION_INTENT_PARSER_VERSION,
@@ -391,7 +427,7 @@ const OPENAI_COMPATIBLE_PARSER_INSTRUCTIONS = [
   'Return only strict JSON with this shape: {"actions":[],"relay":string|null}.',
   'Each actions item must be an object whose type is exactly one of open_project, activate_project, create_agent, authorize_worker, start_worker, report_worker, request_attention, answer_attention, withdraw_attention, quiet_project, archive_project, resume_project, offboard_worker, record_intent, activate_delegation, record_worker_execution, resume_worker.',
   'Use snake_case action types only. Never turn a phrase into a camelCase or PascalCase action type.',
-  'Always include numeric expectedSequence and string projectId. The Runtime replaces expectedSequence and model references before validation.',
+  'Always include a string projectId. Do not include expectedSequence: the Runtime supplies it, and a value you supply is ignored.',
   'For create_agent also include workerId, delegationId, agentRevisionId, displayName, instructionsDigest, scope, capabilities, model, maxDelegationDepth, ttlEvents.',
   'Never invent capabilities, secret values, file paths, URLs, or role enums.',
   'If the user text cannot be represented exactly by accepted actions, return {"actions":[],"relay":"No safe structured action."}.',
@@ -412,8 +448,8 @@ const BOSS_CONVERSATION_INSTRUCTIONS = [
   'actions 中的每项必须是受支持的组织动作对象；type 使用 snake_case，且必须包含 expectedSequence 与 projectId。',
   '动作类型只允许 open_project, activate_project, create_agent, authorize_worker, start_worker, report_worker, request_attention, answer_attention, withdraw_attention, quiet_project, archive_project, resume_project, offboard_worker, record_intent, activate_delegation, record_worker_execution, resume_worker。',
   '当用户提出一个新目标、且现有项目都不匹配时，你可以用 open_project 新建项目：自行生成一个稳定的 projectId（例如 project_<小写短标识>），originTriggerId 使用本次 intentId；随后用 activate_project 启用它。不要声称你不能新建项目。',
-  'expectedSequence 必须等于当前组织事件数量（组织事实里 events 的长度），并让同一回复内的多个动作依次递增。',
-  'For create_agent include workerId, delegationId, agentRevisionId, displayName, instructionsDigest, scope, capabilities, model, maxDelegationDepth, ttlEvents. Runtime replaces expectedSequence and model references.',
+  '不要输出 expectedSequence：该字段由 Runtime 提供并按动作顺序填好，你输出的值会被忽略。每个动作必须带 string projectId。',
+  'For create_agent include workerId, delegationId, agentRevisionId, displayName, instructionsDigest, scope, capabilities, model, maxDelegationDepth, ttlEvents. Runtime replaces model references.',
   'create_agent 还支持可选 instructions 字段：把用户对该员工的输出格式、长度、禁止项等要求原文写进去，它会成为该员工的系统指令。用户提了格式要求却没传 instructions，就等于没有约束。',
   'Never invent capabilities, secret values, private paths, URLs, role enums, or extra top-level fields.',
   'If no organization action is useful, return {"reply":"你的自然回复","actions":[]}.',
