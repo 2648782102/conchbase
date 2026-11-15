@@ -303,3 +303,27 @@ test('a user_version 7 database migrates to 8 with empty grants', () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('workers receive the write tool only when the runtime allows writes', async () => {
+  const { defaultWorkerGrants } = await import('../src/runtime/capability-grants.js');
+  const root = mkdtempSync(path.join(tmpdir(), 'conchbase-worker-grants-'));
+  try {
+    const tools = createBuiltinReadTools({ root });
+    const readOnly = defaultWorkerGrants(tools, []);
+    assert.ok(!readOnly.some((grant) => grant.name === 'workspace_write'));
+    assert.ok(readOnly.some((grant) => grant.name === 'workspace_read'));
+
+    // Simulate a runtime with writes enabled by exposing the write tool.
+    const { createBuiltinWriteTools } = await import('../src/runtime/write-tools.js');
+    const writes = createBuiltinWriteTools({ root });
+    const combined = {
+      list: () => Object.freeze([...tools.list(), ...writes.list()]),
+      has: (id: string) => tools.has(id) || writes.has(id),
+      invoke: (id: string, args: never) => (tools.has(id) ? tools.invoke(id, args) : writes.invoke(id, args)),
+    };
+    const writable = defaultWorkerGrants(combined as never, [], { allowWrites: true });
+    assert.ok(writable.some((grant) => grant.name === 'workspace_write'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -10,6 +10,7 @@ test('uses loopback defaults', () => {
     magpieBaseUrl: 'http://127.0.0.1:3425',
     defaultModel: 'workbuddy/blind-model-h',
     executionMode: 'restricted',
+    workspaceRoot: process.cwd(),
     loopBudget: { maxIterations: 6, maxToolCallsPerTurn: 4, deadlineMs: 120_000 },
     allowAuthenticatedRemoteBinding: false,
   });
@@ -25,6 +26,7 @@ test('accepts configured loopback host and decimal port', () => {
       magpieBaseUrl: 'http://127.0.0.1:3425',
       defaultModel: 'workbuddy/blind-model-h',
       executionMode: 'restricted',
+      workspaceRoot: process.cwd(),
       loopBudget: { maxIterations: 6, maxToolCallsPerTurn: 4, deadlineMs: 120_000 },
       allowAuthenticatedRemoteBinding: false,
     },
@@ -109,5 +111,24 @@ test('rejects non-loopback provider URLs and malformed app keys', () => {
   assert.throws(
     () => loadRuntimeConfig({ CONCHBASE_MAGPIE_APP_KEY: 'secret' }),
     /CONCHBASE_MAGPIE_APP_KEY has an invalid format/,
+  );
+});
+
+test('enabling writes requires an explicit workspace root', () => {
+  // Writing into the process working directory let a worker overwrite the
+  // Runtime's own repository README during a live run.
+  assert.throws(
+    () => loadRuntimeConfig({ CONCHBASE_ALLOW_TOOL_WRITES: '1' }),
+    /requires CONCHBASE_WORKSPACE_ROOT/,
+  );
+  const configured = loadRuntimeConfig({
+    CONCHBASE_ALLOW_TOOL_WRITES: '1',
+    CONCHBASE_WORKSPACE_ROOT: '/tmp/agent-workspace',
+  });
+  assert.equal(configured.allowToolWrites, true);
+  assert.equal(configured.workspaceRoot, '/tmp/agent-workspace');
+  assert.throws(
+    () => loadRuntimeConfig({ CONCHBASE_WORKSPACE_ROOT: 'relative/path' }),
+    /must be an absolute path/,
   );
 });

@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   OrganizationConflictError,
   OrganizationNotFoundError,
@@ -20,7 +20,7 @@ import type { OrganizationRelay } from './organization-execution.js';
 import type { OrganizationStore } from './organization-store.js';
 import type { TaskService } from './task-service.js';
 import { type WorkTriggerRequest } from './work-contract.js';
-import { buildBossOrganizationFacts } from './boss-organization-context.js';
+import { buildBossOrganizationFacts, runtimeCapabilityFacts } from './boss-organization-context.js';
 import { containsSecretLike } from './secret-filter.js';
 
 export const BOSS_MODE_SERVICE_VERSION = 2;
@@ -280,6 +280,7 @@ export class BossModeService {
       intentTexts: this.intentTexts(),
       ...(this.store.reportTexts?.() ? { reportTexts: this.store.reportTexts!() } : {}),
       agentInstructions: (worker) => this.instructionsForRevision(worker.agentRevisionId),
+      capabilities: runtimeCapabilityFacts(this.workerCapabilityGrants().map((grant) => grant.name)),
     });
     const parseInput = {
       intentId: resolvedIntentId,
@@ -759,9 +760,11 @@ export class BossModeService {
       `你是${chineseAgentDisplayName(action.displayName)}，为项目 ${action.projectId} 执行限定任务。`,
       `项目目标：${projectPurpose}`,
       `授权范围：${scope}`,
-      `可用能力：${capabilities}`,
+      `可用能力：${capabilities}${this.workerCanWrite() ? '、workspace_write（可写文件）' : ''}`,
       '组织结构（项目、员工、委派、汇报记录）只存在于 Runtime 里，不在工作区文件中，不要为找它们去翻文件。',
-      '项目数据在工作区：需要文件内容、目录列表或匹配项时，用可用的读取工具取得。',
+      ...(this.workerCanWrite()
+        ? ['你可以读写工作区：需要文件内容时用读取工具，需要产出文件时用 workspace_write 直接写入。任务要求交付文件时，必须真的写出来，不要只描述方案。']
+        : ['项目数据在工作区：需要文件内容、目录列表或匹配项时，用可用的读取工具取得。']),
       '具体事实（数字、文件名、路径）必须来自工具结果；取不到就说明原因，不要推测。',
       '不要用相同参数重复调用同一个工具。',
       '请直接基于上述上下文给出简洁结论，通常一轮即可完成。',
@@ -770,7 +773,10 @@ export class BossModeService {
         : ['需要人工输入时以 ATTENTION: 开头。']),
     ].join('\n');
     const task = taskService.store.createAgentTask({
-      id: `task_${reference(`${action.workerId}:${snapshot.events.length}`)}`,
+      // Task ids must be unique, not derived. The previous deterministic id
+      // collided when the same worker was dispatched at the same event count,
+      // which silently reused an existing task instead of creating a new one.
+      id: `task_${randomUUID()}`,
       prompt,
       agentId,
       expectedAgentRevisionId: action.agentRevisionId,
@@ -919,6 +925,12 @@ export class BossModeService {
     // Starting is the caller's job: `ensureWorkItem` starts the task after it
     // opens the WorkItem, and starting here would make that second start fail
     // with "Task is not queued".
+  }
+
+  /** Whether the grants handed to dynamically hired workers include a write tool. */
+  private workerCanWrite(): boolean {
+    return this.workerCapabilityGrants().some((grant) =>
+      grant.kind === 'tool' && grant.name === 'workspace_write');
   }
 
   private ensureWorkItem(action: Extract<OrganizationAction, { type: 'start_worker' }>): BossModeExecution {

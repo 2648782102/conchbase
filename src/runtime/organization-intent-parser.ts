@@ -139,6 +139,7 @@ const RUNTIME_ID_FIELDS: Readonly<Record<string, readonly string[]>> = Object.fr
   record_intent: ['intentId'],
 });
 
+
 function fillRuntimeDigests(value: unknown): unknown {
   if (!isRecord(value)) return value;
   const type = typeof value.type === 'string' ? value.type : '';
@@ -146,11 +147,36 @@ function fillRuntimeDigests(value: unknown): unknown {
   const idFields = RUNTIME_ID_FIELDS[type];
   if (!fields && !idFields) return value;
   const next: Record<string, unknown> = { ...value };
-  for (const field of fields ?? []) {
-    const current = next[field];
-    if (typeof current !== 'string' || current.trim().length === 0) {
-      next[field] = 'sha256:runtime-attested';
+  if (type === 'create_agent') {
+    const projectId = String(next.projectId ?? 'project');
+    if (!Array.isArray(next.scope) || next.scope.length === 0) {
+      next.scope = [`project:${projectId}`];
     }
+    // Capabilities are a closed vocabulary the model cannot extend. Keep only
+    // well-formed tokens; an invalid or empty list falls back to the read
+    // context capability, which is the least authority this action can carry.
+    const declared = Array.isArray(next.capabilities)
+      ? next.capabilities.filter((entry) =>
+        typeof entry === 'string' && /^cap_[a-z0-9][a-z0-9_-]{2,80}$/.test(entry))
+      : [];
+    if (declared.length === 0) {
+      next.capabilities = ['cap_read_context'];
+    } else {
+      next.capabilities = declared;
+    }
+  }
+  if (type === 'report_worker') {
+    // A report without an explicit state is still a report. Defaulting to
+    // `ready` keeps a working plan from failing on one omitted enum.
+    if (typeof next.state !== 'string' || next.state.length === 0) {
+      next.state = 'ready';
+    }
+  }
+  for (const field of fields ?? []) {
+    // Always replace: a digest is a Runtime-attested fact. A model that
+    // supplies one is guessing, and a malformed guess would fail validation
+    // for a value the Runtime computes anyway.
+    next[field] = 'sha256:runtime-attested';
   }
   for (const field of idFields ?? []) {
     // Deterministic per action so a replay of the same plan stays idempotent.

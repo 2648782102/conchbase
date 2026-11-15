@@ -704,17 +704,19 @@ export class AgentChatService {
     record.idempotency.set(idempotencyKey, userMessage.id);
     this.persist(record);
     const onAccepted = (submitted: Awaited<ReturnType<BossModeService['submit']>>) => {
-      // Only attention produced by this turn counts. A pre-existing open request is
-      // historical state, not something this reply is waiting on.
+      // Acceptance is not completion: worker tasks may still be running. Record
+      // the reply text and keep the message pending so a Boss that hired a
+      // worker does not claim "done" while the work is in flight.
       const waiting = submitted.relays.some((relay) => relay.kind === 'attention');
       const failed = submitted.executions.some((execution) => execution.status === 'failed');
+      const dispatched = submitted.executions.some((execution) => execution.status === 'created-agent');
       this.replaceMessage(record, assistantMessage.id, {
         ...assistantMessage,
         body: submitted.reply ?? (failed
           ? 'Runtime 执行组织动作时失败。'
           : `已提交 ${submitted.actions.length} 个 Runtime 可验证动作。`),
-        state: failed ? 'failed' : waiting ? 'waiting_attention' : 'replied',
-        phase: waiting ? 'human' : 'terminal',
+        state: failed ? 'failed' : waiting ? 'waiting_attention' : dispatched ? 'organizing' : 'replied',
+        phase: waiting ? 'human' : dispatched ? 'organization' : 'terminal',
         error: failed ? 'Boss Agent execution failed.' : null,
         updatedAt: this.now(),
       });
@@ -746,7 +748,21 @@ export class AgentChatService {
           });
           this.persist(record);
         },
-      }, onAccepted).catch((cause: unknown) => {
+      }, onAccepted).then((settled) => {
+        // The submission settled: worker tasks have been awaited, so the reply
+        // can now reflect the real outcome instead of the accepted snapshot.
+        const waiting = settled.relays.some((relay) => relay.kind === 'attention');
+        const failed = settled.executions.some((execution) => execution.status === 'failed');
+        this.replaceMessage(record, assistantMessage.id, {
+          ...this.getMessage(record, assistantMessage.id)!,
+          body: settled.reply ?? this.getMessage(record, assistantMessage.id)!.body,
+          state: failed ? 'failed' : waiting ? 'waiting_attention' : 'replied',
+          phase: waiting ? 'human' : 'terminal',
+          error: failed ? 'Boss Agent execution failed.' : null,
+          updatedAt: this.now(),
+        });
+        this.persist(record);
+      }).catch((cause: unknown) => {
         const textError = cause instanceof Error ? cause.message.slice(0, 240) : 'Boss Agent submit failed.';
         this.replaceMessage(record, assistantMessage.id, {
           ...assistantMessage,

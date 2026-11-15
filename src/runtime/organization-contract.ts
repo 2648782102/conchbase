@@ -312,7 +312,24 @@ function boundedString(value: unknown, label: string, max = MAX_STRING_LENGTH): 
   if (typeof value !== 'string' || value.length === 0 || value.length > max) {
     throw new OrganizationValidationError(`${label} must be a non-empty string of at most ${max} characters.`);
   }
-  if (value.trim() !== value || /[\u0000-\u001f\u007f]/.test(value)) {
+  // Worker instructions are naturally multi-line, so newline and carriage
+  // return are allowed. Every other control character stays rejected.
+  if (value.trim() !== value || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value)) {
+    throw new OrganizationValidationError(`${label} contains unsupported characters.`);
+  }
+  return value;
+}
+
+/**
+ * Same bounds as `boundedString`, but tolerates leading and trailing newlines
+ * because this value is prose that a user or a model wrote, not an identifier.
+ * Interior control characters are still rejected.
+ */
+function boundedProse(value: unknown, label: string, max: number): string {
+  if (typeof value !== 'string' || value.trim().length === 0 || value.length > max) {
+    throw new OrganizationValidationError(`${label} must be a non-empty string of at most ${max} characters.`);
+  }
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value)) {
     throw new OrganizationValidationError(`${label} contains unsupported characters.`);
   }
   return value;
@@ -476,7 +493,7 @@ export function parseOrganizationAction(input: unknown): OrganizationAction {
       const instructions =
         input.instructions === undefined
           ? undefined
-          : boundedString(input.instructions, 'instructions', 4_000);
+          : boundedProse(input.instructions, 'instructions', 4_000);
       return Object.freeze({
         ...common,
         workerId: opaqueReference(input.workerId, 'workerId'),

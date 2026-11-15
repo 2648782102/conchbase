@@ -73,15 +73,49 @@ export interface BuildBossOrganizationFactsInput {
   readonly intentTexts?: ReadonlyMap<string, string>;
   readonly reportTexts?: ReadonlyMap<string, string>;
   readonly agentInstructions?: (worker: OrganizationWorker) => string | undefined;
+  /**
+   * What this Runtime can actually do right now. Without this the Boss reads a
+   * hard-coded "local files unavailable" and refuses tasks it could complete.
+   */
+  readonly capabilities?: readonly BossCapabilityFact[];
 }
 
-const DEFAULT_CAPABILITIES: readonly BossCapabilityFact[] = Object.freeze([
+export const DEFAULT_CAPABILITIES: readonly BossCapabilityFact[] = Object.freeze([
   Object.freeze({ id: 'organization', available: true, description: '项目、员工、委派、汇报、Attention、归档与恢复' }),
   Object.freeze({ id: 'agent-chat', available: true, description: '当前对话模型与已有对话上下文' }),
   Object.freeze({ id: 'external-web', available: false, description: '网页搜索、联网读取与实时外部信息' }),
   Object.freeze({ id: 'local-files', available: false, description: '本机文件、设备查询与命令执行' }),
   Object.freeze({ id: 'external-write', available: false, description: '外部系统写入与真实工具执行' }),
 ]);
+
+/**
+ * Derives the capability facts the Boss should see from the tools the Runtime
+ * actually registered. A hard-coded list drifts from reality, and the Boss then
+ * tells the user it cannot do things it can.
+ */
+export function runtimeCapabilityFacts(tools: readonly string[] | undefined): readonly BossCapabilityFact[] {
+  if (!tools) return DEFAULT_CAPABILITIES;
+  const available = new Set(tools);
+  const canRead = ['workspace_list', 'workspace_read', 'text_search'].some((id) => available.has(id));
+  const canWrite = available.has('workspace_write');
+  const describe = [
+    ...(canRead || canWrite ? ['工作区文件'] : []),
+    ...(canWrite ? ['写入'] : []),
+  ].join('、');
+  return Object.freeze([
+    Object.freeze({ id: 'organization', available: true, description: '项目、员工、委派、汇报、Attention、归档与恢复' }),
+    Object.freeze({ id: 'agent-chat', available: true, description: '当前对话模型与已有对话上下文' }),
+    Object.freeze({ id: 'external-web', available: false, description: '网页搜索、联网读取与实时外部信息' }),
+    Object.freeze({
+      id: 'local-files',
+      available: canRead || canWrite,
+      description: canRead || canWrite
+        ? `本机${describe}（由员工的工具执行，老板本身不直接读写）`
+        : '本机文件、设备查询与命令执行',
+    }),
+    Object.freeze({ id: 'external-write', available: false, description: '外部系统写入与真实工具执行' }),
+  ]);
+}
 
 const PURPOSE_FALLBACK = '尚未记录明确目标；请根据项目 ID 与来源意图继续了解。';
 const INSTRUCTION_FALLBACK = '尚未读取到该员工的指令摘要。';
@@ -144,6 +178,6 @@ export function buildBossOrganizationFacts(
       state: request.state,
       questionDigest: request.questionDigest,
     }))),
-    capabilities: DEFAULT_CAPABILITIES,
+    capabilities: input.capabilities ?? DEFAULT_CAPABILITIES,
   });
 }

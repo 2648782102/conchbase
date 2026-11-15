@@ -45,6 +45,7 @@ export function projectSkills<T extends SkillGrantCandidate>(
 }
 
 const WORKER_BUILTIN_TOOLS = Object.freeze(['text_search', 'workspace_list', 'workspace_read'] as const);
+const WORKER_WRITE_TOOLS = Object.freeze(['workspace_write'] as const);
 
 /**
  * Conservative grant set for dynamically hired worker Agents: the Runtime's
@@ -54,9 +55,13 @@ const WORKER_BUILTIN_TOOLS = Object.freeze(['text_search', 'workspace_list', 'wo
 export function defaultWorkerGrants(
   tools: ToolProvider | undefined,
   skills: readonly SkillGrantCandidate[] | undefined,
+  options: { readonly allowWrites?: boolean } = {},
 ): readonly CapabilityGrant[] {
   const available = new Set(tools?.list().map((tool) => tool.id) ?? []);
-  const toolGrants: CapabilityGrant[] = WORKER_BUILTIN_TOOLS
+  const candidates = options.allowWrites
+    ? [...WORKER_BUILTIN_TOOLS, ...WORKER_WRITE_TOOLS]
+    : [...WORKER_BUILTIN_TOOLS];
+  const toolGrants: CapabilityGrant[] = candidates
     .filter((name) => available.has(name))
     .map((name) => Object.freeze({ kind: 'tool' as const, name }));
   const skillGrants: CapabilityGrant[] = (skills ?? [])

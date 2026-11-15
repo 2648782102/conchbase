@@ -78,7 +78,7 @@ function createBossModeService(
   return new BossModeService(service.store.organization, service, {
     ...(parser ? { parser } : {}),
     bossModelReference: { providerId: BOSS_UPSTREAM_PROVIDER_ID, modelId: config.bossModel ?? config.defaultModel },
-    workerCapabilityGrants: () => defaultWorkerGrants(toolRuntime.tools, toolRuntime.skills.skills),
+    workerCapabilityGrants: () => defaultWorkerGrants(toolRuntime.tools, toolRuntime.skills.skills, { allowWrites: config.allowToolWrites === true }),
     conversation: { recordIntentText: (intentId, text) => conversation.recordIntentText(intentId, text) },
   });
 }
@@ -94,7 +94,7 @@ async function main(argv: readonly string[]): Promise<void> {
   if (command === 'serve') {
     mkdirSync(path.dirname(config.databasePath), { recursive: true });
     const toolRuntime = await createToolRuntime({
-      root: process.cwd(),
+      root: config.workspaceRoot,
       ...(config.mcpConfigPath ? { mcpConfigPath: config.mcpConfigPath } : {}),
   ...(config.skillsDirectory ? { skillsDirectory: config.skillsDirectory } : {}),
   ...(config.allowToolWrites ? { allowWrites: true } : {}),
@@ -142,7 +142,7 @@ async function main(argv: readonly string[]): Promise<void> {
 
   mkdirSync(path.dirname(config.databasePath), { recursive: true });
   const toolRuntime = await createToolRuntime({
-    root: process.cwd(),
+    root: config.workspaceRoot,
     ...(config.mcpConfigPath ? { mcpConfigPath: config.mcpConfigPath } : {}),
   ...(config.skillsDirectory ? { skillsDirectory: config.skillsDirectory } : {}),
   ...(config.allowToolWrites ? { allowWrites: true } : {}),

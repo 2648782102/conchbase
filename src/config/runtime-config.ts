@@ -44,6 +44,13 @@ export interface RuntimeConfig {
   mcpConfigPath?: string;
   skillsDirectory?: string;
   allowToolWrites?: boolean;
+  /**
+   * The only directory tool calls may read or write. Defaults to the process
+   * working directory, which is convenient for development and dangerous for
+   * writes: a model that runs `workspace_write` would otherwise be able to
+   * overwrite the repository the Runtime itself lives in.
+   */
+  workspaceRoot: string;
   executionMode: ExecutionMode;
   loopBudget: LoopBudget;
   allowAuthenticatedRemoteBinding: boolean;
@@ -96,6 +103,17 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     throw new Error('CONCHBASE_EXECUTION_MODE must be restricted or unrestricted.');
   }
   const executionMode = executionModeValue as ExecutionMode;
+  const workspaceRoot = env.CONCHBASE_WORKSPACE_ROOT ?? process.cwd();
+  if (!workspaceRoot.startsWith('/')) {
+    throw new Error('CONCHBASE_WORKSPACE_ROOT must be an absolute path.');
+  }
+  const allowToolWrites = env.CONCHBASE_ALLOW_TOOL_WRITES === '1';
+  if (allowToolWrites && env.CONCHBASE_WORKSPACE_ROOT === undefined) {
+    throw new Error(
+      'CONCHBASE_ALLOW_TOOL_WRITES=1 requires CONCHBASE_WORKSPACE_ROOT. '
+      + 'Writing into the process working directory can overwrite the Runtime itself.',
+    );
+  }
   const loopBudget: LoopBudget = Object.freeze({
     maxIterations: boundedInteger(
       env.CONCHBASE_MAX_ITERATIONS,
@@ -126,7 +144,8 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     ...(env.CONCHBASE_BOSS_MODEL ? { bossModel: env.CONCHBASE_BOSS_MODEL } : {}),
     ...(env.CONCHBASE_MCP_CONFIG ? { mcpConfigPath: env.CONCHBASE_MCP_CONFIG } : {}),
     ...(env.CONCHBASE_SKILLS_DIR ? { skillsDirectory: env.CONCHBASE_SKILLS_DIR } : {}),
-    ...(env.CONCHBASE_ALLOW_TOOL_WRITES === '1' ? { allowToolWrites: true } : {}),
+    ...(allowToolWrites ? { allowToolWrites: true } : {}),
+    workspaceRoot,
     executionMode,
     loopBudget,
     allowAuthenticatedRemoteBinding,

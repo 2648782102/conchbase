@@ -18,7 +18,7 @@ import { defaultWorkerGrants } from './runtime/capability-grants.js';
 const config = loadRuntimeConfig();
 mkdirSync(path.dirname(config.databasePath), { recursive: true });
 const toolRuntime = await createToolRuntime({
-  root: process.cwd(),
+  root: config.workspaceRoot,
   ...(config.mcpConfigPath ? { mcpConfigPath: config.mcpConfigPath } : {}),
   ...(config.skillsDirectory ? { skillsDirectory: config.skillsDirectory } : {}),
   ...(config.allowToolWrites ? { allowWrites: true } : {}),
@@ -60,7 +60,7 @@ if (config.organizationIntentModel || config.bossModel || config.defaultModel) {
   const bossMode = new BossModeService(taskService.store.organization, taskService, {
     parser,
     bossModelReference: { providerId: BOSS_UPSTREAM_PROVIDER_ID, modelId: config.bossModel ?? config.defaultModel },
-    workerCapabilityGrants: () => defaultWorkerGrants(toolRuntime.tools, toolRuntime.skills.skills),
+    workerCapabilityGrants: () => defaultWorkerGrants(toolRuntime.tools, toolRuntime.skills.skills, { allowWrites: config.allowToolWrites === true }),
     conversation: { recordIntentText: (intentId, text) => conversationService.recordIntentText(intentId, text) },
   });
   servingApp = createApp({
