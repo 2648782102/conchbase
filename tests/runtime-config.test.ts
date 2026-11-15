@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import { loadRuntimeConfig } from '../src/config/runtime-config.js';
 
 test('uses loopback defaults', () => {
@@ -131,4 +132,21 @@ test('enabling writes requires an explicit workspace root', () => {
     () => loadRuntimeConfig({ CONCHBASE_WORKSPACE_ROOT: 'relative/path' }),
     /must be an absolute path/,
   );
+});
+
+test('startup creates the configured workspace root before tools use it', () => {
+  // A worker whose root does not exist can list nothing and write nothing: it
+  // reports not_found for every path and produces no output. The Runtime must
+  // create the root at startup rather than relying on the operator to do it.
+  const sources = [
+    readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8'),
+    readFileSync(new URL('../src/cli.ts', import.meta.url), 'utf8'),
+  ];
+  for (const source of sources) {
+    assert.match(
+      source,
+      /mkdirSync\(config\.workspaceRoot, \{ recursive: true \}\)/,
+      'every Runtime entry point must create the workspace root',
+    );
+  }
 });

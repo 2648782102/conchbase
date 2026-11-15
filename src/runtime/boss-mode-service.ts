@@ -109,6 +109,13 @@ interface WorkerExecutionRecord {
   readonly delegationId: string;
 }
 
+interface WorkerOutcome {
+  readonly workerId: string;
+  readonly displayName: string;
+  readonly taskState: 'succeeded' | 'failed' | 'cancelled' | 'interrupted';
+  readonly body: string;
+}
+
 function digest(value: string): string {
   return `sha256:${createHash('sha256').update(value).digest('hex')}`;
 }
@@ -329,6 +336,12 @@ export class BossModeService {
     const actions: OrganizationAction[] = [];
     const executions: BossModeExecution[] = [];
     const createdWorkers: WorkerExecutionRecord[] = [];
+    // A single plan may list create_agent and start_worker for the same worker,
+    // and `create_agent` already starts it. Track what this turn dispatched so a
+    // duplicate step cannot start a second task — not even when the first task
+    // finished so fast that it is already terminal by the time the next action
+    // is applied.
+    const dispatchedThisTurn = new Set<string>();
     let acceptedPublished = false;
     let sequence = snapshot.events.length;
 
@@ -337,7 +350,12 @@ export class BossModeService {
       sequence += 1;
       actions.push(action);
       try {
-        await this.applyParsedAction(action, { modelReference, createdWorkers, executions });
+        await this.applyParsedAction(action, {
+          modelReference,
+          createdWorkers,
+          executions,
+          dispatchedThisTurn,
+        });
       } catch (cause) {
         executions.push(Object.freeze({ action, status: 'failed' as const, detail: boundedError(cause) }));
       }
@@ -360,10 +378,15 @@ export class BossModeService {
       this.onAccepted?.(accepted);
     };
     publishAccepted();
+    let outcomes: readonly WorkerOutcome[] = Object.freeze([]);
     if (createdWorkers.length > 0 && this.waitForTasks) {
-      await this.collectWorkerOutcomes(createdWorkers);
+      outcomes = await this.collectWorkerOutcomes(createdWorkers);
     }
     const coordination = this.coordinator.reconcile();
+    // The model wrote `parsed.relay` before any worker ran, so it can only
+    // describe intent ("I prepared..."). Once real results exist, the reply
+    // must report those instead of the pre-execution promise.
+    const reply = outcomes.length > 0 ? this.composeOutcomeReply(outcomes) : parsed.relay;
     const result: BossModeSubmitResult = Object.freeze({
       version: BOSS_MODE_SERVICE_VERSION,
       intentId: resolvedIntentId,
@@ -372,7 +395,7 @@ export class BossModeService {
       actions: Object.freeze(actions),
       executions: Object.freeze(executions),
       relays: coordination.relays,
-      reply: parsed.relay,
+      reply,
     });
     if (this.store.get().events.some((event) =>
       event.type === 'organization.intent_recorded' && event.data.intentId === resolvedIntentId) === false) {
@@ -397,6 +420,7 @@ export class BossModeService {
       readonly modelReference: { readonly providerId: string; readonly modelId: string } | undefined;
       readonly createdWorkers: WorkerExecutionRecord[];
       readonly executions: BossModeExecution[];
+      readonly dispatchedThisTurn: Set<string>;
     },
   ): Promise<void> {
     if (action.type === 'record_intent') {
@@ -410,11 +434,40 @@ export class BossModeService {
       if (execution.status === 'created-agent') {
         const record = this.workerExecutions.get(action.workerId);
         if (record) context.createdWorkers.push(record);
+        // `create_agent` also starts the worker, so a later explicit
+        // `start_worker` in the same plan is a duplicate of this dispatch.
+        context.dispatchedThisTurn.add(action.workerId);
       }
+      return;
+    }
+    if (action.type === 'authorize_worker') {
+      // Creating a dynamic Agent already authorizes its worker. A model that
+      // also emits the explicit step is following the documented action list,
+      // not making a mistake, so this is an idempotent skip rather than a
+      // failure. Applying it again would hit "Worker is not proposed."
+      const worker = this.store.get().workers.find((item) => item.id === action.workerId);
+      if (worker && worker.state !== 'proposed') {
+        context.executions.push(Object.freeze({
+          action,
+          status: 'skipped' as const,
+          detail: `Worker is already ${worker.state}; the Runtime authorizes a worker when it is created.`,
+        }));
+        return;
+      }
+      applyAction(this.store, action);
+      context.executions.push(Object.freeze({ action, status: 'dispatched' as const }));
       return;
     }
     if (action.type === 'start_worker') {
       if (!this.workerExecutions.has(action.workerId)) return;
+      if (context.dispatchedThisTurn.has(action.workerId)) {
+        context.executions.push(Object.freeze({
+          action,
+          status: 'skipped' as const,
+          detail: 'Worker was already started earlier in this plan.',
+        }));
+        return;
+      }
       // A worker that already started once must still be able to run again: the
       // Boss re-runs a worker by starting it, and skipping here silently drops
       // that request while the fresh task runs unobserved.
@@ -422,6 +475,11 @@ export class BossModeService {
         const latest = this.workerExecutions.get(action.workerId)!;
         const latestTask = this.taskService?.store.getTask(latest.taskId);
         if (latestTask && !['succeeded', 'failed', 'cancelled', 'interrupted'].includes(latestTask.state)) {
+          context.executions.push(Object.freeze({
+            action,
+            status: 'skipped' as const,
+            detail: `Worker already started; task ${latest.taskId} is still ${latestTask.state}.`,
+          }));
           return;
         }
         this.startedWorkers.delete(action.workerId);
@@ -437,6 +495,7 @@ export class BossModeService {
       if (execution.status === 'dispatched') {
         const record = this.workerExecutions.get(action.workerId);
         if (record) context.createdWorkers.push(record);
+        context.dispatchedThisTurn.add(action.workerId);
       }
       if (execution.status === 'skipped' && mutated) {
         // The worker was already marked running; leaving it there would strand a
@@ -988,20 +1047,41 @@ export class BossModeService {
     }
   }
 
-  private async collectWorkerOutcomes(records: readonly WorkerExecutionRecord[]): Promise<void> {
+  private async collectWorkerOutcomes(
+    records: readonly WorkerExecutionRecord[],
+  ): Promise<readonly WorkerOutcome[]> {
     const taskService = this.taskService;
-    if (!taskService) return;
+    if (!taskService) return Object.freeze([]);
+    const outcomes: WorkerOutcome[] = [];
     for (const record of records) {
-      if (this.outcomeByTaskId.get(record.taskId)) continue;
       let task = taskService.store.getTask(record.taskId);
       if (!task) continue;
+      let missing = false;
       while (!['succeeded', 'failed', 'cancelled', 'interrupted'].includes(task.state)) {
         await new Promise<void>((resolve) => { setTimeout(resolve, 10); });
         const next = taskService.store.getTask(record.taskId);
-        if (!next) return;
+        if (!next) {
+          missing = true;
+          break;
+        }
         task = next;
       }
+      // A task that disappeared mid-wait has no outcome to report.
+      if (missing) continue;
+      const terminalState = task.state as WorkerOutcome['taskState'];
       const output = task.state === 'succeeded' ? task.output ?? '' : task.error ?? task.state;
+      outcomes.push(Object.freeze({
+        workerId: record.workerId,
+        displayName: this.store.get().workers.find((worker) => worker.id === record.workerId)?.displayName
+          ?? record.workerId,
+        taskState: terminalState,
+        body: output,
+      }));
+      // A re-run binds a fresh task, so both the report id and the wait must be
+      // keyed by task. An already-recorded outcome is still returned so a
+      // repeated submit can restate the result instead of dropping it.
+      const previous = this.outcomeByTaskId.get(record.taskId);
+      if (previous) continue;
       const summaryDigest = digest(`${record.taskId}:${task.state}:${output}`);
       const reportId = `rpt_${reference(`${record.taskId}:report`)}`;
       try {
@@ -1033,10 +1113,43 @@ export class BossModeService {
       if (!needsAttention && task.state !== 'succeeded') {
         this.autoRetireFailingWorker(record, output);
       }
-      if (taskService.store.platform.getWorkItemDetail(record.workItemId).workItem.state === 'running') {
-        taskService.store.platform.completeWork(record.workItemId, 'running');
+      try {
+        if (taskService.store.platform.getWorkItemDetail(record.workItemId).workItem.state === 'running') {
+          taskService.store.platform.completeWork(record.workItemId, 'running');
+        }
+      } catch {
+        // The report is already durable; a missing WorkItem must not discard it.
       }
     }
+    return Object.freeze(outcomes);
+  }
+
+  /**
+   * Builds the final Boss reply from what workers actually returned. The
+   * pre-execution model relay is intentionally not reused: it was written
+   * before the work ran, so it cannot state a result.
+   */
+  private composeOutcomeReply(outcomes: readonly WorkerOutcome[]): string {
+    const succeeded = outcomes.filter((outcome) => outcome.taskState === 'succeeded').length;
+    const body = outcomes.map((outcome) => {
+      const state = outcome.taskState === 'succeeded' ? '已完成' : outcome.taskState === 'cancelled'
+        ? '已取消'
+        : outcome.taskState === 'interrupted' ? '已中断' : '失败';
+      const text = outcome.body.trim().length > 0
+        ? outcome.body.trim().slice(0, 1_200)
+        : '（员工没有返回正文）';
+      return `- ${outcome.displayName}（${outcome.workerId}）· ${state}\n${text}`;
+    });
+    const composed = [
+      `员工执行完成：${outcomes.length} 名中 ${succeeded} 名成功。`,
+      ...body,
+    ].join('\n\n');
+    // Worker output is untrusted model output. It must not smuggle a secret-like
+    // value into the Boss reply, and the reply stays within the published bound.
+    if (containsSecretLike(composed)) {
+      return `员工执行完成：${outcomes.length} 名中 ${succeeded} 名成功。汇报正文包含疑似敏感内容，已隐藏。`;
+    }
+    return composed.slice(0, 11_500);
   }
 
   private answerAttention(action: {

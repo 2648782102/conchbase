@@ -676,3 +676,120 @@ test('a worker prompt tells the worker to read real data with tools instead of g
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('the final Boss reply reports what the worker actually returned', async () => {
+  // Live failure: the Boss answer came from the model call that ran *before*
+  // the worker, so it said "已准备" while a real result existed moments later.
+  // The pre-execution relay cannot contain a result, so it must be replaced.
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-outcome-reply-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture-model',
+    fetch: (async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/v1/models')) {
+        return new Response(JSON.stringify({ data: [{ id: 'fixture-model' }] }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(
+        `data: ${JSON.stringify({ choices: [{ delta: { content: 'txt 文件共 42 行。' } }] })}\n\ndata: [DONE]\n\n`,
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      );
+    }) as typeof globalThis.fetch,
+  });
+  try {
+    const store = new InMemoryOrganizationStore();
+    const service = new BossModeService(store, taskService, {
+      parser: fixtureParser(),
+      waitForTasks: true,
+    });
+    const result = await service.submit({ text: '开项目并派活', idempotencyKey: 'outcome-reply-1' });
+    assert.doesNotMatch(result.reply ?? '', /Boss mode fixture created one worker/, 'the pre-execution relay must not be the final answer');
+    assert.match(result.reply ?? '', /txt 文件共 42 行/);
+    assert.equal(result.executions.some((execution) => execution.status === 'failed'), false);
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('a plan that repeats the implicit authorize and start steps is not a failure', async () => {
+  // Models are told create_agent, authorize_worker, start_worker are separate
+  // actions, so a correct plan may list all three. The Runtime already
+  // authorizes and starts on create, and replaying those steps used to fail
+  // with "Worker is not proposed", which surfaced as a fake execution failure.
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-implicit-steps-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture-model',
+    fetch: (async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/v1/models')) {
+        return new Response(JSON.stringify({ data: [{ id: 'fixture-model' }] }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(
+        'data: {"choices":[{"delta":{"content":"完成"}}]}\n\ndata: [DONE]\n\n',
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      );
+    }) as typeof globalThis.fetch,
+  });
+  try {
+    const store = new InMemoryOrganizationStore();
+    const parser: OrganizationIntentParser = {
+      async parse(input) {
+        return Object.freeze({
+          version: 1 as const,
+          intentId: input.intentId,
+          actions: Object.freeze([
+            parseOrganizationAction({
+              type: 'open_project', expectedSequence: input.expectedSequence,
+              projectId: 'project_steps', originTriggerId: input.intentId,
+            }),
+            parseOrganizationAction({
+              type: 'activate_project', expectedSequence: input.expectedSequence + 1,
+              projectId: 'project_steps',
+            }),
+            parseOrganizationAction({
+              type: 'create_agent',
+              expectedSequence: input.expectedSequence + 2,
+              projectId: 'project_steps',
+              workerId: 'wrk_steps',
+              delegationId: 'del_steps',
+              agentRevisionId: 'agr_placeholder',
+              displayName: 'Steps Worker',
+              instructionsDigest: 'sha256:instructions',
+              scope: ['project:steps'],
+              capabilities: ['cap_read_context'],
+              model: { providerId: 'magpie', modelId: 'fixture-model' },
+              maxDelegationDepth: 0,
+              ttlEvents: 30,
+            }),
+            parseOrganizationAction({
+              type: 'authorize_worker', expectedSequence: input.expectedSequence + 3,
+              projectId: 'project_steps', workerId: 'wrk_steps',
+            }),
+            parseOrganizationAction({
+              type: 'start_worker', expectedSequence: input.expectedSequence + 4,
+              projectId: 'project_steps', workerId: 'wrk_steps',
+            }),
+          ]),
+          relay: '已准备启动。',
+        });
+      },
+    };
+    const service = new BossModeService(store, taskService, { parser, waitForTasks: true });
+    const result = await service.submit({ text: '开项目并派活', idempotencyKey: 'implicit-steps-1' });
+    assert.equal(result.executions.some((execution) => execution.status === 'failed'), false);
+    assert.ok(
+      result.executions.some((execution) =>
+        execution.status === 'skipped' && /already started earlier in this plan/.test(execution.detail ?? '')),
+      'a duplicate start_worker must be an explicit skip, not a silent drop',
+    );
+    assert.equal(store.get().workers.find((worker) => worker.id === 'wrk_steps')?.state, 'reporting');
+    assert.ok(store.get().reports.some((report) => report.workerId === 'wrk_steps'));
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

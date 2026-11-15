@@ -1,0 +1,6 @@
+{
+  "id": "boss-outcome-reply-fixture",
+  "summary": "Executable fixtures assert the final Boss reply contains the worker's real output instead of the pre-execution relay, and that a plan repeating create_agent, authorize_worker and start_worker produces no failed execution and still records a report.",
+  "evidence": "tests/boss-mode-service.test.ts",
+  "executableFixture": true
+}

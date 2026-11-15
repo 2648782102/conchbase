@@ -29,7 +29,13 @@ export type FieldFiller =
   /** A numeric bound with a conservative default. */
   | 'default-number'
   /** The resolved model reference, supplied by the caller. */
-  | 'resolved-model';
+  | 'resolved-model'
+  /**
+   * An opaque identity the Runtime mints when it executes the action. The model
+   * cannot know it, so a supplied value is replaced by a schema-valid
+   * placeholder that the executor overwrites with the real id.
+   */
+  | 'runtime-placeholder';
 
 export interface FieldRule {
   readonly field: string;
@@ -65,6 +71,10 @@ export const ACTION_FIELD_RULES: Readonly<Record<string, readonly FieldRule[]>> 
   record_intent: [ID('intentId'), DIGEST('bodyDigest')],
   create_agent: [
     DIGEST('instructionsDigest'),
+    // The Runtime replaces this with the created Agent's revision id. A model
+    // cannot know a future `agr_` id, and rejecting its placeholder would fail
+    // a plan the Runtime can complete.
+    { field: 'agentRevisionId', filler: 'runtime-placeholder' },
     { field: 'scope', filler: 'project-scope' },
     { field: 'capabilities', filler: 'default-capability' },
     { field: 'model', filler: 'resolved-model' },
@@ -164,6 +174,12 @@ export function repairActionFields(
           && typeof (current as Record<string, unknown>).providerId === 'string'
           && typeof (current as Record<string, unknown>).modelId === 'string';
         if (!valid && context.model) next.model = context.model;
+        break;
+      }
+      case 'runtime-placeholder': {
+        // Must satisfy the opaque-reference grammar so validation accepts it;
+        // the executor replaces it with the real id before the action is applied.
+        next[rule.field] = `placeholder_${type}_${stableHash(`${type}:${projectId}:${rule.field}`)}`;
         break;
       }
     }

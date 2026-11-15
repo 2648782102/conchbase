@@ -144,6 +144,11 @@
       "evidence": "src/runtime/organization-intent-parser.ts"
     },
     {
+      "id": "boss-outcome-reply",
+      "summary": "ADR 0080 replaces the pre-execution Boss relay with a deterministic reply composed from awaited worker terminal state and output, applies the secret-like filter to worker text, marks duplicate implicit authorize/start steps as skipped rather than failed, and never fabricates an outcome for a vanished task.",
+      "evidence": "src/runtime/boss-mode-service.ts"
+    },
+    {
       "id": "boss-self-review-hardening",
       "summary": "ADR 0064 detects ATTENTION on any line, accepts bounded task-specific worker instructions, limits a project to four non-offboarded workers, and tightens the Boss prompt on negative claims and failure classification.",
       "evidence": "src/runtime/organization-contract.ts"
@@ -414,6 +419,12 @@
       "id": "boss-natural-conversation-fixture",
       "summary": "An executable fixture covers natural Boss replies, optional organization action proposals, strict output rejection, unavailable classification, no fixed fallback phrase, and no normal Agent task creation.",
       "evidence": "tests/agent-chat.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "boss-outcome-reply-fixture",
+      "summary": "Executable fixtures assert the final Boss reply contains the worker's real output instead of the pre-execution relay, and that a plan repeating create_agent, authorize_worker and start_worker produces no failed execution and still records a report.",
+      "evidence": "tests/boss-mode-service.test.ts",
       "executableFixture": true
     },
     {

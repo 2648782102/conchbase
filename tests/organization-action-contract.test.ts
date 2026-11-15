@@ -141,3 +141,18 @@ test('every repaired minimal action is accepted by the real validator', async ()
   }
   assert.deepEqual(rejected, [], `repaired actions must validate:\n${rejected.join('\n')}`);
 });
+
+test('a model-supplied agentRevisionId is replaced by a placeholder the executor overwrites', () => {
+  // A model cannot know a future `agr_` id. Rejecting its guess fails a plan the
+  // Runtime can complete, because createDynamicAgent replaces the field with the
+  // real revision id before the action is applied.
+  const repaired = repairActionFields({
+    type: 'create_agent',
+    projectId: 'project_alpha',
+    workerId: 'wrk_alpha',
+    delegationId: 'del_alpha',
+    agentRevisionId: 'model-guessed-this',
+  }, 2, { model: { providerId: 'magpie', modelId: 'fixture/model' } });
+  assert.notEqual(repaired.agentRevisionId, 'model-guessed-this');
+  assert.match(String(repaired.agentRevisionId), /^[a-z][a-z0-9_-]*$/);
+});

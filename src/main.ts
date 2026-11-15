@@ -17,6 +17,9 @@ import { defaultWorkerGrants } from './runtime/capability-grants.js';
 
 const config = loadRuntimeConfig();
 mkdirSync(path.dirname(config.databasePath), { recursive: true });
+// The workspace root must exist before any tool call: a worker that cannot list
+// its own root reports `not_found` for everything and produces nothing.
+mkdirSync(config.workspaceRoot, { recursive: true });
 const toolRuntime = await createToolRuntime({
   root: config.workspaceRoot,
   ...(config.mcpConfigPath ? { mcpConfigPath: config.mcpConfigPath } : {}),

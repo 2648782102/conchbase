@@ -93,6 +93,8 @@ async function main(argv: readonly string[]): Promise<void> {
 
   if (command === 'serve') {
     mkdirSync(path.dirname(config.databasePath), { recursive: true });
+    // Tools cannot read a root that does not exist yet.
+    mkdirSync(config.workspaceRoot, { recursive: true });
     const toolRuntime = await createToolRuntime({
       root: config.workspaceRoot,
       ...(config.mcpConfigPath ? { mcpConfigPath: config.mcpConfigPath } : {}),
@@ -141,6 +143,7 @@ async function main(argv: readonly string[]): Promise<void> {
   }
 
   mkdirSync(path.dirname(config.databasePath), { recursive: true });
+  mkdirSync(config.workspaceRoot, { recursive: true });
   const toolRuntime = await createToolRuntime({
     root: config.workspaceRoot,
     ...(config.mcpConfigPath ? { mcpConfigPath: config.mcpConfigPath } : {}),
