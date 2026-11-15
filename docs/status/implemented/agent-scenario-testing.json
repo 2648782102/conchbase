@@ -1,0 +1,5 @@
+{
+  "id": "agent-scenario-testing",
+  "summary": "ADR 0087 adds a scenario harness that scripts model turns while running the real TaskService, real tools, and a real temporary workspace, then asserts on three surfaces: the filesystem, the request trace, and durable events. 16 scenarios cover evidence-before-assertion, writes, capability minimisation, path and write escapes, iteration and per-turn budgets, tool failure propagation, multi-step state carry, self-correction, paged reads, and sequential writes.",
+  "evidence": "tests/support/agent-scenario.ts"
+}

@@ -109,6 +109,11 @@
       "evidence": "src/runtime/task-service.ts"
     },
     {
+      "id": "agent-scenario-testing",
+      "summary": "ADR 0087 adds a scenario harness that scripts model turns while running the real TaskService, real tools, and a real temporary workspace, then asserts on three surfaces: the filesystem, the request trace, and durable events. 16 scenarios cover evidence-before-assertion, writes, capability minimisation, path and write escapes, iteration and per-turn budgets, tool failure propagation, multi-step state carry, self-correction, paged reads, and sequential writes.",
+      "evidence": "tests/support/agent-scenario.ts"
+    },
+    {
       "id": "ai-first-development",
       "summary": "Architecture, documentation, and validation are optimized for AI coding agents; human handoff is not a product requirement.",
       "evidence": "AGENTS.md"
@@ -439,6 +444,12 @@
       "id": "agent-loop-fixture",
       "summary": "Executable fixtures cover loop continuation after a tool result, iteration-budget termination, out-of-root rejection, read-only provider surface, and streamed tool-call accumulation.",
       "evidence": "tests/agent-loop.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "agent-scenario-fixture",
+      "summary": "Executable scenarios drive the real agent loop with a scripted model. Removing the lexical path-escape guard fails the traversal scenario and disabling the per-turn tool cap fails the cap scenario, proving the suite detects boundary erosion.",
+      "evidence": "tests/agent-scenario.test.ts",
       "executableFixture": true
     },
     {
