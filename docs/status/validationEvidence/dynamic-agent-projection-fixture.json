@@ -1,0 +1,6 @@
+{
+  "id": "dynamic-agent-projection-fixture",
+  "summary": "An executable fixture covers deterministic digest-only proposals, rejection of secret-like and non-organization actions, and absence of public routes or store writes.",
+  "evidence": "tests/organization-agent-projection.test.ts",
+  "executableFixture": true
+}

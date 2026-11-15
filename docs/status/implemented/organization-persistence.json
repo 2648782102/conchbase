@@ -1,0 +1,5 @@
+{
+  "id": "organization-persistence",
+  "summary": "An internal SQLite organization store shares Conchbase's single database owner, persists validated bounded actions in the private schema, and replays one coherent snapshot after restart without public API changes; ADR 0050 keeps the current private schema at user_version 5 with Agent Chat tables.",
+  "evidence": "src/runtime/organization-store.sqlite.ts"
+}

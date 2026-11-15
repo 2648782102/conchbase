@@ -1,0 +1,5 @@
+{
+  "id": "controlled-execution-v1",
+  "summary": "ADR 0043 implements deterministic controlled execution v1 with explicit grants, request approval/rejection, digest-only fake execution, revocation, and bounded audit events over additive 1.2.0 paths.",
+  "evidence": "src/runtime/controlled-execution.ts"
+}

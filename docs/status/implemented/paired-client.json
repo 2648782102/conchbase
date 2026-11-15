@@ -1,0 +1,5 @@
+{
+  "id": "paired-client",
+  "summary": "Pagurus implements the paired 1.0.0 control client through published Runtime routes and capability gates.",
+  "evidence": "https://github.com/2648782102/pagurus/blob/main/docs/decisions/0010-final-local-first-client.md"
+}

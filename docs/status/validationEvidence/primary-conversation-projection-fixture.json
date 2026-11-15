@@ -1,0 +1,6 @@
+{
+  "id": "primary-conversation-projection-fixture",
+  "summary": "An executable fixture covers ordered primary-conversation messages, bounded cursors, duplicate suppression, no private-state leakage, 1.4.0 discovery, and HTTP error paths.",
+  "evidence": "tests/primary-conversation.test.ts",
+  "executableFixture": true
+}

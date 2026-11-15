@@ -1,0 +1,5 @@
+{
+  "id": "report-text-and-action-isolation",
+  "summary": "ADR 0063 persists bounded worker report text in organization_report_texts, backfills legacy reports from task output, projects summaries into Boss facts, isolates per-action failures, and normalizes a malformed agent model.",
+  "evidence": "src/runtime/boss-mode-service.ts"
+}

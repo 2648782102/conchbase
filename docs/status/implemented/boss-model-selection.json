@@ -1,0 +1,5 @@
+{
+  "id": "boss-model-selection",
+  "summary": "ADR 0073 makes the configured Boss model authoritative for the Boss conversation instead of taking the provider catalog's first entry, and makes the structured intent parser honour the response content type so a streaming upstream no longer fails with \"invalid JSON\".",
+  "evidence": "src/runtime/boss-mode-service.ts"
+}

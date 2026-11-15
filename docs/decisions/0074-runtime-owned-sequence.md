@@ -1,8 +1,14 @@
 # Decision 0074: The Runtime fills `expectedSequence` before validation
 
-Status: **accepted and implemented Runtime-owned sequence fill**
+Status: **accepted; superseded by ADR 0077**
 
 Date: 2026-11-15 (Asia/Shanghai).
+
+> Superseded 2026-11-15 by [ADR 0077](0077-declarative-action-contract.md).
+> This ADR introduced sequence fill as a special case. ADR 0077 generalises the
+> same idea into one declarative table covering every Runtime-owned field, and
+> the special-case code described here no longer exists. The behaviour this ADR
+> asked for is fully preserved; only its implementation location moved.
 
 ## Context
 

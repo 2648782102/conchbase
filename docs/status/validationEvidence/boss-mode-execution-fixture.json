@@ -1,0 +1,6 @@
+{
+  "id": "boss-mode-execution-fixture",
+  "summary": "Executable fixtures cover structured intent parsing, dynamic Agent revision creation, durable WorkItem binding, idempotent primary-conversation HTTP entry, and no plaintext/private-state leakage.",
+  "evidence": "tests/boss-mode-service.test.ts",
+  "executableFixture": true
+}

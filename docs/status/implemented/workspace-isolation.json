@@ -1,0 +1,5 @@
+{
+  "id": "workspace-isolation",
+  "summary": "CONCHBASE_WORKSPACE_ROOT is required with tool writes and confines every read/write to one operator-named directory; Runtime-owned fields are filled before validation; Boss acceptance no longer reports completion before hired work finishes.",
+  "evidence": "src/config/runtime-config.ts"
+}

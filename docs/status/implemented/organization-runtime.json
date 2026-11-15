@@ -1,0 +1,5 @@
+{
+  "id": "organization-runtime",
+  "summary": "The complete local-first Boss-mode Organization Runtime loop is implemented and validated with a dual-repository fake-provider fixture.",
+  "evidence": "src/runtime/boss-mode-service.ts"
+}

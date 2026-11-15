@@ -1,0 +1,6 @@
+{
+  "id": "multi-tool-fixture",
+  "summary": "Executable fixtures cover multiple reads in one turn, two writes requiring two approvals, and cap rejection.",
+  "evidence": "tests/agent-multi-tool.test.ts",
+  "executableFixture": true
+}

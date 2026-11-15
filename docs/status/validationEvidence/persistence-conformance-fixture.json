@@ -1,0 +1,6 @@
+{
+  "id": "persistence-conformance-fixture",
+  "summary": "An executable portable-path fixture covers committed task/event recovery after abrupt process exit, additive migration preservation, one-owner rejection, and reopen after close.",
+  "evidence": "tests/persistence-conformance.test.ts",
+  "executableFixture": true
+}

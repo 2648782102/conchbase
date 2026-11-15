@@ -1,0 +1,5 @@
+{
+  "id": "dynamic-agent-projection",
+  "summary": "A pure internal projection converts an accepted create_agent action into a deterministic digest-only proposal without creating an Agent revision, granting capability, or changing the public API.",
+  "evidence": "src/runtime/organization-agent-projection.ts"
+}

@@ -1,0 +1,6 @@
+{
+  "id": "agent-chat-fixture",
+  "summary": "An executable fixture covers configured Agent conversation creation, real Agent-backed model reply, idempotent replay, bounded errors, 1.5.0 discovery, and no private-state leakage.",
+  "evidence": "tests/agent-chat.test.ts",
+  "executableFixture": true
+}

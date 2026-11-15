@@ -1,0 +1,6 @@
+{
+  "id": "organization-product-loop-fixture",
+  "summary": "A dual-repository live loopback fixture drives Pagurus typed organization clients over a credential-free fake provider through multiple projects, concurrent workers, one attention answer, and one archive/resume path.",
+  "evidence": "tests/organization-e2e.test.ts",
+  "executableFixture": true
+}

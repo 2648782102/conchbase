@@ -1,0 +1,6 @@
+{
+  "id": "worker-lifecycle-fixture",
+  "summary": "Fixtures assert an expired delegation blocks start_worker, one failure does not retire a worker, and offboarding archives the Agent.",
+  "evidence": "tests/organization-contract.test.ts",
+  "executableFixture": true
+}

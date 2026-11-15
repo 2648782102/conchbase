@@ -1,0 +1,5 @@
+{
+  "id": "agent-chat-conversation-states",
+  "summary": "ADR 0048 implements a Runtime-published Agent Chat conversation state model with thinking, streaming, organizing, waiting_attention, replied, failed, unavailable, and cancelled states.",
+  "evidence": "src/runtime/agent-chat.ts"
+}

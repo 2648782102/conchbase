@@ -1,0 +1,6 @@
+{
+  "id": "skill-provider-fixture",
+  "summary": "Executable fixtures cover front-matter parsing, missing front matter, empty-body skipping, allowed-tools being ignored, size and count bounds, symlink rejection, and Agent loop injection.",
+  "evidence": "tests/skill-provider.test.ts",
+  "executableFixture": true
+}

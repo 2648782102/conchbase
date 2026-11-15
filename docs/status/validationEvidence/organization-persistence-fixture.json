@@ -1,0 +1,6 @@
+{
+  "id": "organization-persistence-fixture",
+  "summary": "An executable fixture covers private schema migration from user_version 3 to 4, action replay after reopen, stale sequence rejection, single-owner rejection, bounded persisted actions, and unchanged 47-path OpenAPI.",
+  "evidence": "tests/organization-persistence.test.ts",
+  "executableFixture": true
+}

@@ -1,0 +1,5 @@
+{
+  "id": "runtime-authority",
+  "summary": "Conchbase owns the agent loop, Agent identities/revisions, task state, durable work, permissions, and private SQLite state.",
+  "evidence": "docs/decisions/0001-runtime-as-execution-authority.md"
+}

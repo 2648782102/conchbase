@@ -1,0 +1,5 @@
+{
+  "id": "organization-store",
+  "summary": "An internal in-memory organization store holds one primary snapshot, applies validated actions, and exposes bounded event reads without becoming a persistence owner or public API.",
+  "evidence": "src/runtime/organization-store.ts"
+}

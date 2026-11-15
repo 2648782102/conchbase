@@ -1,0 +1,6 @@
+{
+  "id": "agent-loop-fixture",
+  "summary": "Executable fixtures cover loop continuation after a tool result, iteration-budget termination, out-of-root rejection, read-only provider surface, and streamed tool-call accumulation.",
+  "evidence": "tests/agent-loop.test.ts",
+  "executableFixture": true
+}

@@ -1,0 +1,6 @@
+{
+  "id": "local-first-e2e-walkthrough",
+  "summary": "A completed 54-request local loopback E2E walkthrough is documented as validation evidence, not as an executable repository fixture.",
+  "evidence": "docs/VALIDATION_PLAN.md",
+  "executableFixture": false
+}

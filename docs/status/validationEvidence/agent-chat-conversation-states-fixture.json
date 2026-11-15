@@ -1,0 +1,6 @@
+{
+  "id": "agent-chat-conversation-states-fixture",
+  "summary": "An executable fixture covers normal Agent thinking/streaming/replied states and Runtime-owned conversation fields without private-state leakage.",
+  "evidence": "tests/agent-chat.test.ts",
+  "executableFixture": true
+}

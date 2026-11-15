@@ -1,0 +1,5 @@
+{
+  "id": "durable-intent-text",
+  "summary": "ADR 0062 persists bounded intent text in organization_intent_texts so project purpose survives restart, and the Boss prompt allows generating a projectId for open_project.",
+  "evidence": "src/runtime/organization-store.sqlite.ts"
+}

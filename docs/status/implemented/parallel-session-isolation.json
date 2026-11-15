@@ -1,0 +1,5 @@
+{
+  "id": "parallel-session-isolation",
+  "summary": "ADR 0078 derives port, SQLite database, workspace root, and console proxy target per checkout: the main working tree keeps 4318 and .conchbase/runtime.sqlite, a linked worktree gets a branch-hashed port in 4320-4399 and its own isolated data directory.",
+  "evidence": "scripts/worktree-env.mjs"
+}

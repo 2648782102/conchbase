@@ -1,0 +1,5 @@
+{
+  "id": "worker-rerun-binding",
+  "summary": "ADR 0075 binds fresh WorkItem and task when a terminal worker is re-run, stops suppressing legitimate re-runs, awaits re-dispatched work, names the first concrete failure reason, and keeps diagnostics for non-Error throwables.",
+  "evidence": "src/runtime/boss-mode-service.ts"
+}

@@ -1,0 +1,5 @@
+{
+  "id": "agent-chat-live-stream",
+  "summary": "ADR 0060 adds GET /v1/agent-chat/conversations/{conversationId}/events as a resumable SSE projection with a snapshot first frame, bounded replay, heartbeats, and Last-Event-ID support. The Agent Chat contract is 1.8.0 with six paths.",
+  "evidence": "src/http/routes/v1/agent-chat.ts"
+}

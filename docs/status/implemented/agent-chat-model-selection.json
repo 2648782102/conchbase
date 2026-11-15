@@ -1,0 +1,5 @@
+{
+  "id": "agent-chat-model-selection",
+  "summary": "ADR 0051 adds optional provider-neutral model selection at Agent Chat conversation creation, validated against the Magpie catalog and pinned for ordinary Agent and Boss conversation turns.",
+  "evidence": "docs/decisions/0051-agent-chat-model-selection.md"
+}

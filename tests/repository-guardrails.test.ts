@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { spawnSync } from 'node:child_process';
 
 const repositoryRoot = fileURLToPath(new URL('../', import.meta.url));
 
@@ -525,7 +526,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('README.zh-CN.md'), /仍在最终本地优先目标之外/);
   assert.match(read('README.zh-CN.md'), /ADR 0018/);
   assert.match(read('README.zh-CN.md'), /ADR 0019/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0077\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0079\]/);
   assert.match(read('README.md'), /1\.4\.0/);
   assert.match(read('README.md'), /ADR 0021 adds an opt-in live loopback acceptance test/);
   assert.match(read('README.zh-CN.md'), /ADR 0021/);
@@ -905,7 +906,7 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
     assert.match(read(file), /OBJECTIVE_MODE\.zh-CN\.md/, `${file} must link the Chinese objective brief`);
   }
   assert.match(read('docs/AI_TASK_QUEUE.md'), /Target-mode entry/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0077\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0079\]/);
   assert.match(read('README.md'), /Organization Runtime target/);
   assert.match(read('README.zh-CN.md'), /完整组织运行时目标/);
   assert.match(read('docs/QUICK_START.zh-CN.md'), /ADR 0030–0034/);
@@ -1349,4 +1350,15 @@ test('guardrail helpers reject representative boundary violations', () => {
     ),
     /must not contain sqlite3 in package-lock.json/,
   );
+});
+
+test('the published project status matches its per-record slices', () => {
+  // Parallel sessions append to `implemented` and `validationEvidence`; those
+  // arrays live as one file per record under docs/status/. If the published JSON
+  // and the slices disagree, a session edited one and forgot the other.
+  const result = spawnSync(process.execPath, ['scripts/status-slices.mjs', 'check'], {
+    cwd: repositoryRoot,
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
 });

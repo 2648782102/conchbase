@@ -1,0 +1,6 @@
+{
+  "id": "organization-domain-fixture",
+  "summary": "An executable pure fixture covers project/worker/report/attention state machines, bounded delegation, archive/offboard/resume, secret-like rejection, and bounded events.",
+  "evidence": "tests/organization-contract.test.ts",
+  "executableFixture": true
+}

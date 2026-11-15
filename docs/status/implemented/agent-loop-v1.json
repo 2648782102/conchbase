@@ -1,0 +1,5 @@
+{
+  "id": "agent-loop-v1",
+  "summary": "ADR 0053 implements a Runtime-owned bounded Agent loop for Agent-backed tasks with read-only built-in tools (workspace_list, workspace_read, text_search), multi-turn provider context, durable agent_loop events, iteration and time budgets, and path-escape rejection.",
+  "evidence": "src/runtime/task-service.ts"
+}

@@ -1,0 +1,5 @@
+{
+  "id": "organization-coordinator",
+  "summary": "An internal Runtime-service coordinator commits organization actions, derives execution plans, and dispatches only injected published work controls without HTTP routes, model calls, tool calls, or Agent revision writes.",
+  "evidence": "src/runtime/organization-coordinator.ts"
+}

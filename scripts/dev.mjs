@@ -1,11 +1,14 @@
 import { spawn } from 'node:child_process';
 import { createConnection } from 'node:net';
 import path from 'node:path';
+import { resolveWorktreeEnv } from './worktree-env.mjs';
 
-// The CLI reads CONCHBASE_HOST / CONCHBASE_PORT. PORT and HOST stay supported
-// as short aliases so a plain `PORT=4400 npm run dev` still binds where it says.
-const port = Number(process.env.CONCHBASE_PORT ?? process.env.PORT ?? 4318);
-const host = process.env.CONCHBASE_HOST ?? process.env.HOST ?? '127.0.0.1';
+// Parallel sessions: the main checkout keeps 4318, every linked worktree gets a
+// stable port and its own database derived from its branch. See
+// docs/PARALLEL_DEVELOPMENT.md. An explicit CONCHBASE_PORT / PORT still wins.
+const session = resolveWorktreeEnv(process.cwd(), process.env);
+const port = Number(session.port);
+const host = session.host;
 const unrestricted = process.argv.includes('--unrestricted');
 
 /**
@@ -39,10 +42,24 @@ function portInUse(hostname, portNumber) {
 
 if (await portInUse(host, port)) {
   process.stderr.write(
-    `Port ${host}:${port} is already in use. Stop the old runtime before starting this branch.\n`,
+    [
+      `Port ${host}:${port} is already in use (session "${session.slug}").`,
+      'Stop the other Runtime, or run with an explicit port:',
+      `  CONCHBASE_PORT=4360 npm run dev`,
+      '',
+    ].join('\n'),
   );
   process.exit(1);
 }
+
+process.stderr.write([
+  '',
+  `  session  ${session.slug}${session.main ? ' (main checkout)' : ''}`,
+  `  bind     ${host}:${port}`,
+  `  database ${session.databasePath}`,
+  `  workspace ${session.workspaceRoot}`,
+  '',
+].join('\n'));
 
 if (unrestricted) {
   process.stderr.write([
@@ -69,6 +86,10 @@ const child = spawn(
       PORT: String(port),
       CONCHBASE_HOST: host,
       CONCHBASE_PORT: String(port),
+      // Isolation defaults. An explicit value in the parent environment still
+      // wins, because the spread above runs first.
+      CONCHBASE_DB: process.env.CONCHBASE_DB ?? session.databasePath,
+      CONCHBASE_WORKSPACE_ROOT: process.env.CONCHBASE_WORKSPACE_ROOT ?? session.workspaceRoot,
     },
   },
 );

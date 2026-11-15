@@ -1,0 +1,5 @@
+{
+  "id": "boss-mode-execution-bridge",
+  "summary": "A Runtime-owned Boss-mode bridge parses untrusted structured intent output, commits validated actions, creates real Agent revisions through TaskService, binds durable WorkItems, and returns ordered structured relays.",
+  "evidence": "src/runtime/boss-mode-service.ts"
+}

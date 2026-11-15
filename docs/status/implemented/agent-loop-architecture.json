@@ -1,0 +1,5 @@
+{
+  "id": "agent-loop-architecture",
+  "summary": "ADR 0052 accepts a Runtime-owned bounded Agent loop, capability-provider seam, explicit approval state, durable per-iteration events, and bounded multi-turn provider context without changing Runtime authority.",
+  "evidence": "docs/decisions/0052-agent-loop-architecture.md"
+}

@@ -1,0 +1,5 @@
+{
+  "id": "organization-runtime-direction",
+  "summary": "The Organization Runtime product loop is implemented under ADR 0041: one primary conversation, dynamic Agent revisions, Delegations, concurrent work, structured reports, Attention, archive/offboard/resume, and published 1.1.0 client state.",
+  "evidence": "docs/ORGANIZATION_RUNTIME_TARGET.zh-CN.md"
+}

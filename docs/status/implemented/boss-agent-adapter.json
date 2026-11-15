@@ -1,0 +1,5 @@
+{
+  "id": "boss-agent-adapter",
+  "summary": "ADR 0047 exposes Boss Mode as a Runtime-owned virtual 老板 Agent inside Agent Chat, routing messages through BossModeService while preserving Runtime authority and one primary conversation.",
+  "evidence": "src/runtime/agent-chat.ts"
+}

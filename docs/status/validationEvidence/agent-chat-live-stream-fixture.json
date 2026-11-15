@@ -1,0 +1,6 @@
+{
+  "id": "agent-chat-live-stream-fixture",
+  "summary": "Executable fixtures cover the snapshot frame, projected tool/approval updates, cursor resume, event-id dedup, and invalid cursor 400.",
+  "evidence": "tests/agent-chat-stream.test.ts",
+  "executableFixture": true
+}

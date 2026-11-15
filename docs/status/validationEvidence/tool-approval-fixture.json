@@ -1,0 +1,6 @@
+{
+  "id": "tool-approval-fixture",
+  "summary": "Executable fixtures cover pause-before-write, approve-and-continue, reject-without-write, restart survival, duplicate-decision conflict, and the approval route.",
+  "evidence": "tests/agent-approval.test.ts",
+  "executableFixture": true
+}

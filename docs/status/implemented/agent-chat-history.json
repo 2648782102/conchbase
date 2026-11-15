@@ -1,0 +1,5 @@
+{
+  "id": "agent-chat-history",
+  "summary": "ADR 0055 adds GET /v1/agent-chat/conversations for recent conversation recovery, pins reasoningEffort per conversation, and exposes it to provider requests; private schema advances to user_version 6.",
+  "evidence": "src/runtime/agent-chat.ts"
+}

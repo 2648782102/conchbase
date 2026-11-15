@@ -1,0 +1,6 @@
+{
+  "id": "organization-store-fixture",
+  "summary": "An executable fixture covers one organization snapshot, sequential action application, initialization, and bounded event reads.",
+  "evidence": "tests/organization-store.test.ts",
+  "executableFixture": true
+}

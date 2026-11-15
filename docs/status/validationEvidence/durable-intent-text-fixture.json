@@ -1,0 +1,6 @@
+{
+  "id": "durable-intent-text-fixture",
+  "summary": "Persistence fixture records intent text, reopens the database, and asserts the text survives.",
+  "evidence": "tests/organization-persistence.test.ts",
+  "executableFixture": true
+}

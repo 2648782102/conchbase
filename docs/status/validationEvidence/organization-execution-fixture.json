@@ -1,0 +1,6 @@
+{
+  "id": "organization-execution-fixture",
+  "summary": "An executable fixture covers bounded concurrent launches, attention priority, structured relay order, work-control vocabulary, bounded values, and unchanged 47-path OpenAPI.",
+  "evidence": "tests/organization-execution.test.ts",
+  "executableFixture": true
+}

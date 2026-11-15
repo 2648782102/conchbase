@@ -30,7 +30,8 @@ ADR 0052 accepts the Agent-loop architecture and ADR 0053 fixes its first slice.
 16. **Implemented:** ADR 0071 reuses an identical read result within one task attempt instead of re-executing it, records `agent_loop.tool_reused`, and projects the reuse into Agent Chat. Writes and external calls are unaffected.
 17. **Implemented:** ADR 0073 makes the configured Boss model win over provider catalog order and makes the structured intent parser read SSE and JSON responses by their own content type.
 18. **Implemented:** ADR 0074 fills Runtime-owned identity fields before validation; ADR 0075 binds fresh work on a worker re-run, awaits re-dispatched tasks, and names the first concrete failure reason.
-19. **Blocked:** network tools, external writes, arbitrary shell, plugin hosts, and secret injection. These require their own accepted ADRs and must not be smuggled in as "read" tools.
+19. **Implemented:** ADR 0078 isolates port, database, workspace, and console proxy per Git worktree; ADR 0079 sources project status from per-record slices and reserves ADR numbers without collisions. See `docs/PARALLEL_DEVELOPMENT.md`.
+20. **Blocked:** network tools, external writes, arbitrary shell, plugin hosts, and secret injection. These require their own accepted ADRs and must not be smuggled in as "read" tools.
 
 Superseded proposal records `0002`–`0008` now live in `docs/decisions/archive/`. They are historical context, not open contracts. Do not re-open them or cite them as current direction; use ADR 0052/0053 and the target documents instead.
 

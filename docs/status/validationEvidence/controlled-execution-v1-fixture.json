@@ -1,0 +1,6 @@
+{
+  "id": "controlled-execution-v1-fixture",
+  "summary": "An executable fixture covers explicit grants, stale versions, idempotency, approved fake execution, rejected requests, revocation, public paths, discovery, digest-only results, and no plaintext/private-path leakage.",
+  "evidence": "tests/controlled-execution.test.ts",
+  "executableFixture": true
+}
