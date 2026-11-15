@@ -332,6 +332,11 @@
       "id": "workspace-isolation",
       "summary": "CONCHBASE_WORKSPACE_ROOT is required with tool writes and confines every read/write to one operator-named directory; Runtime-owned fields are filled before validation; Boss acceptance no longer reports completion before hired work finishes.",
       "evidence": "src/config/runtime-config.ts"
+    },
+    {
+      "id": "declarative-action-contract",
+      "summary": "ADR 0077 replaces per-field repair branches with one declarative table of Runtime-owned fields, applied before validation. A closed-loop test asserts every minimal action is repaired into something the real validator accepts, and fails if an action gains rules without a fixture.",
+      "evidence": "src/runtime/organization-action-contract.ts"
     }
   ],
   "validationEvidence": [

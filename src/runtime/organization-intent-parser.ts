@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { repairActionFields } from './organization-action-contract.js';
 import {
   createOrganization,
   parseOrganizationAction,
@@ -93,7 +94,7 @@ export function parseStructuredOrganizationResult(
       ? { ...normalized, expectedSequence: baseSequence + index }
       : normalized;
     return actionAt(
-      parseOrganizationAction(fillRuntimeDigests(withSequence)),
+      parseOrganizationAction(repairRawAction(withSequence, baseSequence + index, input.modelReference)),
       baseSequence + index,
     );
   });
@@ -112,82 +113,19 @@ export function parseStructuredOrganizationResult(
   });
 }
 
-// Digest-only fields are Runtime-internal identity, not model input. A model cannot
-// compute sha256, so a missing value is filled with a deterministic placeholder the
-// Runtime later replaces when it records the real fact.
-const DIGEST_FIELDS: Readonly<Record<string, readonly string[]>> = Object.freeze({
-  create_agent: ['instructionsDigest'],
-  report_worker: ['summaryDigest'],
-  request_attention: ['questionDigest'],
-  answer_attention: ['decisionDigest'],
-  withdraw_attention: ['decisionDigest'],
-  expire_attention: ['decisionDigest'],
-  record_intent: ['bodyDigest'],
-});
-
 /**
- * Identity fields the Runtime owns. A model cannot mint an opaque id that the
- * Runtime will accept, so a missing one is filled deterministically here rather
- * than rejecting an otherwise valid action. Supplied values are replaced.
+ * Repairs one raw action using the shared contract table. Validation still
+ * happens afterwards; this only ensures the Runtime supplies what only it can
+ * know, so a model is never rejected for omitting an opaque id, a digest, the
+ * event sequence, or a structural default.
  */
-const RUNTIME_ID_FIELDS: Readonly<Record<string, readonly string[]>> = Object.freeze({
-  report_worker: ['reportId'],
-  request_attention: ['attentionId'],
-  answer_attention: ['attentionId'],
-  withdraw_attention: ['attentionId'],
-  expire_attention: ['attentionId'],
-  record_intent: ['intentId'],
-});
-
-
-function fillRuntimeDigests(value: unknown): unknown {
+function repairRawAction(
+  value: unknown,
+  sequence: number,
+  model?: { readonly providerId: string; readonly modelId: string },
+): unknown {
   if (!isRecord(value)) return value;
-  const type = typeof value.type === 'string' ? value.type : '';
-  const fields = DIGEST_FIELDS[type];
-  const idFields = RUNTIME_ID_FIELDS[type];
-  if (!fields && !idFields) return value;
-  const next: Record<string, unknown> = { ...value };
-  if (type === 'create_agent') {
-    const projectId = String(next.projectId ?? 'project');
-    if (!Array.isArray(next.scope) || next.scope.length === 0) {
-      next.scope = [`project:${projectId}`];
-    }
-    // Capabilities are a closed vocabulary the model cannot extend. Keep only
-    // well-formed tokens; an invalid or empty list falls back to the read
-    // context capability, which is the least authority this action can carry.
-    const declared = Array.isArray(next.capabilities)
-      ? next.capabilities.filter((entry) =>
-        typeof entry === 'string' && /^cap_[a-z0-9][a-z0-9_-]{2,80}$/.test(entry))
-      : [];
-    if (declared.length === 0) {
-      next.capabilities = ['cap_read_context'];
-    } else {
-      next.capabilities = declared;
-    }
-  }
-  if (type === 'report_worker') {
-    // A report without an explicit state is still a report. Defaulting to
-    // `ready` keeps a working plan from failing on one omitted enum.
-    if (typeof next.state !== 'string' || next.state.length === 0) {
-      next.state = 'ready';
-    }
-  }
-  for (const field of fields ?? []) {
-    // Always replace: a digest is a Runtime-attested fact. A model that
-    // supplies one is guessing, and a malformed guess would fail validation
-    // for a value the Runtime computes anyway.
-    next[field] = 'sha256:runtime-attested';
-  }
-  for (const field of idFields ?? []) {
-    // Deterministic per action so a replay of the same plan stays idempotent.
-    const seed = `${type}:${String(next.projectId ?? '')}:${String(next.workerId ?? '')}:${JSON.stringify(next.scope ?? '')}`;
-    let hash = 0;
-    for (let index = 0; index < seed.length; index += 1) {
-      hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
-    }
-    next[field] = `runtime_${type}_${hash.toString(16).padStart(8, '0')}`;
-  }
-  return next;
+  return repairActionFields(value, sequence, model ? { model } : {});
 }
 
 export function parseBossConversationResult(
@@ -213,7 +151,7 @@ export function parseBossConversationResult(
   }
   const baseSequence = input.snapshot?.events.length ?? input.expectedSequence;
   const actions = rawActions.map((candidate, index) => {
-    const projected = projectActionFields(fillRuntimeDigests(candidate));
+    const projected = projectActionFields(repairRawAction(candidate, input.expectedSequence, input.modelReference));
     const withOrigin = Boolean(projected) && typeof projected === 'object' && !Array.isArray(projected)
       && (projected as Record<string, unknown>).type === 'create_agent'
       ? normalizeCreateAgentModel(
