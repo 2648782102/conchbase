@@ -314,3 +314,48 @@ test('a project refuses a fifth non-offboarded worker', async () => {
     ttlEvents: 10,
   })), /non-offboarded workers|reuse or offboard/i);
 });
+
+test('an expired delegation can no longer start or report work', async () => {
+  const { createOrganization, applyOrganizationAction, parseOrganizationAction } = await import('../src/runtime/organization-contract.js');
+  let snapshot = createOrganization('conv_expiry');
+  const apply = (input: Record<string, unknown>) => {
+    snapshot = applyOrganizationAction(snapshot, parseOrganizationAction({
+      ...input,
+      expectedSequence: snapshot.events.length,
+    }));
+  };
+  apply({ type: 'open_project', projectId: 'project_expiry', originTriggerId: 'int_expiry' });
+  apply({ type: 'activate_project', projectId: 'project_expiry' });
+  apply({
+    type: 'create_agent',
+    projectId: 'project_expiry',
+    workerId: 'wrk_expiry',
+    delegationId: 'del_expiry',
+    agentRevisionId: 'agr_expiry',
+    displayName: 'Expiry Worker',
+    instructionsDigest: 'sha256:instructions',
+    scope: ['project:expiry'],
+    capabilities: ['cap_read_context'],
+    model: { providerId: 'magpie', modelId: 'fixture-model' },
+    maxDelegationDepth: 0,
+    ttlEvents: 2,
+  });
+  apply({ type: 'authorize_worker', projectId: 'project_expiry', workerId: 'wrk_expiry' });
+
+  // Simulate the passage of time: the delegation's lifetime has run out even though
+  // the worker itself is still authorized.
+  snapshot = Object.freeze({
+    ...snapshot,
+    delegations: Object.freeze(snapshot.delegations.map((delegation) =>
+      delegation.id === 'del_expiry'
+        ? Object.freeze({ ...delegation, expiresAtSequence: 1 })
+        : delegation)),
+  });
+
+  assert.throws(() => applyOrganizationAction(snapshot, parseOrganizationAction({
+    type: 'start_worker',
+    expectedSequence: snapshot.events.length,
+    projectId: 'project_expiry',
+    workerId: 'wrk_expiry',
+  })), /delegation has expired/i);
+});

@@ -660,6 +660,19 @@ function assertProjectWorker(snapshot: OrganizationSnapshot, action: Organizatio
   if (worker.projectId !== project.id) throw new OrganizationConflictError('Worker does not belong to the project.');
 }
 
+// A delegation carries authority with a hard lifetime. Every action that would
+// exercise that authority must prove the delegation is still active and unexpired;
+// otherwise an expired grant would keep dispatching work forever.
+function assertActiveDelegation(snapshot: OrganizationSnapshot, worker: OrganizationWorker): void {
+  const delegation = findDelegation(snapshot, worker.delegationId);
+  if (delegation.state !== 'active') {
+    throw new OrganizationConflictError('Worker delegation is not active.');
+  }
+  if (delegation.expiresAtSequence <= lastSequence(snapshot)) {
+    throw new OrganizationConflictError('Worker delegation has expired.');
+  }
+}
+
 function nextWorkerState(state: ReportState): WorkerState {
   switch (state) {
     case 'progress':
@@ -876,6 +889,7 @@ export function applyOrganizationAction(
       assertProjectWorker(snapshot, parsed, parsed.workerId);
       const worker = findWorker(snapshot, parsed.workerId);
       if (worker.state !== 'proposed') throw new OrganizationConflictError('Worker is not proposed.');
+      assertActiveDelegation(snapshot, worker);
       return Object.freeze({
         ...snapshot,
         workers: replace(snapshot.workers, worker.id, Object.freeze({ ...worker, state: 'authorized' as const })),
@@ -891,6 +905,7 @@ export function applyOrganizationAction(
       if (worker.state !== 'authorized' && worker.state !== 'idle') {
         throw new OrganizationConflictError('Worker cannot start from its current state.');
       }
+      assertActiveDelegation(snapshot, worker);
       return Object.freeze({
         ...snapshot,
         workers: replace(snapshot.workers, worker.id, Object.freeze({ ...worker, state: 'running' as const })),
@@ -906,6 +921,7 @@ export function applyOrganizationAction(
       if (worker.state === 'proposed' || worker.state === 'authorized' || worker.state === 'offboarded' || worker.state === 'ended') {
         throw new OrganizationConflictError('Worker cannot report from its current state.');
       }
+      assertActiveDelegation(snapshot, worker);
       if (snapshot.reports.some((report) => report.id === parsed.reportId)) {
         throw new OrganizationConflictError('Organization report already exists.');
       }
