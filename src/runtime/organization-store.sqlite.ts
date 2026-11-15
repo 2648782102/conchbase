@@ -99,6 +99,21 @@ export class SqliteOrganizationStore implements OrganizationStore {
     const bounded = parseOrganizationLimit(limit);
     return Object.freeze(this.get().events.slice(-bounded));
   }
+
+  recordIntentText(intentId: string, text: string): void {
+    this.database.prepare(`
+      INSERT INTO organization_intent_texts (intent_id, body, recorded_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(intent_id) DO UPDATE SET body = excluded.body
+    `).run(intentId, text, new Date().toISOString());
+  }
+
+  intentTexts(): ReadonlyMap<string, string> {
+    const rows = this.database.prepare(
+      'SELECT intent_id, body FROM organization_intent_texts',
+    ).all() as unknown as { intent_id: string; body: string }[];
+    return new Map(rows.map((row) => [row.intent_id, row.body] as const));
+  }
 }
 
 export function migrateOrganizationSchema(database: DatabaseSync): void {
@@ -116,6 +131,13 @@ export function migrateOrganizationSchema(database: DatabaseSync): void {
       ) STRICT;
     `);
   }
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS organization_intent_texts (
+      intent_id TEXT PRIMARY KEY,
+      body TEXT NOT NULL,
+      recorded_at TEXT NOT NULL
+    ) STRICT;
+  `);
 }
 
 export const SQLITE_ORGANIZATION_STORE_CONTRACT_VERSION = ORGANIZATION_STORE_CONTRACT_VERSION;

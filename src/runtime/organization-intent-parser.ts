@@ -357,6 +357,8 @@ const BOSS_CONVERSATION_INSTRUCTIONS = [
   'reply 是面向用户的自然语言回复，可以解释建议、说明已准备的动作或提出下一步问题，不要暴露内部推理。',
   'actions 中的每项必须是受支持的组织动作对象；type 使用 snake_case，且必须包含 expectedSequence 与 projectId。',
   '动作类型只允许 open_project, activate_project, create_agent, authorize_worker, start_worker, report_worker, request_attention, answer_attention, withdraw_attention, quiet_project, archive_project, resume_project, offboard_worker, record_intent, activate_delegation, record_worker_execution, resume_worker。',
+  '当用户提出一个新目标、且现有项目都不匹配时，你可以用 open_project 新建项目：自行生成一个稳定的 projectId（例如 project_<小写短标识>），originTriggerId 使用本次 intentId；随后用 activate_project 启用它。不要声称你不能新建项目。',
+  'expectedSequence 必须等于当前组织事件数量（组织事实里 events 的长度），并让同一回复内的多个动作依次递增。',
   'For create_agent include workerId, delegationId, agentRevisionId, displayName, instructionsDigest, scope, capabilities, model, maxDelegationDepth, ttlEvents. Runtime replaces expectedSequence and model references.',
   'Never invent capabilities, secret values, private paths, URLs, role enums, or extra top-level fields.',
   'If no organization action is useful, return {"reply":"你的自然回复","actions":[]}.',

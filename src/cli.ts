@@ -96,7 +96,10 @@ async function main(argv: readonly string[]): Promise<void> {
       ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
       defaultModel: config.defaultModel,
       }, { tools: toolRuntime.tools, skills: toolRuntime.skills.skills });
-    const conversationService = new PrimaryConversationService();
+    const conversationService = new PrimaryConversationService({
+      recordIntentText: (intentId, text) => service.store.organization.recordIntentText?.(intentId, text),
+      intentTexts: () => service.store.organization.intentTexts?.() ?? new Map(),
+    });
     const bossMode = createBossModeService(service, config, conversationService);
     const executionService = new ControlledExecutionService();
     const executionRunService = new IsolatedExecutionService({ host: executionService });

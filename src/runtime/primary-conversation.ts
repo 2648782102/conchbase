@@ -295,14 +295,38 @@ export function primaryConversationPage(
 
 export class PrimaryConversationService {
   private readonly intentTexts = new Map<string, string>();
+  private readonly persistence: {
+    recordIntentText?: (intentId: string, text: string) => void;
+    intentTexts?: () => ReadonlyMap<string, string>;
+  } | undefined;
+
+  constructor(persistence?: {
+    readonly recordIntentText?: (intentId: string, text: string) => void;
+    readonly intentTexts?: () => ReadonlyMap<string, string>;
+  }) {
+    this.persistence = persistence;
+  }
 
   intentTextsView(): ReadonlyMap<string, string> {
+    const persisted = this.persistence?.intentTexts?.();
+    if (persisted && persisted.size > 0) {
+      const merged = new Map(persisted);
+      for (const [key, value] of this.intentTexts) {
+        if (!merged.has(key)) merged.set(key, value);
+      }
+      return merged;
+    }
     return this.intentTexts;
   }
 
   recordIntentText(intentId: string, text: string): void {
     const bounded = boundedText(text, '用户意图已提交。');
     this.intentTexts.set(intentId, bounded);
+    try {
+      this.persistence?.recordIntentText?.(intentId, bounded);
+    } catch {
+      // Persistence is best-effort; the in-process copy remains a fallback.
+    }
     if (this.intentTexts.size > 1000) {
       const oldest = this.intentTexts.keys().next();
       if (!oldest.done) this.intentTexts.delete(oldest.value);

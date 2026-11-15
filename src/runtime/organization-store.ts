@@ -15,6 +15,8 @@ export interface OrganizationStore {
   get(): OrganizationSnapshot;
   apply(input: unknown): OrganizationSnapshot;
   events(limit?: number): readonly OrganizationEvent[];
+  recordIntentText?(intentId: string, text: string): void;
+  intentTexts?(): ReadonlyMap<string, string>;
 }
 
 export function parseOrganizationLimit(value: number | undefined): number {

@@ -228,7 +228,7 @@ export class BossModeService {
     const submission = validateSubmission({ ...raw, ...(progress ? { onProgress: progress } : {}) });
     const resolvedIntentId = intentId(submission.idempotencyKey);
     if (submission.source !== 'agent-chat') {
-      this.conversation?.recordIntentText(resolvedIntentId, submission.text);
+      this.recordIntentText(resolvedIntentId, submission.text);
     }
     const bodyDigest = digest(JSON.stringify([submission.text, resolvedIntentId]));
     const recorded = this.findRecordedIntent(resolvedIntentId, bodyDigest);
@@ -261,7 +261,7 @@ export class BossModeService {
       : await this.resolveModelReference();
     const direct = await this.parser.parse({ ...parseInput, modelReference });
     if (submission.source === 'agent-chat' && direct.actions.length > 0) {
-      this.conversation?.recordIntentText(resolvedIntentId, submission.text);
+      this.recordIntentText(resolvedIntentId, submission.text);
     }
     if (submission.source === 'agent-chat' && direct.actions.length === 0) {
       const accepted: BossModeSubmitResult = Object.freeze({
@@ -394,8 +394,25 @@ export class BossModeService {
   }
 
   private intentTexts(): ReadonlyMap<string, string> {
+    const persisted = this.store.intentTexts?.();
+    if (persisted && persisted.size > 0) {
+      const merged = new Map(persisted);
+      for (const [key, value] of this.conversation?.intentTexts?.() ?? []) {
+        if (!merged.has(key)) merged.set(key, value);
+      }
+      return merged;
+    }
     if (typeof this.conversation?.intentTexts === 'function') return this.conversation.intentTexts();
     return new Map();
+  }
+
+  private recordIntentText(intentIdValue: string, text: string): void {
+    try {
+      this.store.recordIntentText?.(intentIdValue, text);
+    } catch {
+      // Persistence is best-effort; the in-process copy remains a fallback.
+    }
+    this.conversation?.recordIntentText(intentIdValue, text);
   }
 
   private instructionsForRevision(revisionId: string): string | undefined {

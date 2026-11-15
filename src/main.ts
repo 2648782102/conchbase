@@ -29,7 +29,10 @@ const taskService = createTaskService(config.databasePath, {
   }, { tools: toolRuntime.tools, skills: toolRuntime.skills.skills });
 const executionService = new ControlledExecutionService();
 const executionRunService = new IsolatedExecutionService({ host: executionService });
-const conversationService = new PrimaryConversationService();
+const conversationService = new PrimaryConversationService({
+  recordIntentText: (intentId, text) => taskService.store.organization.recordIntentText?.(intentId, text),
+  intentTexts: () => taskService.store.organization.intentTexts?.() ?? new Map(),
+});
 let servingApp = createApp({
   taskService,
   config,

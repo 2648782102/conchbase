@@ -141,6 +141,32 @@ test('organization actions migrate from user_version 3 and replay after reopen',
   });
 });
 
+test('project intent text survives reopen so the Boss can still explain a project', () => {
+  withTemporaryDirectory((directory) => {
+    const filename = path.join(directory, 'runtime.sqlite');
+    const store = new SqliteTaskStore(filename);
+    try {
+      store.organization.initialize('primary_conversation');
+      store.organization.recordIntentText?.('int_alpha', '做一个本地验证项目');
+      store.organization.apply({
+        type: 'open_project',
+        expectedSequence: 0,
+        projectId: 'project_alpha',
+        originTriggerId: 'int_alpha',
+      });
+    } finally {
+      store.close();
+    }
+
+    const reopened = new SqliteTaskStore(filename);
+    try {
+      assert.equal(reopened.organization.intentTexts?.().get('int_alpha'), '做一个本地验证项目');
+    } finally {
+      reopened.close();
+    }
+  });
+});
+
 test('organization persistence keeps the published contract frozen', () => {
   const spec = readFileSync(path.join(repositoryRoot, 'docs/openapi.yaml'), 'utf8');
   assert.equal([...spec.matchAll(/^  (\/v1\/[^:]+):$/gm)].length, 90);
