@@ -185,12 +185,11 @@ test('Boss conversation parser binds action origin to the Runtime intent id', as
   );
 });
 
-test('Boss conversation parser rejects plain text, unknown fields, and secret-like replies', async () => {
+test('Boss conversation parser falls back to plain text but still rejects unknown fields and secrets', async () => {
   const withContent = (content: string) => (async () => new Response(JSON.stringify({
     choices: [{ message: { content } }],
   }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof globalThis.fetch;
   const cases = [
-    { content: '直接聊天文本', error: /valid JSON/ },
     { content: JSON.stringify({ reply: 'ok', actions: [], authority: 'all' }), error: /unknown fields/i },
     { content: JSON.stringify({ reply: '使用 sk-secret', actions: [] }), error: /secret-like/ },
   ];
@@ -205,6 +204,15 @@ test('Boss conversation parser rejects plain text, unknown fields, and secret-li
       item.error,
     );
   }
+
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/boss-chat',
+    fetch: withContent('直接聊天文本，模型没有输出 JSON。'),
+  });
+  const result = await parser.parse({ intentId: 'int_plain', text: 'hello', expectedSequence: 0 });
+  assert.equal(result.relay, '直接聊天文本，模型没有输出 JSON。');
+  assert.deepEqual(result.actions, []);
 });
 
 test('Boss conversation parser classifies upstream failures without a fixed reply', async () => {

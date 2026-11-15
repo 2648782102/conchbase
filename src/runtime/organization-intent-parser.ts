@@ -513,11 +513,42 @@ export function createOpenAiCompatibleBossConversationParser(options: {
       try {
         structured = JSON.parse(extractJsonObject(content));
       } catch {
-        throw new OrganizationIntentParseError('Boss model output is not valid JSON.');
+        return parseBossPlainTextFallback(input, content);
+      }
+      if (isRecord(structured) && structured.actions === undefined
+        && typeof structured.reply === 'string') {
+        return parseBossPlainTextFallback(input, structured.reply);
       }
       return parseBossConversationResult(input, structured);
     },
   };
+}
+
+export function parseBossPlainTextFallback(
+  input: OrganizationIntentParserInput,
+  content: string,
+): OrganizationIntentParseResult {
+  const text = content
+    .replace(/^```[a-zA-Z]*\s*/, '')
+    .replace(/```\s*$/, '')
+    .replace(/\r\n/g, '\n')
+    .trim();
+  if (text.length === 0) {
+    throw new OrganizationIntentParseError('Boss model output is not valid JSON.');
+  }
+  if (/^\{\s*"reply"\s*:/.test(text)) {
+    throw new OrganizationIntentParseError('Boss model output is not valid JSON.');
+  }
+  const bounded = normalizeBossReply(text.slice(0, 8_000));
+  if (containsSecretLike(bounded)) {
+    throw new OrganizationIntentParseError('Boss conversation reply contains secret-like content.');
+  }
+  return Object.freeze({
+    version: ORGANIZATION_INTENT_PARSER_VERSION,
+    intentId: input.intentId,
+    actions: Object.freeze([]),
+    relay: bounded,
+  });
 }
 
 export function extractJsonObject(content: string): string {

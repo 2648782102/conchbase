@@ -447,7 +447,7 @@ test('boss agent uses an organization capability and still replies naturally', a
   }
 });
 
-test('boss agent classifies malformed conversational model output as unavailable', async () => {
+test('boss agent publishes malformed conversational model output as plain text', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-unavailable-chat-'));
   const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
     magpieBaseUrl: 'http://127.0.0.1:3425',
@@ -480,7 +480,8 @@ test('boss agent classifies malformed conversational model output as unavailable
       await new Promise((resolve) => setTimeout(resolve, 10));
       view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
     }
-    assert.equal(view.json().messages[1]?.state, 'unavailable');
+    assert.equal(view.json().messages[1]?.state, 'replied');
+    assert.equal(view.json().messages[1]?.body, '我只是一段普通文本');
     assert.doesNotMatch(view.json().messages[1]?.body ?? '', /意图已收到|已形成/);
   } finally {
     await app.close();

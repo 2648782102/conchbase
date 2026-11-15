@@ -19,7 +19,8 @@ ADR 0052 accepts the Agent-loop architecture and ADR 0053 fixes its first slice.
 5. **Implemented:** ADR 0058 allows up to `maxToolCallsPerTurn` calls per model turn (default 4, cap 8), executes them in order, and requires one approval per write. Approval resumption re-enters the same loop, so later turns may call tools again.
 6. **Implemented:** ADR 0059 projects tool/approval activity into Agent Chat and adds `POST /v1/agent-chat/conversations/{conversationId}/approval`; that slice advanced the Agent Chat contract to `1.7.0` with five paths.
 7. **Implemented:** ADR 0060 adds a resumable Agent Chat SSE stream over one additive path; the Agent Chat contract is `1.8.0` with six paths. Polling remains the fallback.
-8. **Blocked:** network tools, external writes, arbitrary shell, plugin hosts, and secret injection. These require their own accepted ADRs and must not be smuggled in as "read" tools.
+8. **Implemented:** ADR 0061 accepts plain text from the Boss model as a reply with zero organization actions; truncated JSON and secret-like content still fail.
+9. **Blocked:** network tools, external writes, arbitrary shell, plugin hosts, and secret injection. These require their own accepted ADRs and must not be smuggled in as "read" tools.
 
 Superseded proposal records `0002`–`0008` now live in `docs/decisions/archive/`. They are historical context, not open contracts. Do not re-open them or cite them as current direction; use ADR 0052/0053 and the target documents instead.
 
