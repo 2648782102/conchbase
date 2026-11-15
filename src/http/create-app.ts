@@ -11,6 +11,7 @@ import type { CapabilityGrant } from '../runtime/agent-profile.js';
 import { installAuthHook } from './auth.js';
 import { registerConfigurationRoutes } from './routes/v1/configuration.js';
 import { registerAgentChatRoutes } from './routes/v1/agent-chat.js';
+import { registerMemoryRoutes } from './routes/v1/memory.js';
 import { registerConversationRoutes } from './routes/v1/conversation.js';
 import { registerExecutionRoutes } from './routes/v1/execution.js';
 import { registerExecutionRunRoutes } from './routes/v1/execution-runs.js';
@@ -86,6 +87,7 @@ export function createApp(options: CreateAppOptions = {}) {
     options.config?.executionMode ?? 'restricted',
     options.config?.loopBudget,
     options.config?.projectIdleMs,
+    Boolean(options.taskService?.store?.memory),
   );
   registerConfigurationRoutes(app, options.taskService);
   registerEventRoutes(app, options.taskService);
@@ -104,6 +106,7 @@ export function createApp(options: CreateAppOptions = {}) {
     }))
     : undefined);
   registerAgentChatRoutes(app, agentChat);
+  registerMemoryRoutes(app, options.taskService?.store?.memory);
   registerExecutionRoutes(app, execution);
   registerExecutionRunRoutes(app, executionRuns);
 

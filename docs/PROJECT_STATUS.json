@@ -44,7 +44,12 @@
       "docs/openapi.yaml",
       "docs/API.md",
       "docs/decisions/"
-    ]
+    ],
+    "memory": {
+      "version": "1.9.0",
+      "pathCount": 2,
+      "frozen": true
+    }
   },
   "aiEntry": {
     "requiredOrder": [
@@ -227,6 +232,16 @@
       "id": "mcp-provider",
       "summary": "ADR 0054 implements an administrator-configured MCP stdio provider without the MCP SDK: JSON-RPC handshake, tool allowlist, read-only enforcement, sanitized environment, timeouts, bounded results, and namespaced tool ids.",
       "evidence": "src/runtime/mcp-provider.ts"
+    },
+    {
+      "id": "memory-public-visibility",
+      "summary": "ADR 0084 adds additive memory contract 1.9.0: GET /v1/memory lists bounded, scope-filterable entries with provenance and review status, and DELETE /v1/memory/{memoryId} retracts one. There is deliberately no public write path, so a client cannot inject a fact the Boss will later treat as recollection.",
+      "evidence": "src/http/routes/v1/memory.ts"
+    },
+    {
+      "id": "memory-review",
+      "summary": "ADR 0084 adds an independent, disposable reviewer for memory the Boss proposes. It judges intent only — durable preference versus one-turn instruction — and returns a recommendation; Runtime checks on shape, scope, secrets, and target existence still run first and remain authoritative. Every entry records sourceIntentId and reviewedBy. A configured-but-unavailable reviewer drops the proposal rather than writing unreviewed.",
+      "evidence": "src/runtime/memory-review.ts"
     },
     {
       "id": "multi-tool-turns",
@@ -493,6 +508,12 @@
       "id": "mcp-provider-fixture",
       "summary": "Executable fixtures cover MCP discovery, namespacing, calls, non-read rejection, timeouts, malformed responses, bounded output, config validation, and Agent loop integration.",
       "evidence": "tests/mcp-provider.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "memory-review-fixture",
+      "summary": "Executable fixtures cover accepted and rejected verdicts, mandatory full index coverage, malformed and secret-like verdict rejection, upstream failure returning null, provenance and review status on write, rejection not persisting, an unavailable reviewer dropping rather than writing, listing with scope filters, deletion with 404, invalid filters, and the absence of a public write route.",
+      "evidence": "tests/memory-review.test.ts",
       "executableFixture": true
     },
     {

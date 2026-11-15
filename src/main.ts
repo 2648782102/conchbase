@@ -16,6 +16,7 @@ import { createToolRuntime } from './runtime/tool-runtime.js';
 import { defaultWorkerGrants } from './runtime/capability-grants.js';
 import { createConvergenceRuntime } from './runtime/organization-convergence-runtime.js';
 import { AgentChatService } from './runtime/agent-chat.js';
+import { createOpenAiCompatibleMemoryReviewer } from './runtime/memory-review.js';
 
 const config = loadRuntimeConfig();
 mkdirSync(path.dirname(config.databasePath), { recursive: true });
@@ -66,6 +67,13 @@ if (config.organizationIntentModel || config.bossModel || config.defaultModel) {
   const bossMode = new BossModeService(taskService.store.organization, taskService, {
     parser,
     memory: taskService.store.memory,
+    // The reviewer is an independent, disposable check on whether a proposed
+    // memory is a durable preference. It recommends; the Runtime still decides.
+    memoryReviewer: createOpenAiCompatibleMemoryReviewer({
+      baseUrl: config.magpieBaseUrl,
+      model: config.bossModel ?? config.defaultModel,
+      ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
+    }),
     bossModelReference: { providerId: BOSS_UPSTREAM_PROVIDER_ID, modelId: config.bossModel ?? config.defaultModel },
     workerCapabilityGrants: () => defaultWorkerGrants(toolRuntime.tools, toolRuntime.skills.skills, { allowWrites: config.allowToolWrites === true }),
     conversation: { recordIntentText: (intentId, text) => conversationService.recordIntentText(intentId, text) },

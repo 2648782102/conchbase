@@ -12,6 +12,7 @@ export function registerRuntimeRoute(
   executionMode: ExecutionMode = 'restricted',
   loopBudget?: LoopBudget,
   projectIdleMs?: number,
+  memoryEnabled = false,
 ): void {
   app.get('/v1/runtime', async () => ({
     name: 'Conchbase',
@@ -43,6 +44,10 @@ export function registerRuntimeRoute(
     ...(agentChatEnabled ? {
       agentChatContract: '1.8.0' as const,
       agentChatPaths: 6,
+    } : {}),
+    ...(memoryEnabled ? {
+      memoryContract: '1.9.0' as const,
+      memoryPaths: 2,
     } : {}),
     capabilities: tasksEnabled
       ? [

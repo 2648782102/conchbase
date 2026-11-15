@@ -2199,8 +2199,121 @@ paths:
           $ref: '#/components/responses/ExecutionRunValidationError'
         '404':
           $ref: '#/components/responses/ExecutionRunNotFoundError'
+  /v1/memory:
+    get:
+      operationId: listMemory
+      summary: List durable agent memory
+      description: >-
+        Read-only view of Runtime-owned memory. Entries are scoped to the whole runtime, one project, or one
+        agent. There is no public write path: memory content may only enter through the Runtime's own
+        validation, so a client cannot inject a fact the Boss will later treat as recollection.
+      parameters:
+        - name: scope
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [runtime, project, agent]
+        - name: scopeId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        '200':
+          description: Bounded memory entries
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [version, entries]
+                properties:
+                  version:
+                    type: string
+                    const: '1.9.0'
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MemoryEntry'
+        '400':
+          description: Invalid scope or limit
+        '503':
+          description: Memory is not configured
+  /v1/memory/{memoryId}:
+    delete:
+      operationId: deleteMemory
+      summary: Retract one memory entry
+      description: >-
+        Removes a memory entry permanently. Deletion is real deletion, not a tombstone. A 404 means the id was
+        never present or is already gone.
+      parameters:
+        - name: memoryId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The entry was removed
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [version, memoryId, removed]
+                properties:
+                  version:
+                    type: string
+                    const: '1.9.0'
+                  memoryId:
+                    type: string
+                  removed:
+                    type: boolean
+                    const: true
+        '404':
+          description: Memory entry not found
+        '503':
+          description: Memory is not configured
 
 components:
+  schemas:
+    MemoryEntry:
+      type: object
+      additionalProperties: false
+      required: [id, scope, scopeId, key, title, body, sourceIntentId, reviewedBy, createdAt]
+      properties:
+        id:
+          type: string
+        scope:
+          type: string
+          enum: [runtime, project, agent]
+        scopeId:
+          type: string
+          description: Empty for runtime scope; the project or agent id otherwise.
+        key:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        sourceIntentId:
+          type: string
+          description: The turn that produced this entry. Every memory is traceable to its origin.
+        reviewedBy:
+          type: string
+          enum: [accepted, unreviewed]
+          description: Whether an independent reviewer accepted this entry.
+        createdAt:
+          type: string
   parameters:
     TaskId:
       name: taskId

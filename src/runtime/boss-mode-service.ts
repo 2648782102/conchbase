@@ -23,6 +23,7 @@ import { type WorkTriggerRequest } from './work-contract.js';
 import { buildBossOrganizationFacts, runtimeCapabilityFacts } from './boss-organization-context.js';
 import { containsSecretLike } from './secret-filter.js';
 import { MEMORY_LIMITS, renderMemoryIndex, type AgentMemoryInput, type AgentMemoryStore } from './agent-memory.js';
+import type { MemoryReviewInput, MemoryReviewResult } from './memory-review.js';
 
 export const BOSS_MODE_SERVICE_VERSION = 2;
 
@@ -103,6 +104,13 @@ export interface BossModeServiceOptions {
    * close-out report). Only a bounded index is injected; bodies stay on disk.
    */
   readonly memory?: AgentMemoryStore;
+  /**
+   * An independent reviewer for memory the Boss proposes.
+   *
+   * It returns a recommendation only. Without one, a proposal is still
+   * validated and written unreviewed, which is the pre-reviewer behaviour.
+   */
+  readonly memoryReviewer?: (input: MemoryReviewInput) => Promise<MemoryReviewResult | null>;
 }
 
 interface WorkerExecutionRecord {
@@ -243,6 +251,7 @@ export class BossModeService {
   private readonly conversation: BossModeServiceOptions['conversation'];
   private readonly onAccepted: BossModeServiceOptions['onAccepted'];
   private readonly memory: AgentMemoryStore | undefined;
+  private readonly memoryReviewer: BossModeServiceOptions['memoryReviewer'];
   private readonly workerExecutions = new Map<string, WorkerExecutionRecord>();
   private readonly startedWorkers = new Set<string>();
   private readonly outcomeByTaskId = new Map<string, string>();
@@ -261,6 +270,7 @@ export class BossModeService {
     this.conversation = options.conversation;
     this.onAccepted = options.onAccepted;
     this.memory = options.memory;
+    this.memoryReviewer = options.memoryReviewer;
     this.restoreRecords();
     this.coordinator = new OrganizationCoordinator(store, {
       listWorkState: () => this.listWorkState(),
@@ -322,7 +332,11 @@ export class BossModeService {
       this.recordIntentText(resolvedIntentId, submission.text);
     }
     if (direct.memory && direct.memory.length > 0) {
-      this.recordProposedMemory(direct.memory);
+      await this.recordProposedMemory(direct.memory, {
+        userText: submission.text,
+        assistantReply: direct.relay ?? '',
+        sourceIntentId: resolvedIntentId,
+      });
     }
     if (submission.source === 'agent-chat' && direct.actions.length === 0) {
       const accepted: BossModeSubmitResult = Object.freeze({
@@ -595,7 +609,10 @@ export class BossModeService {
    * scope target does not exist is dropped rather than stored as a dangling
    * fact, and a bad entry never fails the turn it arrived with.
    */
-  private recordProposedMemory(entries: readonly AgentMemoryInput[]): void {
+  private async recordProposedMemory(
+    entries: readonly AgentMemoryInput[],
+    context: { readonly userText: string; readonly assistantReply: string; readonly sourceIntentId: string },
+  ): Promise<void> {
     const memory = this.memory;
     if (!memory) return;
     let snapshot: OrganizationSnapshot;
@@ -604,13 +621,48 @@ export class BossModeService {
     } catch {
       return;
     }
-    for (const entry of entries) {
-      const target = entry.scope === 'project'
-        ? snapshot.projects.some((project) => project.id === entry.scopeId)
-        : snapshot.workers.some((worker) => worker.id === entry.scopeId);
-      if (!target) continue;
+    // Runtime checks come first: a reviewer cannot resurrect an entry whose
+    // scope target does not exist, and it never sees entries the Runtime has
+    // already refused.
+    const candidates = entries.filter((entry) => entry.scope === 'project'
+      ? snapshot.projects.some((project) => project.id === entry.scopeId)
+      : snapshot.workers.some((worker) => worker.id === entry.scopeId));
+    if (candidates.length === 0) return;
+    let accepted: readonly AgentMemoryInput[] = candidates;
+    if (this.memoryReviewer) {
+      let review: MemoryReviewResult | null = null;
       try {
-        memory.write(entry);
+        review = await this.memoryReviewer({
+          userText: context.userText,
+          assistantReply: context.assistantReply,
+          // Existing titles, so the reviewer can spot a duplicate; the
+          // candidates themselves are sent separately as `proposals`.
+          existingTitles: [...new Set(candidates.flatMap((entry) => memory.list({
+            scope: entry.scope,
+            ...(entry.scopeId ? { scopeId: entry.scopeId } : {}),
+            limit: 24,
+          }).map((stored) => stored.title)))],
+          proposals: candidates,
+        });
+      } catch {
+        review = null;
+      }
+      if (!review) {
+        // A reviewer is configured but unavailable. Writing unreviewed would
+        // defeat the reason it exists, so the proposal is dropped. Memory is
+        // advisory and the user can always ask again.
+        return;
+      }
+      const verdicts = new Map(review.decisions.map((decision) => [decision.index, decision]));
+      accepted = candidates.filter((_entry, index) => verdicts.get(index)?.verdict === 'accept');
+    }
+    for (const entry of accepted) {
+      try {
+        memory.write({
+          ...entry,
+          sourceIntentId: context.sourceIntentId,
+          ...(this.memoryReviewer ? { reviewedBy: 'accepted' as const } : {}),
+        });
       } catch {
         // Memory is advisory. A rejected write must not break the conversation.
       }

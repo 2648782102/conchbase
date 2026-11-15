@@ -1,0 +1,5 @@
+{
+  "id": "memory-public-visibility",
+  "summary": "ADR 0084 adds additive memory contract 1.9.0: GET /v1/memory lists bounded, scope-filterable entries with provenance and review status, and DELETE /v1/memory/{memoryId} retracts one. There is deliberately no public write path, so a client cannot inject a fact the Boss will later treat as recollection.",
+  "evidence": "src/http/routes/v1/memory.ts"
+}

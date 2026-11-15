@@ -24,6 +24,17 @@ export interface AgentMemoryEntry {
   readonly key: string;
   readonly title: string;
   readonly body: string;
+  /**
+   * Which turn produced this entry. Every memory must be traceable back to the
+   * conversation that created it; a fact with no provenance cannot be audited
+   * or meaningfully retracted.
+   */
+  readonly sourceIntentId: string;
+  /**
+   * `convergence` is Runtime-derived, `reviewer` means an independent review
+   * Agent agreed, `proposal` means it was written without review.
+   */
+  readonly reviewedBy: MemoryReviewOutcome;
   readonly createdAt: string;
 }
 
@@ -33,7 +44,18 @@ export interface AgentMemoryInput {
   readonly key: string;
   readonly title: string;
   readonly body: string;
+  readonly sourceIntentId?: string;
+  readonly reviewedBy?: MemoryReviewOutcome;
 }
+
+/**
+ * How an entry earned its place.
+ *
+ * `accepted` — an independent reviewer judged it a durable preference.
+ * `unreviewed` — written by a Runtime-derivable path (project convergence).
+ * `rejected` — a reviewer declined it; kept only as an audit record.
+ */
+export type MemoryReviewOutcome = 'accepted' | 'unreviewed';
 
 export interface AgentMemoryStore {
   initialize(): void;
@@ -86,7 +108,7 @@ export function parseAgentMemoryInput(value: unknown): AgentMemoryInput {
     throw new AgentMemoryValidationError('Memory input must be an object.');
   }
   const record = value as Record<string, unknown>;
-  const allowed = new Set(['scope', 'scopeId', 'key', 'title', 'body']);
+  const allowed = new Set(['scope', 'scopeId', 'key', 'title', 'body', 'sourceIntentId', 'reviewedBy']);
   const unknown = Object.keys(record).filter((field) => !allowed.has(field));
   if (unknown.length > 0) throw new AgentMemoryValidationError(`Unknown memory fields: ${unknown.sort().join(', ')}.`);
   const scope = record.scope;
@@ -103,6 +125,10 @@ export function parseAgentMemoryInput(value: unknown): AgentMemoryInput {
     key: bounded(record.key, 'memory.key', MEMORY_LIMITS.key),
     title: bounded(record.title, 'memory.title', MEMORY_LIMITS.title),
     body: bounded(record.body, 'memory.body', MEMORY_LIMITS.body),
+    ...(record.sourceIntentId === undefined || record.sourceIntentId === ''
+      ? {}
+      : { sourceIntentId: bounded(record.sourceIntentId, 'memory.sourceIntentId', 200) }),
+    reviewedBy: record.reviewedBy === 'accepted' ? 'accepted' as const : 'unreviewed' as const,
   });
 }
 
@@ -144,6 +170,8 @@ export class InMemoryAgentMemoryStore implements AgentMemoryStore {
       key: parsed.key,
       title: parsed.title,
       body: parsed.body,
+      sourceIntentId: parsed.sourceIntentId ?? '',
+      reviewedBy: parsed.reviewedBy ?? 'unreviewed',
       createdAt: now,
     });
     this.entries.set(id, entry);
@@ -182,6 +210,8 @@ interface MemoryRow {
   readonly key: string;
   readonly title: string;
   readonly body: string;
+  readonly source_intent_id: string;
+  readonly reviewed_by: string;
   readonly created_at: string;
 }
 
@@ -194,6 +224,8 @@ function fromRow(row: MemoryRow): AgentMemoryEntry {
     key: row.key,
     title: row.title,
     body: row.body,
+    sourceIntentId: row.source_intent_id,
+    reviewedBy: row.reviewed_by === 'accepted' ? 'accepted' : 'unreviewed',
     createdAt: row.created_at,
   });
 }
@@ -210,6 +242,8 @@ export class SqliteAgentMemoryStore implements AgentMemoryStore {
         key TEXT NOT NULL,
         title TEXT NOT NULL,
         body TEXT NOT NULL,
+        source_intent_id TEXT NOT NULL DEFAULT '',
+        reviewed_by TEXT NOT NULL DEFAULT 'unreviewed',
         created_at TEXT NOT NULL
       ) STRICT;
       CREATE UNIQUE INDEX IF NOT EXISTS agent_memory_identity ON agent_memory (scope, scope_id, key);
@@ -222,13 +256,18 @@ export class SqliteAgentMemoryStore implements AgentMemoryStore {
     const id = agentMemoryId(parsed);
     const scopeId = parsed.scopeId ?? '';
     this.database.prepare(`
-      INSERT INTO agent_memory (id, scope, scope_id, key, title, body, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO agent_memory (
+        id, scope, scope_id, key, title, body, source_intent_id, reviewed_by, created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(scope, scope_id, key) DO UPDATE SET
         title = excluded.title,
         body = excluded.body,
+        source_intent_id = excluded.source_intent_id,
+        reviewed_by = excluded.reviewed_by,
         created_at = excluded.created_at
-    `).run(id, parsed.scope, scopeId, parsed.key, parsed.title, parsed.body, now);
+    `).run(id, parsed.scope, scopeId, parsed.key, parsed.title, parsed.body,
+      parsed.sourceIntentId ?? '', parsed.reviewedBy ?? 'unreviewed', now);
     this.prune(parsed.scope, scopeId);
     return Object.freeze({
       version: AGENT_MEMORY_VERSION,
@@ -238,6 +277,8 @@ export class SqliteAgentMemoryStore implements AgentMemoryStore {
       key: parsed.key,
       title: parsed.title,
       body: parsed.body,
+      sourceIntentId: parsed.sourceIntentId ?? '',
+      reviewedBy: parsed.reviewedBy ?? 'unreviewed',
       createdAt: now,
     });
   }
@@ -258,7 +299,7 @@ export class SqliteAgentMemoryStore implements AgentMemoryStore {
       ? -1
       : Math.max(1, Math.min(Math.trunc(options.limit), 500));
     const rows = this.database.prepare(`
-      SELECT id, scope, scope_id, key, title, body, created_at
+      SELECT id, scope, scope_id, key, title, body, source_intent_id, reviewed_by, created_at
       FROM agent_memory
       ${where}
       ORDER BY created_at DESC, id DESC
@@ -269,7 +310,8 @@ export class SqliteAgentMemoryStore implements AgentMemoryStore {
 
   get(id: string): AgentMemoryEntry | null {
     const row = this.database.prepare(`
-      SELECT id, scope, scope_id, key, title, body, created_at FROM agent_memory WHERE id = ?
+      SELECT id, scope, scope_id, key, title, body, source_intent_id, reviewed_by, created_at
+      FROM agent_memory WHERE id = ?
     `).get(id) as MemoryRow | undefined;
     return row ? fromRow(row) : null;
   }

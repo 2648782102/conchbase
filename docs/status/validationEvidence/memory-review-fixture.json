@@ -1,0 +1,6 @@
+{
+  "id": "memory-review-fixture",
+  "summary": "Executable fixtures cover accepted and rejected verdicts, mandatory full index coverage, malformed and secret-like verdict rejection, upstream failure returning null, provenance and review status on write, rejection not persisting, an unavailable reviewer dropping rather than writing, listing with scope filters, deletion with 404, invalid filters, and the absence of a public write route.",
+  "evidence": "tests/memory-review.test.ts",
+  "executableFixture": true
+}
