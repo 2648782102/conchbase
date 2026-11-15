@@ -262,6 +262,11 @@
       "id": "durable-intent-text",
       "summary": "ADR 0062 persists bounded intent text in organization_intent_texts so project purpose survives restart, and the Boss prompt allows generating a projectId for open_project.",
       "evidence": "src/runtime/organization-store.sqlite.ts"
+    },
+    {
+      "id": "report-text-and-action-isolation",
+      "summary": "ADR 0063 persists bounded worker report text in organization_report_texts, backfills legacy reports from task output, projects summaries into Boss facts, isolates per-action failures, and normalizes a malformed agent model.",
+      "evidence": "src/runtime/boss-mode-service.ts"
     }
   ],
   "validationEvidence": [
