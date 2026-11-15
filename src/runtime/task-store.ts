@@ -23,6 +23,7 @@ import {
   newAgentId,
   newAgentRevision,
   parseAgentProfile,
+  parseCapabilityGrants,
   type AgentDetail,
   type AgentId,
   type AgentProfileInput,
@@ -205,6 +206,7 @@ interface AgentRevisionRow {
   readonly instructions: string;
   readonly provider_id: string;
   readonly model_id: string;
+  readonly granted_capabilities: string;
   readonly created_at: string;
 }
 
@@ -379,6 +381,7 @@ function toAgentRevision(row: AgentRevisionRow): AgentRevision {
     instructions: row.instructions,
     providerId: row.provider_id,
     modelId: row.model_id,
+    grantedCapabilities: parseCapabilityGrants(JSON.parse(row.granted_capabilities || '[]')),
     createdAt: row.created_at,
   });
 }
@@ -475,6 +478,7 @@ export class SqliteTaskStore implements TaskStore {
           instructions TEXT NOT NULL,
           provider_id TEXT NOT NULL,
           model_id TEXT NOT NULL,
+          granted_capabilities TEXT NOT NULL DEFAULT '[]',
           created_at TEXT NOT NULL
         ) STRICT;
         CREATE TABLE IF NOT EXISTS agent_state (
@@ -495,7 +499,7 @@ export class SqliteTaskStore implements TaskStore {
       this.organization.initialize('primary_conversation');
       this.agentChat.initialize();
       this.database.exec('INSERT OR IGNORE INTO agent_state (singleton, default_agent_id) VALUES (1, NULL)');
-      this.database.exec('PRAGMA user_version = 7; COMMIT;');
+      this.database.exec('PRAGMA user_version = 8; COMMIT;');
       this.isOrganizationBootstrapTransaction = false;
       this.bootstrapConfiguration();
     } catch (cause) {
@@ -645,6 +649,7 @@ export class SqliteTaskStore implements TaskStore {
       instructions: source.instructions,
       providerId: source.providerId,
       modelId: source.modelId,
+      grantedCapabilities: source.grantedCapabilities,
     });
   }
 
@@ -682,6 +687,7 @@ export class SqliteTaskStore implements TaskStore {
         instructions: historical.instructions,
         providerId: historical.providerId,
         modelId: historical.modelId,
+        grantedCapabilities: historical.grantedCapabilities,
       }, this.clock());
       this.insertAgentRevision(agentId, revision);
       this.database.prepare('UPDATE agents SET current_revision_id = ? WHERE id = ?')
@@ -720,7 +726,7 @@ export class SqliteTaskStore implements TaskStore {
     const record = this.agentRecord(agentId);
     if (!record) return null;
     const rows = this.database.prepare(`
-      SELECT id, agent_id, name, instructions, provider_id, model_id, created_at
+      SELECT id, agent_id, name, instructions, provider_id, model_id, granted_capabilities, created_at
       FROM agent_revisions WHERE agent_id = ? ORDER BY rowid DESC
     `).all(agentId) as unknown as AgentRevisionRow[];
     return Object.freeze({ ...record, revisions: Object.freeze(rows.map(toAgentRevision)) });
@@ -728,7 +734,7 @@ export class SqliteTaskStore implements TaskStore {
 
   getAgentRevision(agentId: string, revisionId: string): AgentRevision | null {
     const row = this.database.prepare(`
-      SELECT id, agent_id, name, instructions, provider_id, model_id, created_at
+      SELECT id, agent_id, name, instructions, provider_id, model_id, granted_capabilities, created_at
       FROM agent_revisions WHERE agent_id = ? AND id = ?
     `).get(agentId, revisionId) as AgentRevisionRow | undefined;
     return row ? toAgentRevision(row) : null;
@@ -1047,7 +1053,7 @@ export class SqliteTaskStore implements TaskStore {
 
   private migrateAgentSchema(): void {
     const versionRow = this.database.prepare('PRAGMA user_version').get() as { user_version: number };
-    if (versionRow.user_version > 7) {
+    if (versionRow.user_version > 8) {
       throw new Error(`Database schema version ${versionRow.user_version} is newer than this runtime supports.`);
     }
     for (const [table, column] of [
@@ -1064,6 +1070,11 @@ export class SqliteTaskStore implements TaskStore {
       if (!columns.some((item) => item.name === column)) {
         this.database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`);
       }
+    }
+    const revisionColumns = this.database.prepare('PRAGMA table_info(agent_revisions)')
+      .all() as unknown as { name: string }[];
+    if (revisionColumns.length > 0 && !revisionColumns.some((item) => item.name === 'granted_capabilities')) {
+      this.database.exec("ALTER TABLE agent_revisions ADD COLUMN granted_capabilities TEXT NOT NULL DEFAULT '[]'");
     }
     this.database.exec(
       'CREATE INDEX IF NOT EXISTS events_task_sequence ON events (task_id, sequence)',
@@ -1164,10 +1175,12 @@ export class SqliteTaskStore implements TaskStore {
 
   private insertAgentRevision(agentId: string, revision: AgentRevision): void {
     this.database.prepare(`
-      INSERT INTO agent_revisions (id, agent_id, name, instructions, provider_id, model_id, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO agent_revisions (
+        id, agent_id, name, instructions, provider_id, model_id, granted_capabilities, created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(revision.id, agentId, revision.name, revision.instructions,
-      revision.providerId, revision.modelId, revision.createdAt);
+      revision.providerId, revision.modelId, JSON.stringify(revision.grantedCapabilities), revision.createdAt);
   }
 
   private toolRequestByIdempotencyKey(key: string): ToolRequestRecord | null {

@@ -77,6 +77,7 @@ test('agent chat projects tool activity and can approve a write inside the conve
   try {
     const agent = await service.createAgent({
       name: '文件助手', instructions: 'Write files when asked.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_list' }, { kind: 'tool', name: 'workspace_write' }],
     });
     const created = await app.inject({
       method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
@@ -161,6 +162,7 @@ test('agent chat keeps separate activity entries for each turn and repeated tool
   try {
     const agent = await service.createAgent({
       name: '重复助手', instructions: 'Use tools.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_list' }, { kind: 'tool', name: 'workspace_write' }],
     });
     const created = await app.inject({
       method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
@@ -220,6 +222,7 @@ test('rejecting a write in Agent Chat publishes an explicit rejection reply', as
   try {
     const agent = await service.createAgent({
       name: '拒绝助手', instructions: 'Write.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_list' }, { kind: 'tool', name: 'workspace_write' }],
     });
     const created = await app.inject({
       method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
@@ -271,6 +274,7 @@ test('assistant activity is rebuilt from durable events after reload', async () 
   try {
     const agent = await service.createAgent({
       name: '重建助手', instructions: 'Use tools.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_list' }, { kind: 'tool', name: 'workspace_write' }],
     });
     const agentChatService = new AgentChatService(service);
     const created = await agentChatService.createConversation({ agentId: agent.id });

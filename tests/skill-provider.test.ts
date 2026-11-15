@@ -118,6 +118,10 @@ test('Agent loop injects Skill guidance as non-authoritative system context', as
       instructions: 'Be brief.',
       providerId: 'magpie',
       modelId: 'fixture/model',
+      grantedCapabilities: [
+        { kind: 'tool', name: 'workspace_read' },
+        { kind: 'skill', name: 'release-notes' },
+      ],
     });
     const created = await service.createAgentTask({ prompt: 'write notes', agentId: agent.id });
     service.startTask(created.id);

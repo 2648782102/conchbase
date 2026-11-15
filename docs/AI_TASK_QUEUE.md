@@ -24,7 +24,8 @@ ADR 0052 accepts the Agent-loop architecture and ADR 0053 fixes its first slice.
 10. **Implemented:** ADR 0063 persists bounded worker report text and projects it into Boss facts, isolates per-action failures so one bad action does not abort a turn, normalizes a malformed agent model, and gives workers real project context.
 11. **Implemented:** ADR 0064 fixes trailing-line ATTENTION detection, accepts task-specific worker instructions, caps a project at four non-offboarded workers, and tightens the Boss prompt.
 12. **Implemented:** ADR 0065 enforces delegation lifetime on authorize/start/report, retires a worker after two convergence failures, and archives its Agent on offboard.
-13. **Blocked:** network tools, external writes, arbitrary shell, plugin hosts, and secret injection. These require their own accepted ADRs and must not be smuggled in as "read" tools.
+13. **Implemented:** ADR 0066 makes `grantedCapabilities` part of the immutable Agent revision and projects the Runtime-wide tool and Skill providers onto that pinned list in `TaskService`. Grants only narrow; an Agent with no grants receives no tools and no Skills, an unregistered grant is inert, and a task keeps its revision's grants after the Agent is edited. Private schema is `user_version = 8`.
+14. **Blocked:** network tools, external writes, arbitrary shell, plugin hosts, and secret injection. These require their own accepted ADRs and must not be smuggled in as "read" tools.
 
 Superseded proposal records `0002`–`0008` now live in `docs/decisions/archive/`. They are historical context, not open contracts. Do not re-open them or cite them as current direction; use ADR 0052/0053 and the target documents instead.
 

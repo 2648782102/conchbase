@@ -130,7 +130,8 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
   assertSchemaFields('AgentReference', ['providerId', 'modelId']);
   assertSchemaFields('ProviderModel', ['providerId', 'modelId', 'reference', 'displayName', 'capabilities']);
   assertSchemaFields('AgentProfile', ['name', 'instructions', 'providerId', 'modelId']);
-  assertSchemaFields('AgentRevision', ['id', 'name', 'instructions', 'providerId', 'modelId', 'createdAt']);
+  assert.match(spec, /^ {8}grantedCapabilities:$/m, 'AgentProfile must document optional capability grants');
+  assertSchemaFields('AgentRevision', ['id', 'name', 'instructions', 'providerId', 'modelId', 'grantedCapabilities', 'createdAt']);
   assertSchemaFields('AgentRecord', ['id', 'currentRevisionId', 'archived', 'isDefault', 'current']);
   assertSchemaFields('Agent', ['id', 'currentRevisionId', 'archived', 'isDefault', 'current', 'revisions']);
   assertSchemaFields('Task', [

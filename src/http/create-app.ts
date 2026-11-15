@@ -7,6 +7,7 @@ import { ControlledExecutionService } from '../runtime/controlled-execution.js';
 import { IsolatedExecutionService } from '../runtime/isolated-execution.js';
 import { PrimaryConversationService } from '../runtime/primary-conversation.js';
 import { AgentChatService } from '../runtime/agent-chat.js';
+import type { CapabilityGrant } from '../runtime/agent-profile.js';
 import { installAuthHook } from './auth.js';
 import { registerConfigurationRoutes } from './routes/v1/configuration.js';
 import { registerAgentChatRoutes } from './routes/v1/agent-chat.js';
@@ -34,6 +35,7 @@ export interface CreateAppOptions {
   executionRunService?: IsolatedExecutionService;
   conversationService?: PrimaryConversationService;
   agentChatService?: AgentChatService;
+  workerCapabilityGrants?: () => readonly CapabilityGrant[];
   config?: RuntimeConfig;
 }
 
@@ -50,12 +52,13 @@ export function createApp(options: CreateAppOptions = {}) {
     ?? (options.taskService && organization
       ? new BossModeService(organization, options.taskService, conversation
         ? {
+          workerCapabilityGrants: options.workerCapabilityGrants ?? (() => Object.freeze([])),
           conversation: {
             recordIntentText: (intentId, text) => conversation.recordIntentText(intentId, text),
             intentTexts: () => conversation.intentTextsView(),
           },
         }
-        : {})
+        : { workerCapabilityGrants: options.workerCapabilityGrants ?? (() => Object.freeze([])) })
       : undefined);
   const agentChat = options.agentChatService
     ?? (options.taskService ? new AgentChatService(options.taskService, bossMode) : undefined);

@@ -14,6 +14,7 @@ import {
   createOpenAiCompatibleOrganizationIntentParser,
 } from './runtime/organization-intent-parser.js';
 import { createToolRuntime } from './runtime/tool-runtime.js';
+import { defaultWorkerGrants } from './runtime/capability-grants.js';
 
 function usage(): string {
   return `Conchbase 1.0.0
@@ -54,6 +55,7 @@ function createBossModeService(
   service: ReturnType<typeof createTaskService>,
   config: ReturnType<typeof loadRuntimeConfig>,
   conversation: PrimaryConversationService,
+  toolRuntime: Awaited<ReturnType<typeof createToolRuntime>>,
 ): BossModeService {
   const parser = config.organizationIntentModel
     ? createOpenAiCompatibleOrganizationIntentParser({
@@ -71,6 +73,7 @@ function createBossModeService(
       : undefined;
   return new BossModeService(service.store.organization, service, {
     ...(parser ? { parser } : {}),
+    workerCapabilityGrants: () => defaultWorkerGrants(toolRuntime.tools, toolRuntime.skills.skills),
     conversation: { recordIntentText: (intentId, text) => conversation.recordIntentText(intentId, text) },
   });
 }
@@ -100,7 +103,7 @@ async function main(argv: readonly string[]): Promise<void> {
       recordIntentText: (intentId, text) => service.store.organization.recordIntentText?.(intentId, text),
       intentTexts: () => service.store.organization.intentTexts?.() ?? new Map(),
     });
-    const bossMode = createBossModeService(service, config, conversationService);
+    const bossMode = createBossModeService(service, config, conversationService, toolRuntime);
     const executionService = new ControlledExecutionService();
     const executionRunService = new IsolatedExecutionService({ host: executionService });
     const app = createApp({
@@ -151,7 +154,7 @@ async function main(argv: readonly string[]): Promise<void> {
     if (command === 'boss') {
       const text = args.join(' ').trim();
       if (!text) throw new Error('Boss-mode intent must not be empty.');
-      const bossMode = createBossModeService(service, config, conversationService);
+      const bossMode = createBossModeService(service, config, conversationService, toolRuntime);
       const result = await bossMode.submit({
         text,
         idempotencyKey: `cli-${Date.now()}-${Math.random().toString(16).slice(2)}`,

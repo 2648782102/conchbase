@@ -277,6 +277,11 @@
       "id": "worker-lifecycle-enforcement",
       "summary": "ADR 0065 enforces delegation lifetime and active state on authorize_worker, start_worker and report_worker, retires a worker after two non-billing failures, and archives the Agent when a worker is offboarded.",
       "evidence": "src/runtime/organization-contract.ts"
+    },
+    {
+      "id": "per-agent-capability-grants",
+      "summary": "ADR 0066 makes grantedCapabilities part of the immutable Agent revision and projects the Runtime-wide tool and Skill providers onto that pinned grant list. Grants can only narrow; an Agent with no grants receives no tools and no Skills. Private schema advances to user_version = 8.",
+      "evidence": "src/runtime/capability-grants.ts"
     }
   ],
   "validationEvidence": [

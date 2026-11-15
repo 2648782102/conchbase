@@ -2340,10 +2340,27 @@ components:
           type: string
           minLength: 1
           maxLength: 300
+        grantedCapabilities:
+          type: array
+          maxItems: 64
+          description: Capabilities pinned to this Agent revision. Grants narrow the Runtime-wide providers and can never widen them. Omitted means the Agent has no tools and no Skills.
+          items:
+            $ref: '#/components/schemas/CapabilityGrant'
+    CapabilityGrant:
+      type: object
+      additionalProperties: false
+      required: [kind, name]
+      properties:
+        kind:
+          type: string
+          enum: [tool, skill]
+        name:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9_.-]{0,119}$'
     AgentRevision:
       type: object
       additionalProperties: false
-      required: [id, name, instructions, providerId, modelId, createdAt]
+      required: [id, name, instructions, providerId, modelId, grantedCapabilities, createdAt]
       properties:
         id:
           type: string
@@ -2363,6 +2380,10 @@ components:
           type: string
           minLength: 1
           maxLength: 300
+        grantedCapabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/CapabilityGrant'
         createdAt:
           type: string
           format: date-time

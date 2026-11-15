@@ -143,6 +143,7 @@ test('an Agent loop can call an MCP tool and answer with its result', async () =
       instructions: 'Use tools.',
       providerId: 'magpie',
       modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'mcp_fixture_echo' }, { kind: 'tool', name: 'mcp_fixture_fail' }, { kind: 'tool', name: 'mcp_fixture_missing' }, { kind: 'tool', name: 'mcp_fixture_slow' }, { kind: 'tool', name: 'mcp_fixture_write_thing' }],
     });
     const created = await service.createAgentTask({ prompt: 'use mcp', agentId: agent.id });
     service.startTask(created.id);

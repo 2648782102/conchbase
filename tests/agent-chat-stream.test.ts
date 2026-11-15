@@ -134,6 +134,7 @@ test('agent chat SSE streams projected tool updates and resumes from a cursor', 
   try {
     const agent = await service.createAgent({
       name: '流式助手', instructions: 'Write files when asked.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_write' }],
     });
     const created = await app.inject({
       method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
@@ -233,6 +234,7 @@ test('agent chat SSE picks up a task created after the stream opened', async () 
   try {
     const agent = await service.createAgent({
       name: '稍后助手', instructions: 'Reply.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_write' }],
     });
     const created = await app.inject({
       method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
@@ -339,6 +341,7 @@ test('closing an Agent Chat stream releases the connection slot', async () => {
   try {
     const agent = await service.createAgent({
       name: '关闭助手', instructions: 'Reply.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_write' }],
     });
     const created = await app.inject({
       method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
@@ -386,6 +389,7 @@ test('repeated stream open and close does not accumulate task listeners', async 
   try {
     const agent = await service.createAgent({
       name: '监听器助手', instructions: 'Reply.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_write' }],
     });
     const created = await app.inject({
       method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
@@ -466,6 +470,7 @@ test('Agent Chat SSE still publishes the final body after coalesced deltas', asy
   try {
     const agent = await service.createAgent({
       name: '增量助手', instructions: 'Reply.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_write' }],
     });
     const created = await app.inject({
       method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
@@ -511,6 +516,7 @@ test('a cursor from an earlier task in the same conversation can be resumed', as
   try {
     const agent = await service.createAgent({
       name: '多轮助手', instructions: 'Reply.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_write' }],
     });
     const created = await app.inject({
       method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
@@ -566,6 +572,7 @@ test('a cursor from a different conversation is rejected', async () => {
   try {
     const agent = await service.createAgent({
       name: '会话边界', instructions: 'Reply.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_write' }],
     });
     const firstConversation = await app.inject({
       method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
@@ -615,6 +622,7 @@ test('a task change wakes the stream before the polling interval', async () => {
   try {
     const agent = await service.createAgent({
       name: '唤醒助手', instructions: 'Reply.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_write' }],
     });
     const created = await app.inject({
       method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
@@ -662,6 +670,7 @@ test('a conversation with no tasks still publishes its user message', async () =
   try {
     const agent = await service.createAgent({
       name: '用户消息助手', instructions: 'Reply.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_write' }],
     });
     const created = await app.inject({
       method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },

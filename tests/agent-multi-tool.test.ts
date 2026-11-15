@@ -94,6 +94,7 @@ test('multiple read tools execute in one turn', async () => {
   try {
     const agent = await service.createAgent({
       name: '多选题员', instructions: 'Use tools.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_list' }, { kind: 'tool', name: 'workspace_write' }],
     });
     const created = await service.createAgentTask({ prompt: 'list twice', agentId: agent.id });
     service.startTask(created.id);
@@ -120,6 +121,7 @@ test('multiple write tools in one turn require one approval per tool', async () 
   try {
     const agent = await service.createAgent({
       name: '多写员', instructions: 'Write files.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_list' }, { kind: 'tool', name: 'workspace_write' }],
     });
     const created = await service.createAgentTask({ prompt: 'write two files', agentId: agent.id });
     service.startTask(created.id);
@@ -152,6 +154,7 @@ test('a turn above the tool-call cap is rejected', async () => {
   try {
     const agent = await service.createAgent({
       name: '上限员', instructions: 'Use tools.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_list' }, { kind: 'tool', name: 'workspace_write' }],
     });
     const created = await service.createAgentTask({ prompt: 'too many', agentId: agent.id });
     service.startTask(created.id);

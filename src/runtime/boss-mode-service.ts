@@ -14,6 +14,7 @@ import {
   type OrganizationIntentParseResult,
 } from './organization-intent-parser.js';
 import { chineseAgentDisplayName } from './agent-name.js';
+import type { CapabilityGrant } from './agent-profile.js';
 import { OrganizationCoordinator } from './organization-coordinator.js';
 import type { OrganizationRelay } from './organization-execution.js';
 import type { OrganizationStore } from './organization-store.js';
@@ -72,6 +73,12 @@ export interface BossModeServiceOptions {
   readonly parser?: OrganizationIntentParser;
   readonly now?: () => string;
   readonly waitForTasks?: boolean;
+  /**
+   * Capabilities granted to dynamically hired worker Agents. Defaults to the
+   * Runtime's registered read-only built-ins; writes, MCP, and plugin
+   * capabilities are never granted implicitly.
+   */
+  readonly workerCapabilityGrants?: () => readonly CapabilityGrant[];
   readonly conversation?: {
     recordIntentText(intentId: string, text: string): void;
     intentTexts?(): ReadonlyMap<string, string>;
@@ -191,6 +198,7 @@ export class BossModeService {
   private readonly parser: OrganizationIntentParser;
   private readonly now: () => string;
   private readonly waitForTasks: boolean;
+  private readonly workerCapabilityGrants: () => readonly CapabilityGrant[];
   private readonly conversation: BossModeServiceOptions['conversation'];
   private readonly onAccepted: BossModeServiceOptions['onAccepted'];
   private readonly workerExecutions = new Map<string, WorkerExecutionRecord>();
@@ -205,6 +213,8 @@ export class BossModeService {
     this.parser = options.parser ?? createDeterministicOrganizationIntentParser();
     this.now = options.now ?? (() => new Date().toISOString());
     this.waitForTasks = options.waitForTasks ?? true;
+    this.workerCapabilityGrants = options.workerCapabilityGrants
+      ?? (() => Object.freeze([]));
     this.conversation = options.conversation;
     this.onAccepted = options.onAccepted;
     this.restoreRecords();
@@ -633,6 +643,7 @@ export class BossModeService {
         instructions,
         providerId: modelReference.providerId,
         modelId: modelReference.modelId,
+        grantedCapabilities: this.workerCapabilityGrants(),
       });
       const normalized = Object.freeze({ ...action, agentRevisionId: agent.currentRevisionId, model: modelReference });
       applyAction(this.store, normalized);

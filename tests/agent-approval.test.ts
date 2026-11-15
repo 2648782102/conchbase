@@ -73,6 +73,7 @@ test('a write tool pauses the task for approval instead of executing', async () 
   await withService(scripted([() => toolCall('workspace_write', { path: 'out.txt', content: 'hello' })]), async (service) => {
     const agent = await service.createAgent({
       name: '写入员', instructions: 'Write files.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_list' }, { kind: 'tool', name: 'workspace_write' }],
     });
     const created = await service.createAgentTask({ prompt: 'write a file', agentId: agent.id });
     service.startTask(created.id);
@@ -101,6 +102,7 @@ test('approving a pending write resumes the loop and executes it once', async ()
     async (service, directory) => {
       const agent = await service.createAgent({
         name: '写入员', instructions: 'Write files.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_list' }, { kind: 'tool', name: 'workspace_write' }],
       });
       const created = await service.createAgentTask({ prompt: 'write a file', agentId: agent.id });
       service.startTask(created.id);
@@ -124,6 +126,7 @@ test('rejecting a pending write fails the task without writing', async () => {
     async (service, directory) => {
       const agent = await service.createAgent({
         name: '写入员', instructions: 'Write files.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_list' }, { kind: 'tool', name: 'workspace_write' }],
       });
       const created = await service.createAgentTask({ prompt: 'write', agentId: agent.id });
       service.startTask(created.id);
@@ -157,6 +160,7 @@ test('a pending approval survives restart and can still be decided', async () =>
   try {
     const agent = await service.createAgent({
       name: '写入员', instructions: 'Write files.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_list' }, { kind: 'tool', name: 'workspace_write' }],
     });
     const created = await service.createAgentTask({ prompt: 'write', agentId: agent.id });
     taskId = created.id;
@@ -208,6 +212,7 @@ test('the approval route is additive and rejects a second decision', async () =>
   try {
     const agent = await service.createAgent({
       name: '写入员', instructions: 'Write files.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_list' }, { kind: 'tool', name: 'workspace_write' }],
     });
     const created = await app.inject({ method: 'POST', url: '/v1/tasks', payload: { prompt: 'write', agentId: agent.id } });
     const taskId = created.json().task.id as string;
@@ -250,6 +255,7 @@ test('after approval the loop may call a read tool again before answering', asyn
   try {
     const agent = await service.createAgent({
       name: '写入员', instructions: 'Write files.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_list' }, { kind: 'tool', name: 'workspace_write' }],
     });
     const created = await service.createAgentTask({ prompt: 'write then list', agentId: agent.id });
     service.startTask(created.id);
@@ -291,6 +297,7 @@ test('a second write request after approval pauses for approval again', async ()
   try {
     const agent = await service.createAgent({
       name: '写入员', instructions: 'Write files.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_list' }, { kind: 'tool', name: 'workspace_write' }],
     });
     const created = await service.createAgentTask({ prompt: 'write twice', agentId: agent.id });
     service.startTask(created.id);
@@ -336,6 +343,7 @@ test('repeating the same write after it already succeeded does not request appro
   try {
     const agent = await service.createAgent({
       name: '写入员', instructions: 'Write files.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_list' }, { kind: 'tool', name: 'workspace_write' }],
     });
     const created = await service.createAgentTask({ prompt: 'write once', agentId: agent.id });
     service.startTask(created.id);
@@ -377,6 +385,7 @@ test('after approval the loop continues across a second tool turn and another ap
   try {
     const agent = await service.createAgent({
       name: '写入员', instructions: 'Write files.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_list' }, { kind: 'tool', name: 'workspace_write' }],
     });
     const created = await service.createAgentTask({ prompt: 'write, list, write', agentId: agent.id });
     service.startTask(created.id);

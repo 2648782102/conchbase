@@ -133,7 +133,7 @@ export class SqliteOrganizationStore implements OrganizationStore {
 
 export function migrateOrganizationSchema(database: DatabaseSync): void {
   const version = (database.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
-  if (version > 7) throw new Error(`Database schema version ${version} is newer than this runtime supports.`);
+  if (version > 8) throw new Error(`Database schema version ${version} is newer than this runtime supports.`);
   if (version < 4) {
     database.exec(`
       CREATE TABLE IF NOT EXISTS organization_state (

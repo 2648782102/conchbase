@@ -11,6 +11,19 @@ const profileProperties = {
   instructions: { type: 'string', maxLength: 20_000 },
   providerId: { type: 'string', pattern: '^[a-z][a-z0-9-]{0,63}$' },
   modelId: { type: 'string', minLength: 1, maxLength: 300 },
+  grantedCapabilities: {
+    type: 'array',
+    maxItems: 64,
+    items: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind', 'name'],
+      properties: {
+        kind: { type: 'string', enum: ['tool', 'skill'] },
+        name: { type: 'string', pattern: '^[a-z0-9][a-z0-9_.-]{0,119}$' },
+      },
+    },
+  },
 } as const;
 
 function replyError(reply: { code(status: number): { send(payload: unknown): unknown } }, cause: unknown) {

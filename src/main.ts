@@ -13,6 +13,7 @@ import {
   createOpenAiCompatibleOrganizationIntentParser,
 } from './runtime/organization-intent-parser.js';
 import { createToolRuntime } from './runtime/tool-runtime.js';
+import { defaultWorkerGrants } from './runtime/capability-grants.js';
 
 const config = loadRuntimeConfig();
 mkdirSync(path.dirname(config.databasePath), { recursive: true });
@@ -56,6 +57,7 @@ if (config.organizationIntentModel || config.bossModel || config.defaultModel) {
     });
   const bossMode = new BossModeService(taskService.store.organization, taskService, {
     parser,
+    workerCapabilityGrants: () => defaultWorkerGrants(toolRuntime.tools, toolRuntime.skills.skills),
     conversation: { recordIntentText: (intentId, text) => conversationService.recordIntentText(intentId, text) },
   });
   servingApp = createApp({

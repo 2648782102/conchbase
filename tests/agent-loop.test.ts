@@ -74,6 +74,7 @@ function withService(
     instructions: 'Use tools when helpful.',
     providerId: 'magpie',
     modelId: 'fixture/model',
+    grantedCapabilities: [{ kind: 'tool', name: 'workspace_list' }, { kind: 'tool', name: 'workspace_read' }, { kind: 'tool', name: 'text_search' }],
   }).then((agent) => run(service, agent.id)).finally(() => {
     service.close();
     rmSync(directory, { recursive: true, force: true });
@@ -227,6 +228,7 @@ test('restarting during a loop interrupts the task without replaying the tool', 
       instructions: 'Use tools.',
       providerId: 'magpie',
       modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_list' }, { kind: 'tool', name: 'workspace_read' }, { kind: 'tool', name: 'text_search' }],
     });
     const created = await first.createAgentTask({ prompt: 'loop', agentId: agent.id });
     taskId = created.id;
