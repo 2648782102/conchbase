@@ -14,6 +14,8 @@ test('uses loopback defaults', () => {
     workspaceRoot: process.cwd(),
     loopBudget: { maxIterations: 6, maxToolCallsPerTurn: 4, deadlineMs: 120_000 },
     projectIdleMs: 30 * 60 * 1000,
+    globalActiveWork: 8,
+    perProjectActiveWork: 2,
     allowAuthenticatedRemoteBinding: false,
   });
 });
@@ -31,6 +33,8 @@ test('accepts configured loopback host and decimal port', () => {
       workspaceRoot: process.cwd(),
       loopBudget: { maxIterations: 6, maxToolCallsPerTurn: 4, deadlineMs: 120_000 },
       projectIdleMs: 30 * 60 * 1000,
+      globalActiveWork: 8,
+      perProjectActiveWork: 2,
       allowAuthenticatedRemoteBinding: false,
     },
   );
@@ -176,4 +180,19 @@ test('git tools are off unless explicitly enabled', () => {
   assert.equal(loadRuntimeConfig({ CONCHBASE_ENABLE_GIT_TOOLS: '1' }).enableGitTools, true);
   assert.equal(loadRuntimeConfig({ CONCHBASE_ENABLE_GIT_TOOLS: 'true' }).enableGitTools, undefined);
   assert.equal(loadRuntimeConfig({ CONCHBASE_ENABLE_GIT_TOOLS: '0' }).enableGitTools, undefined);
+});
+
+test('global scheduling capacity is operator configuration with bounded ranges', () => {
+  assert.equal(loadRuntimeConfig({}).globalActiveWork, 8);
+  assert.equal(loadRuntimeConfig({}).perProjectActiveWork, 2);
+  assert.equal(loadRuntimeConfig({ CONCHBASE_GLOBAL_ACTIVE_WORK: '4' }).globalActiveWork, 4);
+  assert.equal(loadRuntimeConfig({ CONCHBASE_PER_PROJECT_ACTIVE_WORK: '3' }).perProjectActiveWork, 3);
+  assert.throws(
+    () => loadRuntimeConfig({ CONCHBASE_GLOBAL_ACTIVE_WORK: '0' }),
+    /CONCHBASE_GLOBAL_ACTIVE_WORK/,
+  );
+  assert.throws(
+    () => loadRuntimeConfig({ CONCHBASE_PER_PROJECT_ACTIVE_WORK: '17' }),
+    /CONCHBASE_PER_PROJECT_ACTIVE_WORK/,
+  );
 });

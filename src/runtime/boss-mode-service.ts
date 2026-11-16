@@ -66,6 +66,11 @@ export interface BossModeSubmitResult {
   readonly expectedSequence: number;
   readonly actions: readonly OrganizationAction[];
   readonly executions: readonly BossModeExecution[];
+  readonly holds: readonly {
+    readonly workItemId: string;
+    readonly projectId: string;
+    readonly reason: 'global-limit' | 'project-limit';
+  }[];
   readonly relays: readonly OrganizationRelay[];
   readonly reply: string | null;
 }
@@ -224,6 +229,7 @@ export class BossModeService {
         expectedSequence: snapshot.events.length,
         actions: Object.freeze([]),
         executions: Object.freeze([]),
+        holds: Object.freeze([]),
         relays: Object.freeze([]),
         reply: direct.relay,
       });
@@ -275,6 +281,7 @@ export class BossModeService {
         expectedSequence: this.store.get().events.length,
         actions: Object.freeze(actions),
         executions: Object.freeze(executions),
+        holds: Object.freeze([]),
         relays: Object.freeze([]),
         reply: parsed.relay,
       });
@@ -298,6 +305,7 @@ export class BossModeService {
       expectedSequence: this.store.get().events.length,
       actions: Object.freeze(actions),
       executions: Object.freeze(executions),
+      holds: Object.freeze(coordination.holds),
       relays: coordination.relays,
       reply,
     });
@@ -640,6 +648,7 @@ export class BossModeService {
             actionCount,
           })]),
           executions: Object.freeze([]),
+          holds: Object.freeze([]),
           relays: Object.freeze([]),
           reply: '意图已记录，等待 Runtime 发布状态。',
         });

@@ -1,0 +1,6 @@
+{
+  "id": "global-work-scheduler-fixture",
+  "summary": "Executable fixtures cover running-work preservation, global and per-project caps with visible hold reasons, interactive priority among queued work, fairness by active project count, stable enqueue order, limit validation, and input immutability.",
+  "evidence": "tests/global-work-scheduler.test.ts",
+  "executableFixture": true
+}

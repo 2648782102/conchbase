@@ -1,0 +1,6 @@
+{
+  "id": "scheduler-execution-admission-fixture",
+  "summary": "Executable fixtures assert the coordinator admits only scheduled starts, exposes hold reasons, and does not dispatch over-capacity work while preserving existing work-control behaviour.",
+  "evidence": "tests/organization-coordinator.test.ts",
+  "executableFixture": true
+}

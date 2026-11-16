@@ -2870,6 +2870,25 @@ components:
             The mode is fixed at process start and cannot be changed by a client, task, Agent, or model.
         loopBudget:
           $ref: '#/components/schemas/LoopBudget'
+        globalWorkScheduler:
+          type: object
+          additionalProperties: false
+          required: [version, globalActiveWork, perProjectActiveWork]
+          description: >-
+            Non-preemptive global capacity policy. Running tasks are never stopped; queued work is admitted only when
+            capacity is available. See ADR 0100.
+          properties:
+            version:
+              type: integer
+              const: 1
+            globalActiveWork:
+              type: integer
+              minimum: 1
+              maximum: 32
+            perProjectActiveWork:
+              type: integer
+              minimum: 1
+              maximum: 16
         projectConvergence:
           type: object
           additionalProperties: false

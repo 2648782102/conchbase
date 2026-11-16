@@ -74,7 +74,7 @@ const SUITES = Object.freeze({
     'task-store-migrations.test.ts',
   ],
   meta: [
-    'repository-guardrails.test.ts', 'runtime-config.test.ts',
+    'repository-guardrails.test.ts', 'runtime-config.test.ts', 'global-work-scheduler.test.ts',
     'event-log.test.ts', 'ag-ui-events.test.ts', 'otel-genai.test.ts',
     'agent-name.test.ts', 'cli.test.ts', 'cli-serve.test.ts',
   ],

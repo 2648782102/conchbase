@@ -314,6 +314,11 @@
       "evidence": "src/runtime/task-service.ts"
     },
     {
+      "id": "non-preemptive-global-scheduler",
+      "summary": "ADR 0100 adds a pure global work scheduler with global/per-project capacity limits, interactive priority, project fairness, stable enqueue ordering, and visible hold reasons. It never preempts running work and owns no state; capacity is operator-configured and published on GET /v1/runtime.",
+      "evidence": "src/runtime/global-work-scheduler.ts"
+    },
+    {
       "id": "operator-loop-budget",
       "summary": "ADR 0069 makes the Agent loop ceilings operator configuration: CONCHBASE_MAX_ITERATIONS (1-64, default 6), CONCHBASE_MAX_TOOL_CALLS_PER_TURN (1-16, default 4), and CONCHBASE_LOOP_DEADLINE_MS (1000-1800000, default 120000). Values are validated at startup, published as loopBudget on GET /v1/runtime, and never settable by a task, client, Agent revision, or model.",
       "evidence": "src/config/runtime-config.ts"
@@ -412,6 +417,11 @@
       "id": "runtime-owned-sequence",
       "summary": "ADR 0074 fills expectedSequence and Runtime-owned ids (reportId, attentionId) before validation, so a model that omits a value only the Runtime can know no longer fails a valid plan.",
       "evidence": "src/runtime/organization-intent-parser.ts"
+    },
+    {
+      "id": "scheduler-execution-admission",
+      "summary": "ADR 0101 injects the non-preemptive global scheduler into OrganizationCoordinator. Planned start_work commands are admitted by capacity/priority/fairness policy; excess starts become visible hold decisions on the coordinator result and BossModeSubmitResult while the WorkItem remains open. No new action, endpoint, or queue table was introduced.",
+      "evidence": "src/runtime/organization-coordinator.ts"
     },
     {
       "id": "skill-provider",
@@ -627,6 +637,12 @@
       "executableFixture": true
     },
     {
+      "id": "global-work-scheduler-fixture",
+      "summary": "Executable fixtures cover running-work preservation, global and per-project caps with visible hold reasons, interactive priority among queued work, fairness by active project count, stable enqueue order, limit validation, and input immutability.",
+      "evidence": "tests/global-work-scheduler.test.ts",
+      "executableFixture": true
+    },
+    {
       "id": "idle-project-convergence-fixture",
       "summary": "Executable fixtures assert refusal while a task is running or attention is open, refusal for archived projects, the offboard/quiet/archive order required by the domain, exactly-once convergence, activity resetting the idle clock, summary contents from stored report bodies, a real archive announcing exactly once into the Boss conversation, and operator-configurable idle policy publication.",
       "evidence": "tests/organization-convergence.test.ts",
@@ -755,6 +771,12 @@
       "id": "runtime-agent-memory-fixture",
       "summary": "Executable fixtures cover scope isolation, deduplication, retention bounds, secret-like and oversize rejection, bounded title-only index rendering, deletion, SQLite reopen persistence, convergence writing exactly one project memory, prompt injection limited to runtime plus active-project memory, and a broken memory store never breaking a Boss turn.",
       "evidence": "tests/agent-memory.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "scheduler-execution-admission-fixture",
+      "summary": "Executable fixtures assert the coordinator admits only scheduled starts, exposes hold reasons, and does not dispatch over-capacity work while preserving existing work-control behaviour.",
+      "evidence": "tests/organization-coordinator.test.ts",
       "executableFixture": true
     },
     {
