@@ -114,6 +114,11 @@
       "evidence": "tests/support/agent-scenario.ts"
     },
     {
+      "id": "agent-tool-drain-loop",
+      "summary": "ADR 0092 extracts the tool-drain loop from the task service behind an explicit AgentLoopToolContext. The ordering contract (unknown tool fails, consequential tool pauses, already-applied write refused, identical read reused per attempt, one message per outcome) is stated once and asserted directly by eight tests, with the service keeping a thin adapter.",
+      "evidence": "src/runtime/agent-loop-tools.ts"
+    },
+    {
       "id": "ai-first-development",
       "summary": "Architecture, documentation, and validation are optimized for AI coding agents; human handoff is not a product requirement.",
       "evidence": "AGENTS.md"
@@ -470,6 +475,12 @@
       "id": "agent-scenario-fixture",
       "summary": "Executable scenarios drive the real agent loop with a scripted model. Removing the lexical path-escape guard fails the traversal scenario and disabling the per-turn tool cap fails the cap scenario, proving the suite detects boundary erosion.",
       "evidence": "tests/agent-scenario.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "agent-tool-drain-fixture",
+      "summary": "Executable fixtures cover ungranted-tool rejection, pause-before-write, refusal to repeat an applied write, per-attempt read reuse, no reuse across attempts, bounded failure messages, cancellation, and ordered multi-call draining. Skipping the approval branch makes two assertions fail.",
+      "evidence": "tests/agent-loop-tools.test.ts",
       "executableFixture": true
     },
     {

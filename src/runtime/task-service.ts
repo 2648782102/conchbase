@@ -21,6 +21,7 @@ import { OpenAiChatCompletionsProvider } from './magpie-provider.js';
 import { ReadResultCache } from './read-result-cache.js';
 import { resolveTaskCapabilities, type TaskCapabilities } from './task-capabilities.js';
 import { requiresApproval } from './tool-gate.js';
+import { drainToolCalls as drainToolCallsImpl, type AgentLoopToolContext } from './agent-loop-tools.js';
 import { digestArguments } from './tool-arguments.js';
 import { projectSkills, projectToolProvider } from './capability-grants.js';
 import type { ExecutionMode, LoopBudget } from '../config/runtime-config.js';
@@ -960,85 +961,31 @@ export class TaskService {
     signal: AbortSignal,
     capabilities: TaskCapabilities = this.taskCapabilities(task),
   ): Promise<'done' | 'paused'> {
-    const tools = capabilities.tools;
-    for (let index = 0; index < calls.length; index += 1) {
-      const call = calls[index]!;
-      if (signal.aborted) throw new Error('Task was cancelled.');
-      this.recordLoopEvent(task, 'agent_loop.tool_requested', 'running', {
-        iteration,
+    const context: AgentLoopToolContext = {
+      store: this.store,
+      readResults: this.readResults,
+      capabilities,
+      needsApproval: (sideEffect) => requiresApproval(this.executionMode, sideEffect),
+      writeAlreadyApplied: (task_, toolId, args) => this.writeAlreadyApplied(task_, toolId, args),
+      eventInput: (task_, type, state, attempt) => this.eventInput(task_, type, state, attempt),
+      recordRequested: (task_, iteration_, call) => this.recordLoopEvent(task_, 'agent_loop.tool_requested', 'running', {
+        iteration: iteration_,
         toolId: call.name,
         toolVersion: 1,
         argumentsDigest: digestArguments(call.arguments),
-      });
-      const definition = tools?.list().find((entry) => entry.id === call.name);
-      if (!definition) {
-        this.recordToolFailed(task, iteration, call.name, 'unknown_tool');
-        messages.push({ role: 'tool', toolCallId: call.id, content: 'error: unknown_tool' });
-        continue;
-      }
-      if (this.requiresApproval(definition)) {
-        if (this.writeAlreadyApplied(task, call.name, call.arguments)) {
-          messages.push({
-            role: 'tool',
-            toolCallId: call.id,
-            content: 'This identical write already completed; do not repeat it.',
-          });
-          continue;
-        }
-        this.store.saveLoopState(task.id, JSON.stringify({
-          iteration,
-          messages,
-          pending: calls.slice(index).map((entry) => ({
-            id: entry.id,
-            name: entry.name,
-            arguments: entry.arguments,
-          })),
-        }));
-        this.store.transitionTask(
-          task.id,
-          'waiting_approval',
-          this.eventInput(task, 'agent_loop.approval_requested', 'waiting_approval', task.attempt),
-        );
-        return 'paused';
-      }
-      // ADR 0071: an identical read already produced in this attempt is reused
-      // rather than executed again. The model still gets the content, but the
-      // Runtime does not spend a second execution or its side of the budget.
-      if (definition.sideEffect === 'read') {
-        const cached = this.readResults.get(task.id, task.attempt, call.name, call.arguments);
-        if (cached) {
-          this.recordLoopEvent(task, 'agent_loop.tool_reused', 'running', {
-            iteration,
-            toolId: call.name,
-            toolVersion: 1,
-            argumentsDigest: digestArguments(call.arguments),
-            resultDigest: cached.digest,
-          });
-          messages.push({
-            role: 'tool',
-            toolCallId: call.id,
-            content: `[reused: identical call, same result as before]\n${cached.summary}`,
-          });
-          continue;
-        }
-      }
-      try {
-        const result = await tools!.invoke(call.name, call.arguments);
-        this.recordToolExecuted(task, iteration, call.name, call.arguments, result);
-        if (definition.sideEffect === 'read') {
-          this.readResults.set(task.id, task.attempt, call.name, call.arguments, {
-            summary: result.summary,
-            digest: result.digest,
-          });
-        }
-        messages.push({ role: 'tool', toolCallId: call.id, content: result.summary });
-      } catch (cause) {
-        const code = cause instanceof ToolRejectedError ? cause.code : 'tool_failed';
-        this.recordToolFailed(task, iteration, call.name, code);
-        messages.push({ role: 'tool', toolCallId: call.id, content: `error: ${code}` });
-      }
-    }
-    return 'done';
+      }),
+      recordReused: (task_, iteration_, call, digest) => this.recordLoopEvent(task_, 'agent_loop.tool_reused', 'running', {
+        iteration: iteration_,
+        toolId: call.name,
+        toolVersion: 1,
+        argumentsDigest: digestArguments(call.arguments),
+        resultDigest: digest,
+      }),
+      recordExecuted: (task_, iteration_, call, result) =>
+        this.recordToolExecuted(task_, iteration_, call.name, call.arguments, result),
+      recordFailed: (task_, iteration_, toolId, code) => this.recordToolFailed(task_, iteration_, toolId, code),
+    };
+    return drainToolCallsImpl(context, task, calls, iteration, messages, signal);
   }
 
   private async executeSingleTurn(task: TaskSnapshot, signal: AbortSignal): Promise<void> {

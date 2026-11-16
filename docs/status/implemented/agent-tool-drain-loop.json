@@ -1,0 +1,5 @@
+{
+  "id": "agent-tool-drain-loop",
+  "summary": "ADR 0092 extracts the tool-drain loop from the task service behind an explicit AgentLoopToolContext. The ordering contract (unknown tool fails, consequential tool pauses, already-applied write refused, identical read reused per attempt, one message per outcome) is stated once and asserted directly by eight tests, with the service keeping a thin adapter.",
+  "evidence": "src/runtime/agent-loop-tools.ts"
+}

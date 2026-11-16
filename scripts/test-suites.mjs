@@ -33,7 +33,7 @@ const SUITES = Object.freeze({
     'tool-request.test.ts', 'tool-capability.test.ts', 'agent-memory.test.ts', 'secret-filter.test.ts',
   ],
   'agent-loop': [
-    'agent-loop.test.ts', 'agent-multi-tool.test.ts', 'agent-approval.test.ts',
+    'agent-loop.test.ts', 'agent-loop-tools.test.ts', 'agent-multi-tool.test.ts', 'agent-approval.test.ts',
     'read-reuse.test.ts', 'read-result-cache.test.ts', 'task-capabilities.test.ts', 'tool-result-paging.test.ts', 'execution-mode.test.ts', 'agent-scenario.test.ts',
     'policy-gate.test.ts', 'tool-gate.test.ts', 'task-runner.test.ts', 'task-lifecycle.test.ts', 'task-service.test.ts',
     'memory-review.test.ts', 'project-summary.test.ts',

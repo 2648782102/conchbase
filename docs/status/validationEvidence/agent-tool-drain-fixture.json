@@ -1,0 +1,6 @@
+{
+  "id": "agent-tool-drain-fixture",
+  "summary": "Executable fixtures cover ungranted-tool rejection, pause-before-write, refusal to repeat an applied write, per-attempt read reuse, no reuse across attempts, bounded failure messages, cancellation, and ordered multi-call draining. Skipping the approval branch makes two assertions fail.",
+  "evidence": "tests/agent-loop-tools.test.ts",
+  "executableFixture": true
+}
