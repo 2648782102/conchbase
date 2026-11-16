@@ -286,7 +286,12 @@ function projectActionFields(value: unknown): unknown {
 }
 
 export function normalizeBossReply(value: string): string {
-  const text = value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+  // Keep line feeds (see the note on the return value); normalise CRLF first so
+  // a reply from a Windows-style client does not keep stray carriage returns.
+  const text = value
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, ' ')
+    .trim();
   const hasUnsupportedClaim = /查(?:网页|网络|联网)|本机文件|读取.{0,8}文件|执行.{0,8}命令|腾讯混元|腾讯\s*Hy|\bHy\b/i.test(text);
   const hasFalseIdentity = /腾讯混元|腾讯\s*Hy|\bHy\b/i.test(text);
   let normalized = text;
@@ -302,7 +307,23 @@ export function normalizeBossReply(value: string): string {
       .replace(/我能[^。！？\n]{0,40}(?:查网页|联网|读取.{0,8}文件|本机文件)[^。！？\n]*[。！？]?/gi,
         '我当前没有网页搜索、本机文件或设备查询能力；这些能力尚未接入 Runtime。');
   }
-  return normalized.replace(/\s+/g, ' ').trim();
+  /*
+   * Line structure is content, not whitespace noise.
+   *
+   * This used to collapse every run of whitespace to one space, which flattened
+   * a Markdown answer (headings, lists, fenced code) into a single paragraph
+   * before it was ever published. Horizontal runs are still collapsed — a reply
+   * never needs a wall of spaces — but line breaks survive; only runs of blank
+   * lines are limited, so a reply cannot pad itself with empty space.
+   */
+  return normalized
+    .split('\n')
+    // Keep tabs: they are how indented code is written, and a tab collapsed to
+    // one space silently changes the structure of a snippet.
+    .map((line) => line.replace(/[^\S\n\t]+/g, ' ').trimEnd())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 const parseStructuredResult = parseStructuredOrganizationResult;

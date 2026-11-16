@@ -8,6 +8,7 @@ import {
 } from './agent-chat-state.js';
 import type { TaskSnapshot } from './task-store.js';
 import type { AgentChatActivity } from './agent-chat-types.js';
+import { boundedOutput } from './agent-chat-output.js';
 
 /**
  * Projection of task state onto conversation messages.
@@ -30,10 +31,6 @@ export interface ProjectionInput {
   readonly now: string;
 }
 
-function boundedOutput(value: string | null): string {
-  const text = (value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
-  return text.length > 0 ? text.slice(0, 12_000) : '模型未返回内容。';
-}
 
 /**
  * Returns the projected message, or `null` when nothing changed.

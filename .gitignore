@@ -8,3 +8,6 @@ coverage/
 .conchbase/
 
 evals/reports/
+
+# TypeScript incremental build output
+*.tsbuildinfo

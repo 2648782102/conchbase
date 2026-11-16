@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { AgentDetail } from './agent-profile.js';
 import type { TaskService } from './task-service.js';
 import { agUiEventType } from './ag-ui-events.js';
+import { boundedOutput } from './agent-chat-output.js';
 import { TaskConflictError, TaskNotFoundError } from './task-store.js';
 import type { TaskSnapshot } from './task-store.js';
 import { chineseAgentDisplayName } from './agent-name.js';
@@ -165,11 +166,6 @@ function boundedText(value: unknown, label: string): string {
     throw new AgentChatServiceError(`${label} contains secret-like content.`);
   }
   return text;
-}
-
-function boundedOutput(value: string | null): string {
-  const text = (value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
-  return text.length > 0 ? text.slice(0, 12_000) : '模型未返回内容。';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
