@@ -76,7 +76,7 @@ const SUITES = Object.freeze({
   meta: [
     'repository-guardrails.test.ts', 'runtime-config.test.ts',
     'event-log.test.ts', 'ag-ui-events.test.ts', 'otel-genai.test.ts',
-    'agent-name.test.ts', 'cli.test.ts',
+    'agent-name.test.ts', 'cli.test.ts', 'cli-serve.test.ts',
   ],
 });
 
