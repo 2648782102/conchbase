@@ -120,3 +120,28 @@ test('duplicate plugin ids fail closed', () => {
     /Duplicate plugin id/,
   );
 });
+
+test('a subprocess manifest accepts only bounded process declarations', () => {
+  const withProcess = parsePluginManifest({
+    ...manifest,
+    process: {
+      command: '/usr/bin/node',
+      args: ['plugin.mjs', '--safe'],
+      envAllowlist: ['CONCHBASE_MAGPIE_APP_KEY'],
+      callTimeoutMs: 2_000,
+    },
+  });
+  assert.equal(withProcess.process?.command, '/usr/bin/node');
+  assert.deepEqual([...withProcess.process?.envAllowlist ?? []], ['CONCHBASE_MAGPIE_APP_KEY']);
+
+  assert.throws(() => parsePluginManifest({
+    ...manifest,
+    process: { command: '/bin/sh', args: [], envAllowlist: ['process.env'] },
+  }), /envAllowlist/);
+  // Args are static operator configuration, not model input. The manifest
+  // constrains their count and length; it does not pretend to sanitize content.
+  assert.equal(parsePluginManifest({
+    ...manifest,
+    process: { command: '/usr/bin/node', args: ['plugin.mjs', '--safe'], envAllowlist: [] },
+  }).process?.args.length, 2);
+});

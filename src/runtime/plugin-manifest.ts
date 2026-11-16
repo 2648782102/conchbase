@@ -28,13 +28,27 @@ export interface PluginToolDeclaration {
   readonly parameters?: Readonly<Record<string, unknown>>;
 }
 
+export interface PluginProcessDeclaration {
+  readonly command: string;
+  readonly args: readonly string[];
+  /** Variable names that may be copied from the Runtime environment. */
+  readonly envAllowlist: readonly string[];
+  readonly startTimeoutMs?: number;
+  readonly callTimeoutMs?: number;
+  readonly maxResultBytes?: number;
+}
+
 export interface PluginManifest {
   readonly version: typeof PLUGIN_MANIFEST_VERSION;
   readonly id: string;
   readonly name: string;
   readonly description: string;
   readonly tools: readonly PluginToolDeclaration[];
+  /** Present only for subprocess plugins. Absent means an in-process provider. */
+  readonly process?: PluginProcessDeclaration;
 }
+
+const PROCESS_FIELDS = ['command', 'args', 'envAllowlist', 'startTimeoutMs', 'callTimeoutMs', 'maxResultBytes'];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value !== 'object' || value === null || Array.isArray(value) ? false : true;
@@ -87,7 +101,7 @@ function parseTool(value: unknown, index: number): PluginToolDeclaration {
 /** Parses one untrusted plugin manifest into a bounded declaration. */
 export function parsePluginManifest(value: unknown): PluginManifest {
   if (!isRecord(value)) throw new PluginManifestError('Plugin manifest must be an object.');
-  assertExactKeys(value, ['version', 'id', 'name', 'description', 'tools'], 'plugin manifest');
+  assertExactKeys(value, ['version', 'id', 'name', 'description', 'tools', 'process'], 'plugin manifest');
   if (value.version !== PLUGIN_MANIFEST_VERSION) {
     throw new PluginManifestError(`Unsupported plugin manifest version: ${String(value.version)}.`);
   }
@@ -98,11 +112,34 @@ export function parsePluginManifest(value: unknown): PluginManifest {
   if (new Set(tools.map((tool) => tool.id)).size !== tools.length) {
     throw new PluginManifestError('tools must not contain duplicate ids.');
   }
+  let processDeclaration: PluginProcessDeclaration | undefined;
+  if (value.process !== undefined) {
+    if (!isRecord(value.process)) throw new PluginManifestError('process must be an object.');
+    assertExactKeys(value.process, PROCESS_FIELDS, 'process');
+    const command = boundedString(value.process.command, 'process.command', undefined, 240);
+    if (!Array.isArray(value.process.args) || value.process.args.length > 64
+      || value.process.args.some((arg) => typeof arg !== 'string' || arg.length > 240)) {
+      throw new PluginManifestError('process.args must be at most 64 bounded strings.');
+    }
+    if (!Array.isArray(value.process.envAllowlist) || value.process.envAllowlist.length > 32
+      || value.process.envAllowlist.some((name) => typeof name !== 'string' || !/^[A-Z][A-Z0-9_]{0,63}$/.test(name))) {
+      throw new PluginManifestError('process.envAllowlist must contain bounded uppercase variable names.');
+    }
+    processDeclaration = Object.freeze({
+      command,
+      args: Object.freeze([...value.process.args] as string[]),
+      envAllowlist: Object.freeze([...value.process.envAllowlist] as string[]),
+      ...(typeof value.process.startTimeoutMs === 'number' ? { startTimeoutMs: value.process.startTimeoutMs } : {}),
+      ...(typeof value.process.callTimeoutMs === 'number' ? { callTimeoutMs: value.process.callTimeoutMs } : {}),
+      ...(typeof value.process.maxResultBytes === 'number' ? { maxResultBytes: value.process.maxResultBytes } : {}),
+    });
+  }
   return Object.freeze({
     version: PLUGIN_MANIFEST_VERSION,
     id: boundedString(value.id, 'plugin id', PLUGIN_ID_PATTERN, 64),
     name: boundedString(value.name, 'plugin name', undefined, 80),
     description: boundedString(value.description, 'plugin description'),
     tools: Object.freeze(tools),
+    ...(processDeclaration ? { process: processDeclaration } : {}),
   });
 }

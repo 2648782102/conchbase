@@ -429,6 +429,11 @@
       "evidence": "src/runtime/organization-execution.ts"
     },
     {
+      "id": "subprocess-plugin-provider",
+      "summary": "ADR 0098 adds a bounded stdio subprocess backend behind the ADR 0096 plugin model: fixed one-line JSON invoke protocol, no discovery, minimal environment, shell:false argv spawn, per-call timeout, output caps, crash isolation, and no SecretHandle access. It is fault isolation, not a security sandbox.",
+      "evidence": "src/runtime/subprocess-plugin.ts"
+    },
+    {
       "id": "task-service-decomposition",
       "summary": "ADRs 0091 and 0092 extract four pure seams plus the tool-drain loop from the 1312-line task service: tool-arguments (canonical order-independent digest), read-result-cache (attempt-keyed reuse), task-capabilities (revision-pinned capability resolution, a security boundary), tool-gate (approval policy), and agent-loop-tools behind an explicit AgentLoopToolContext. The service drops to 1222 lines; provider turns and lifecycle remain.",
       "evidence": "src/runtime/agent-loop-tools.ts"
@@ -751,6 +756,12 @@
       "id": "structured-project-close-out-fixture",
       "summary": "Executable fixtures cover accepted model output, rejection of unknown fields/empty headlines/secret-like text, deterministic counts, generator HTTP and JSON failures, project-local fact scoping, using and persisting a model summary during convergence, and proving a throwing summarizer still archives the project.",
       "evidence": "tests/project-summary.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "subprocess-plugin-fixture",
+      "summary": "Executable fixtures cover the JSON invoke protocol, minimal environment, invalid JSON responses, child crashes, timeouts, oversized replies, and manifest validation for bounded process declarations.",
+      "evidence": "tests/subprocess-plugin.test.ts",
       "executableFixture": true
     },
     {

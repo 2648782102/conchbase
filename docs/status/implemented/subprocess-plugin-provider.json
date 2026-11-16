@@ -1,0 +1,5 @@
+{
+  "id": "subprocess-plugin-provider",
+  "summary": "ADR 0098 adds a bounded stdio subprocess backend behind the ADR 0096 plugin model: fixed one-line JSON invoke protocol, no discovery, minimal environment, shell:false argv spawn, per-call timeout, output caps, crash isolation, and no SecretHandle access. It is fault isolation, not a security sandbox.",
+  "evidence": "src/runtime/subprocess-plugin.ts"
+}

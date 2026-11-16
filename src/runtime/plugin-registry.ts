@@ -10,6 +10,7 @@ import {
   parsePluginManifest,
   type PluginManifest,
 } from './plugin-manifest.js';
+import { SubprocessPluginClient } from './subprocess-plugin.js';
 
 /**
  * Plugin composition.
@@ -58,7 +59,24 @@ export class PluginRegistry {
         throw new Error(`Plugin ${manifest.id} tool ${declared.id} is not discoverable.`);
       }
     }
-    const provider = createGuardedProvider(manifest, definition.implementation);
+    let implementation = definition.implementation;
+    if (manifest.process) {
+      const client = new SubprocessPluginClient({
+        command: manifest.process.command,
+        args: manifest.process.args,
+        envAllowlist: manifest.process.envAllowlist,
+        ...(manifest.process.startTimeoutMs !== undefined ? { startTimeoutMs: manifest.process.startTimeoutMs } : {}),
+        ...(manifest.process.callTimeoutMs !== undefined ? { callTimeoutMs: manifest.process.callTimeoutMs } : {}),
+        ...(manifest.process.maxResultBytes !== undefined ? { maxResultBytes: manifest.process.maxResultBytes } : {}),
+      });
+      void client.start();
+      implementation = Object.freeze({
+        list: () => definition.implementation.list(),
+        has: (id: string) => definition.implementation.has(id),
+        invoke: async (id: string, args: Parameters<ToolProvider['invoke']>[1]) => client.invoke(id, args),
+      });
+    }
+    const provider = createGuardedProvider(manifest, implementation);
     const loaded = Object.freeze({ manifest, provider });
     this.plugins.set(manifest.id, loaded);
     return loaded;
