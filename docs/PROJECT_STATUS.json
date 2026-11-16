@@ -314,6 +314,11 @@
       "evidence": "src/runtime/task-service.ts"
     },
     {
+      "id": "non-preemptive-global-scheduler",
+      "summary": "ADR 0100 adds a pure global work scheduler with global/per-project capacity limits, interactive priority, project fairness, stable enqueue ordering, and visible hold reasons. It never preempts running work and owns no state; capacity is operator-configured and published on GET /v1/runtime.",
+      "evidence": "src/runtime/global-work-scheduler.ts"
+    },
+    {
       "id": "operator-loop-budget",
       "summary": "ADR 0069 makes the Agent loop ceilings operator configuration: CONCHBASE_MAX_ITERATIONS (1-64, default 6), CONCHBASE_MAX_TOOL_CALLS_PER_TURN (1-16, default 4), and CONCHBASE_LOOP_DEADLINE_MS (1000-1800000, default 120000). Values are validated at startup, published as loopBudget on GET /v1/runtime, and never settable by a task, client, Agent revision, or model.",
       "evidence": "src/config/runtime-config.ts"
@@ -624,6 +629,12 @@
       "id": "git-read-tools-fixture",
       "summary": "Executable fixtures assert only three read-only tools exist, write subcommands are unreachable, status uses a fixed argv, diff paths follow a separator so a flag-looking path stays a path, absolute and escaping paths are rejected before spawning, log counts are clamped, non-repository and missing-binary cases return bounded codes, and oversized output is truncated with a notice.",
       "evidence": "tests/git-tools.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "global-work-scheduler-fixture",
+      "summary": "Executable fixtures cover running-work preservation, global and per-project caps with visible hold reasons, interactive priority among queued work, fairness by active project count, stable enqueue order, limit validation, and input immutability.",
+      "evidence": "tests/global-work-scheduler.test.ts",
       "executableFixture": true
     },
     {

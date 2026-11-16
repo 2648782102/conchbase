@@ -13,6 +13,7 @@ export function registerRuntimeRoute(
   loopBudget?: LoopBudget,
   projectIdleMs?: number,
   memoryEnabled = false,
+  scheduler?: { readonly globalActiveWork: number; readonly perProjectActiveWork: number },
 ): void {
   app.get('/v1/runtime', async () => ({
     name: 'Conchbase',
@@ -48,6 +49,13 @@ export function registerRuntimeRoute(
     ...(memoryEnabled ? {
       memoryContract: '1.9.0' as const,
       memoryPaths: 2,
+    } : {}),
+    ...(scheduler ? {
+      globalWorkScheduler: {
+        version: 1,
+        globalActiveWork: scheduler.globalActiveWork,
+        perProjectActiveWork: scheduler.perProjectActiveWork,
+      },
     } : {}),
     capabilities: tasksEnabled
       ? [

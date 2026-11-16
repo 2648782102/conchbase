@@ -88,6 +88,12 @@ export function createApp(options: CreateAppOptions = {}) {
     options.config?.loopBudget,
     options.config?.projectIdleMs,
     Boolean(options.taskService?.store?.memory),
+    options.config
+      ? {
+        globalActiveWork: options.config.globalActiveWork,
+        perProjectActiveWork: options.config.perProjectActiveWork,
+      }
+      : undefined,
   );
   registerConfigurationRoutes(app, options.taskService);
   registerEventRoutes(app, options.taskService);

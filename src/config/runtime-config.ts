@@ -64,6 +64,9 @@ export interface RuntimeConfig {
    * can never change the retention policy.
    */
   projectIdleMs: number;
+  /** ADR 0100: non-preemptive global work capacity. */
+  globalActiveWork: number;
+  perProjectActiveWork: number;
   allowAuthenticatedRemoteBinding: boolean;
   authTokenDigest?: string;
 }
@@ -143,6 +146,16 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
       LOOP_BUDGET_LIMITS.deadlineMs,
     ),
   });
+  const globalActiveWork = boundedInteger(
+    env.CONCHBASE_GLOBAL_ACTIVE_WORK,
+    'CONCHBASE_GLOBAL_ACTIVE_WORK',
+    { fallback: 8, min: 1, max: 32 },
+  );
+  const perProjectActiveWork = boundedInteger(
+    env.CONCHBASE_PER_PROJECT_ACTIVE_WORK,
+    'CONCHBASE_PER_PROJECT_ACTIVE_WORK',
+    { fallback: 2, min: 1, max: 16 },
+  );
   const projectIdleMs = boundedInteger(
     env.CONCHBASE_PROJECT_IDLE_MS,
     'CONCHBASE_PROJECT_IDLE_MS',
@@ -167,6 +180,8 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     executionMode,
     loopBudget,
     projectIdleMs,
+    globalActiveWork,
+    perProjectActiveWork,
     allowAuthenticatedRemoteBinding,
     ...(authTokenDigest ? { authTokenDigest } : {}),
   };
