@@ -1,0 +1,6 @@
+{
+  "id": "task-service-decomposition-fixture",
+  "summary": "Executable fixtures assert argument digests are order-independent, read reuse is keyed by attempt and never collides across tools or arguments, capability resolution pins to the task revision and yields no grants for a missing revision, and approval policy distinguishes restricted from unrestricted without widening scope.",
+  "evidence": "tests/task-capabilities.test.ts",
+  "executableFixture": true
+}

@@ -399,6 +399,11 @@
       "evidence": "src/runtime/organization-execution.ts"
     },
     {
+      "id": "task-service-decomposition",
+      "summary": "ADR 0091 extracts four pure seams from the 1312-line task service: tool-arguments (canonical order-independent digest), read-result-cache (attempt-keyed reuse), task-capabilities (revision-pinned capability resolution, a security boundary), and tool-gate (approval policy). The loop and drain pair is deliberately left in place pending an explicit context-object design.",
+      "evidence": "src/runtime/task-capabilities.ts"
+    },
+    {
       "id": "tool-approval-write-tools",
       "summary": "ADR 0057 implements Runtime-owned write-tool approval: waiting_approval checkpoints persist across restart, POST /v1/tasks/{taskId}/approval resumes the loop after approved execution, rejection fails without writing, and CONCHBASE_ALLOW_TOOL_WRITES gates the bounded workspace_write tool.",
       "evidence": "src/runtime/task-service.ts"
@@ -680,6 +685,12 @@
       "id": "structured-project-close-out-fixture",
       "summary": "Executable fixtures cover accepted model output, rejection of unknown fields/empty headlines/secret-like text, deterministic counts, generator HTTP and JSON failures, project-local fact scoping, using and persisting a model summary during convergence, and proving a throwing summarizer still archives the project.",
       "evidence": "tests/project-summary.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "task-service-decomposition-fixture",
+      "summary": "Executable fixtures assert argument digests are order-independent, read reuse is keyed by attempt and never collides across tools or arguments, capability resolution pins to the task revision and yields no grants for a missing revision, and approval policy distinguishes restricted from unrestricted without widening scope.",
+      "evidence": "tests/task-capabilities.test.ts",
       "executableFixture": true
     },
     {

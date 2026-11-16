@@ -18,6 +18,10 @@ import {
   type ModelCatalogEntry,
 } from './model-catalog.js';
 import { OpenAiChatCompletionsProvider } from './magpie-provider.js';
+import { ReadResultCache } from './read-result-cache.js';
+import { resolveTaskCapabilities, type TaskCapabilities } from './task-capabilities.js';
+import { requiresApproval } from './tool-gate.js';
+import { digestArguments } from './tool-arguments.js';
 import { projectSkills, projectToolProvider } from './capability-grants.js';
 import type { ExecutionMode, LoopBudget } from '../config/runtime-config.js';
 import {
@@ -64,15 +68,6 @@ import { createBuiltinReadTools, ToolRejectedError, type ToolProvider } from './
 import type { ProviderMessage } from './model-adapter.js';
 import type { ProviderToolCall } from './model-adapter.js';
 
-function digestArguments(args: Readonly<Record<string, string | number | boolean | null>>): string {
-  const canonical = Object.keys(args).sort().map((key) => `${key}=${String(args[key])}`).join('&');
-  let hash = 0;
-  for (let index = 0; index < canonical.length; index += 1) {
-    hash = (hash * 31 + canonical.charCodeAt(index)) >>> 0;
-  }
-  return `arg_${hash.toString(16).padStart(8, '0')}`;
-}
-
 export interface TaskServiceConfig {
   readonly magpieBaseUrl: string;
   readonly magpieAppKey?: string;
@@ -102,11 +97,6 @@ const DEFAULT_LOOP_BUDGET: LoopBudget = Object.freeze({
   maxToolCallsPerTurn: 4,
   deadlineMs: 120_000,
 });
-
-interface TaskCapabilities {
-  readonly tools: ToolProvider | undefined;
-  readonly skills: readonly { readonly name: string; readonly instructions: string }[];
-}
 
 export interface CreateTaskInput {
   readonly prompt: string;
@@ -172,7 +162,7 @@ export class TaskService {
   private readonly catalog: ModelCatalogClient;
   private readonly loopOptions: AgentLoopOptions;
   private readonly effortByTaskId = new Map<string, 'low' | 'medium' | 'high'>();
-  private readonly readResults = new Map<string, { readonly summary: string; readonly digest: string }>();
+  private readonly readResults = new ReadResultCache();
 
   constructor(
     store: TaskStore,
@@ -214,8 +204,7 @@ export class TaskService {
    * never widened by the execution mode.
    */
   private requiresApproval(definition: { readonly sideEffect: string }): boolean {
-    if (this.executionMode === 'unrestricted') return false;
-    return definition.sideEffect === 'write' || definition.sideEffect === 'external';
+    return requiresApproval(this.executionMode, definition.sideEffect);
   }
 
   getConfigurationState(): ConfigurationState {
@@ -508,7 +497,7 @@ export class TaskService {
     const execution = this.execute(task, controller.signal).finally(() => {
       this.active.delete(taskId);
       this.inFlight.delete(execution);
-      this.clearReadResults(taskId);
+      this.readResults.clear(taskId);
     });
     this.inFlight.add(execution);
   }
@@ -539,7 +528,7 @@ export class TaskService {
     const execution = this.resumeApprovedTool(task, controller.signal).finally(() => {
       this.active.delete(taskId);
       this.inFlight.delete(execution);
-      this.clearReadResults(taskId);
+      this.readResults.clear(taskId);
     });
     this.inFlight.add(execution);
     return this.store.getTask(taskId)!;
@@ -914,17 +903,7 @@ export class TaskService {
    * receives no tools and no Skills.
    */
   private taskCapabilities(task: TaskSnapshot): TaskCapabilities {
-    if (!task.agentId) {
-      return Object.freeze({ tools: undefined, skills: Object.freeze([]) });
-    }
-    const revision = task.agentRevisionId
-      ? this.store.getAgentRevision(task.agentId, task.agentRevisionId)
-      : null;
-    const grants = revision?.grantedCapabilities ?? Object.freeze([]);
-    return Object.freeze({
-      tools: projectToolProvider(this.loopOptions.tools, grants),
-      skills: projectSkills(this.loopOptions.skills, grants),
-    });
+    return resolveTaskCapabilities(this.store, this.loopOptions, task);
   }
 
   private writeAlreadyApplied(
@@ -946,21 +925,6 @@ export class TaskService {
    * has no side effect, while writes and external calls keep their existing
    * approval and idempotency behaviour.
    */
-
-  private clearReadResults(taskId: string): void {
-    const prefix = `${taskId}:`;
-    for (const key of [...this.readResults.keys()]) {
-      if (key.startsWith(prefix)) this.readResults.delete(key);
-    }
-  }
-
-  private readResultKey(
-    task: TaskSnapshot,
-    toolId: string,
-    args: Readonly<Record<string, string | number | boolean | null>>,
-  ): string {
-    return `${task.id}:${task.attempt}:${toolId}:${digestArguments(args)}`;
-  }
 
   private recordToolExecuted(
     task: TaskSnapshot,
@@ -1041,8 +1005,7 @@ export class TaskService {
       // rather than executed again. The model still gets the content, but the
       // Runtime does not spend a second execution or its side of the budget.
       if (definition.sideEffect === 'read') {
-        const key = this.readResultKey(task, call.name, call.arguments);
-        const cached = this.readResults.get(key);
+        const cached = this.readResults.get(task.id, task.attempt, call.name, call.arguments);
         if (cached) {
           this.recordLoopEvent(task, 'agent_loop.tool_reused', 'running', {
             iteration,
@@ -1063,7 +1026,7 @@ export class TaskService {
         const result = await tools!.invoke(call.name, call.arguments);
         this.recordToolExecuted(task, iteration, call.name, call.arguments, result);
         if (definition.sideEffect === 'read') {
-          this.readResults.set(this.readResultKey(task, call.name, call.arguments), {
+          this.readResults.set(task.id, task.attempt, call.name, call.arguments, {
             summary: result.summary,
             digest: result.digest,
           });
