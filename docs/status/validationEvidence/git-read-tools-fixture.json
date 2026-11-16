@@ -1,0 +1,6 @@
+{
+  "id": "git-read-tools-fixture",
+  "summary": "Executable fixtures assert only three read-only tools exist, write subcommands are unreachable, status uses a fixed argv, diff paths follow a separator so a flag-looking path stays a path, absolute and escaping paths are rejected before spawning, log counts are clamped, non-repository and missing-binary cases return bounded codes, and oversized output is truncated with a notice.",
+  "evidence": "tests/git-tools.test.ts",
+  "executableFixture": true
+}

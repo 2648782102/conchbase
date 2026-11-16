@@ -45,6 +45,11 @@ export interface RuntimeConfig {
   skillsDirectory?: string;
   allowToolWrites?: boolean;
   /**
+   * ADR 0095. Read-only git tools. Opt-in because they execute a subprocess;
+   * every other built-in tool is a filesystem call.
+   */
+  enableGitTools?: boolean;
+  /**
    * The only directory tool calls may read or write. Defaults to the process
    * working directory, which is convenient for development and dangerous for
    * writes: a model that runs `workspace_write` would otherwise be able to
@@ -114,6 +119,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     throw new Error('CONCHBASE_WORKSPACE_ROOT must be an absolute path.');
   }
   const allowToolWrites = env.CONCHBASE_ALLOW_TOOL_WRITES === '1';
+  const enableGitTools = env.CONCHBASE_ENABLE_GIT_TOOLS === '1';
   if (allowToolWrites && env.CONCHBASE_WORKSPACE_ROOT === undefined) {
     throw new Error(
       'CONCHBASE_ALLOW_TOOL_WRITES=1 requires CONCHBASE_WORKSPACE_ROOT. '
@@ -156,6 +162,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     ...(env.CONCHBASE_MCP_CONFIG ? { mcpConfigPath: env.CONCHBASE_MCP_CONFIG } : {}),
     ...(env.CONCHBASE_SKILLS_DIR ? { skillsDirectory: env.CONCHBASE_SKILLS_DIR } : {}),
     ...(allowToolWrites ? { allowToolWrites: true } : {}),
+    ...(enableGitTools ? { enableGitTools: true } : {}),
     workspaceRoot,
     executionMode,
     loopBudget,

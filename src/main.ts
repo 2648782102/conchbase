@@ -28,6 +28,7 @@ const toolRuntime = await createToolRuntime({
   ...(config.mcpConfigPath ? { mcpConfigPath: config.mcpConfigPath } : {}),
   ...(config.skillsDirectory ? { skillsDirectory: config.skillsDirectory } : {}),
   ...(config.allowToolWrites ? { allowWrites: true } : {}),
+  ...(config.enableGitTools ? { enableGit: true } : {}),
 });
 const taskService = createTaskService(config.databasePath, {
   magpieBaseUrl: config.magpieBaseUrl,

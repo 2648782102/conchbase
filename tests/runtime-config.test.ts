@@ -168,3 +168,12 @@ test('project idle policy is operator configuration with a bounded range', () =>
     /CONCHBASE_PROJECT_IDLE_MS/,
   );
 });
+
+test('git tools are off unless explicitly enabled', () => {
+  // ADR 0095: these execute a subprocess, so the default surface must not
+  // include them. The flag mirrors CONCHBASE_ALLOW_TOOL_WRITES.
+  assert.equal(loadRuntimeConfig({}).enableGitTools, undefined);
+  assert.equal(loadRuntimeConfig({ CONCHBASE_ENABLE_GIT_TOOLS: '1' }).enableGitTools, true);
+  assert.equal(loadRuntimeConfig({ CONCHBASE_ENABLE_GIT_TOOLS: 'true' }).enableGitTools, undefined);
+  assert.equal(loadRuntimeConfig({ CONCHBASE_ENABLE_GIT_TOOLS: '0' }).enableGitTools, undefined);
+});

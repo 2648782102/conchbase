@@ -109,6 +109,7 @@ async function main(argv: readonly string[]): Promise<void> {
       ...(config.mcpConfigPath ? { mcpConfigPath: config.mcpConfigPath } : {}),
   ...(config.skillsDirectory ? { skillsDirectory: config.skillsDirectory } : {}),
   ...(config.allowToolWrites ? { allowWrites: true } : {}),
+  ...(config.enableGitTools ? { enableGit: true } : {}),
     });
     const service = createTaskService(config.databasePath, {
       magpieBaseUrl: config.magpieBaseUrl,
@@ -183,6 +184,7 @@ async function main(argv: readonly string[]): Promise<void> {
     ...(config.mcpConfigPath ? { mcpConfigPath: config.mcpConfigPath } : {}),
   ...(config.skillsDirectory ? { skillsDirectory: config.skillsDirectory } : {}),
   ...(config.allowToolWrites ? { allowWrites: true } : {}),
+  ...(config.enableGitTools ? { enableGit: true } : {}),
   });
   const service = createTaskService(config.databasePath, {
     magpieBaseUrl: config.magpieBaseUrl,

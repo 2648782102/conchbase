@@ -234,6 +234,11 @@
       "evidence": "src/runtime/task-service.ts"
     },
     {
+      "id": "git-read-tools",
+      "summary": "ADR 0095 adds git_status, git_diff, and git_log as read-only tools behind CONCHBASE_ENABLE_GIT_TOOLS. The provider maps to fixed argument vectors, runs with shell:false and cwd confinement, rejects absolute or escaping diff paths before spawning, caps output and timeout, and reports absent-binary or non-repository directories as bounded error codes. No write subcommand is reachable.",
+      "evidence": "src/runtime/git-tools.ts"
+    },
+    {
       "id": "identical-read-reuse",
       "summary": "ADR 0071 reuses a read-tool result already produced in the same task attempt instead of executing the identical call again. The model still receives the content with a reuse note, an agent_loop.tool_reused event records the reuse, Agent Chat shows it as 复用, and the cache is cleared when the attempt ends. Writes and external calls keep their approval and idempotency behaviour.",
       "evidence": "src/runtime/task-service.ts"
@@ -582,6 +587,12 @@
       "summary": "Three deliberate defects were injected across distinct safety boundaries — memory tombstone enforcement, secret-like detection, and runtime-scope confirmation — and each produced the expected test failures before the sources were restored and verified. This is manual validation evidence, not repository code.",
       "evidence": "docs/TEST_VALIDATION_LOG.md",
       "executableFixture": false
+    },
+    {
+      "id": "git-read-tools-fixture",
+      "summary": "Executable fixtures assert only three read-only tools exist, write subcommands are unreachable, status uses a fixed argv, diff paths follow a separator so a flag-looking path stays a path, absolute and escaping paths are rejected before spawning, log counts are clamped, non-repository and missing-binary cases return bounded codes, and oversized output is truncated with a notice.",
+      "evidence": "tests/git-tools.test.ts",
+      "executableFixture": true
     },
     {
       "id": "idle-project-convergence-fixture",

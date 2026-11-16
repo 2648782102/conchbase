@@ -2,6 +2,7 @@ import { combineToolProviders, createBuiltinReadTools, type ToolProvider } from 
 import { createMcpToolProvider } from './mcp-provider.js';
 import { loadSkillDirectory, type SkillSet } from './skill-provider.js';
 import { createBuiltinWriteTools } from './write-tools.js';
+import { createGitReadTools } from './git-tools.js';
 
 export interface ToolRuntime {
   readonly tools: ToolProvider;
@@ -14,10 +15,16 @@ export async function createToolRuntime(options: {
   readonly mcpConfigPath?: string;
   readonly skillsDirectory?: string;
   readonly allowWrites?: boolean;
+  /** ADR 0095: read-only git tools, off unless explicitly enabled. */
+  readonly enableGit?: boolean;
 }): Promise<ToolRuntime> {
   const builtins = createBuiltinReadTools({ root: options.root });
   const writes = options.allowWrites ? createBuiltinWriteTools({ root: options.root }) : null;
-  const baseTools = writes ? combineToolProviders([builtins, writes]) : builtins;
+  // Git is a read-only provider layered on the filesystem tools. It is opt-in
+  // because it executes a subprocess, unlike every other built-in tool.
+  const git = options.enableGit ? createGitReadTools({ root: options.root }) : null;
+  const providers = [builtins, ...(writes ? [writes] : []), ...(git ? [git] : [])];
+  const baseTools = providers.length === 1 ? builtins : combineToolProviders(providers);
   const skills = options.skillsDirectory
     ? loadSkillDirectory({ directory: options.skillsDirectory })
     : Object.freeze({ skills: Object.freeze([]), instructions: '' });
