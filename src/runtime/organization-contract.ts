@@ -1,13 +1,30 @@
 import { createHash } from 'node:crypto';
+import {
+  MAX_ACTIVE_WORKERS_PER_PROJECT,
+  MAX_DELEGATION_DEPTH,
+  MAX_TTL_EVENTS,
+  OrganizationValidationError,
+  assertExactKeys,
+  boundedDigest,
+  boundedInteger,
+  boundedProse,
+  boundedString,
+  digest,
+  isRecord,
+  opaqueId,
+  opaqueReference,
+  parseCapabilities,
+  parseModel,
+  parseScope,
+  rejectSecretLike,
+  type OrganizationModelReference,
+} from './organization-validators.js';
+
+export { OrganizationValidationError } from './organization-validators.js';
+export type { OrganizationModelReference } from './organization-validators.js';
 
 export const ORGANIZATION_CONTRACT_VERSION = 1;
 
-const MAX_DELEGATION_DEPTH = 3;
-const MAX_TTL_EVENTS = 1000;
-const MAX_ACTIVE_WORKERS_PER_PROJECT = 4;
-const MAX_ARRAY_LENGTH = 32;
-const MAX_STRING_LENGTH = 240;
-const MAX_DIGEST_LENGTH = 128;
 
 export type ProjectState = 'forming' | 'active' | 'quiet' | 'archived' | 'stopped' | 'resumed';
 export type WorkerState =
@@ -30,11 +47,6 @@ export type ReportState =
   | 'ended';
 export type AttentionState = 'open' | 'answered' | 'withdrawn' | 'expired';
 export type DelegationState = 'active' | 'revoked';
-
-export interface OrganizationModelReference {
-  readonly providerId: string;
-  readonly modelId: string;
-}
 
 export interface BossSession {
   readonly version: typeof ORGANIZATION_CONTRACT_VERSION;
@@ -217,13 +229,6 @@ export type OrganizationAction =
   | RecordWorkerExecutionAction
   | ResumeWorkerAction;
 
-export class OrganizationValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'OrganizationValidationError';
-  }
-}
-
 export class OrganizationConflictError extends Error {
   constructor(message: string) {
     super(message);
@@ -248,158 +253,6 @@ const REPORT_STATES: readonly ReportState[] = Object.freeze([
   'attention',
   'ended',
 ]);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (!isRecord(value)) return value;
-  const canonical: Record<string, unknown> = {};
-  for (const key of Object.keys(value).sort()) canonical[key] = canonicalize(value[key]);
-  return canonical;
-}
-
-function digest(kind: string, value: unknown): string {
-  return createHash('sha256')
-    .update(`${kind}:${JSON.stringify(canonicalize(value))}`)
-    .digest('hex');
-}
-
-function opaqueId(kind: string, value: unknown): string {
-  return `${kind}_${digest(kind, value).slice(0, 24)}`;
-}
-
-function assertExactKeys(
-  value: Record<string, unknown>,
-  required: readonly string[],
-  label: string,
-  optional: readonly string[] = [],
-): void {
-  const allowed = [...required, ...optional];
-  const allowedSet = new Set(allowed);
-  const unknownKeys = Object.keys(value).filter((key) => !allowedSet.has(key));
-  if (unknownKeys.length > 0) {
-    throw new OrganizationValidationError(`${label} has unknown fields: ${unknownKeys.sort().join(', ')}`);
-  }
-  for (const key of required) {
-    if (!(key in value)) throw new OrganizationValidationError(`${label} is missing ${key}.`);
-  }
-}
-
-function rejectSecretLike(value: unknown, path = 'action', depth = 0): void {
-  if (depth > 8) throw new OrganizationValidationError(`${path} is too deep.`);
-  const secretKey = /(secret|password|passwd|token|api[_-]?key|credential|plaintext|private[_-]?key)/i;
-  if (typeof value === 'string') {
-    if (/(^|\s)(sk-|Bearer\s|ghp_|github_pat_)/i.test(value)) {
-      throw new OrganizationValidationError(`${path} contains secret-like text.`);
-    }
-    return;
-  }
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => rejectSecretLike(item, `${path}[${index}]`, depth + 1));
-    return;
-  }
-  if (!isRecord(value)) return;
-  for (const [key, nested] of Object.entries(value)) {
-    if (secretKey.test(key)) throw new OrganizationValidationError(`${path}.${key} is not accepted.`);
-    rejectSecretLike(nested, `${path}.${key}`, depth + 1);
-  }
-}
-
-function boundedString(value: unknown, label: string, max = MAX_STRING_LENGTH): string {
-  if (typeof value !== 'string' || value.length === 0 || value.length > max) {
-    throw new OrganizationValidationError(`${label} must be a non-empty string of at most ${max} characters.`);
-  }
-  // Worker instructions are naturally multi-line, so newline and carriage
-  // return are allowed. Every other control character stays rejected.
-  if (value.trim() !== value || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value)) {
-    throw new OrganizationValidationError(`${label} contains unsupported characters.`);
-  }
-  return value;
-}
-
-/**
- * Same bounds as `boundedString`, but tolerates leading and trailing newlines
- * because this value is prose that a user or a model wrote, not an identifier.
- * Interior control characters are still rejected.
- */
-function boundedProse(value: unknown, label: string, max: number): string {
-  if (typeof value !== 'string' || value.trim().length === 0 || value.length > max) {
-    throw new OrganizationValidationError(`${label} must be a non-empty string of at most ${max} characters.`);
-  }
-  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value)) {
-    throw new OrganizationValidationError(`${label} contains unsupported characters.`);
-  }
-  return value;
-}
-
-function boundedDigest(value: unknown, label: string): string {
-  const candidate = boundedString(value, label, MAX_DIGEST_LENGTH);
-  if (!/^[a-z0-9_.:-]+$/.test(candidate)) {
-    throw new OrganizationValidationError(`${label} must be an opaque digest.`);
-  }
-  return candidate;
-}
-
-function opaqueReference(value: unknown, label: string): string {
-  const candidate = boundedString(value, label, MAX_STRING_LENGTH);
-  if (!/^[a-z][a-z0-9_-]*$/.test(candidate)) {
-    throw new OrganizationValidationError(`${label} must be an opaque reference.`);
-  }
-  return candidate;
-}
-
-function boundedInteger(value: unknown, label: string, minimum: number, maximum: number): number {
-  if (!Number.isInteger(value) || (value as number) < minimum || (value as number) > maximum) {
-    throw new OrganizationValidationError(`${label} must be an integer from ${minimum} to ${maximum}.`);
-  }
-  return value as number;
-}
-
-function parseScope(value: unknown): readonly string[] {
-  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_ARRAY_LENGTH) {
-    throw new OrganizationValidationError('scope must contain 1 to 32 entries.');
-  }
-  const scope = value.map((entry, index) => {
-    const candidate = boundedString(entry, `scope[${index}]`, 120);
-    if (candidate.startsWith('/') || !/^[A-Za-z0-9._:-]+(?:\/[A-Za-z0-9._:-]+)*$/.test(candidate) || candidate.includes('..')) {
-      throw new OrganizationValidationError(`scope[${index}] is not a bounded scope token.`);
-    }
-    return candidate;
-  });
-  if (new Set(scope).size !== scope.length) {
-    throw new OrganizationValidationError('scope must not contain duplicates.');
-  }
-  return Object.freeze(scope);
-}
-
-function parseCapabilities(value: unknown): readonly string[] {
-  if (!Array.isArray(value) || value.length > MAX_ARRAY_LENGTH) {
-    throw new OrganizationValidationError('capabilities must contain at most 32 entries.');
-  }
-  const capabilities = value.map((entry, index) => {
-    const candidate = boundedString(entry, `capabilities[${index}]`, 120);
-    if (!/^cap_[a-z0-9][a-z0-9_-]{2,80}$/.test(candidate)) {
-      throw new OrganizationValidationError(`capabilities[${index}] is not a bounded capability token.`);
-    }
-    return candidate;
-  });
-  if (new Set(capabilities).size !== capabilities.length) {
-    throw new OrganizationValidationError('capabilities must not contain duplicates.');
-  }
-  return Object.freeze([...capabilities].sort());
-}
-
-function parseModel(value: unknown): OrganizationModelReference {
-  if (!isRecord(value)) throw new OrganizationValidationError('model must be an object.');
-  assertExactKeys(value, ['providerId', 'modelId'], 'model');
-  return Object.freeze({
-    providerId: boundedString(value.providerId, 'model.providerId', 80),
-    modelId: boundedString(value.modelId, 'model.modelId', 120),
-  });
-}
 
 function parseCommonAction<Type extends string>(
   value: Record<string, unknown>,

@@ -189,6 +189,11 @@
       "evidence": "src/runtime/organization-coordinator.ts"
     },
     {
+      "id": "contract-and-chat-decomposition",
+      "summary": "ADR 0093 splits organization field validation into organization-validators and Agent Chat state derivation into agent-chat-state plus a type-only agent-chat-types module. Both source files fall below 1000 lines, and the state mapping that caused the done/replied regression is now asserted directly.",
+      "evidence": "src/runtime/organization-validators.ts"
+    },
+    {
       "id": "controlled-execution-v1",
       "summary": "ADR 0043 implements deterministic controlled execution v1 with explicit grants, request approval/rejection, digest-only fake execution, revocation, and bounded audit events over additive 1.2.0 paths.",
       "evidence": "src/runtime/controlled-execution.ts"
@@ -529,6 +534,12 @@
       "id": "boss-service-decomposition-fixture",
       "summary": "Executable fixtures assert intent admission rules (unknown fields, bounds, secret screening, conversation limits, identity stability, diagnostic preservation), memory precedence (shown vs written, reviewer can only narrow, failing reviewer writes nothing, runtime scope needs confirmation), and outcome rendering (states, empty bodies, secret withholding, length bound). The full suite passes unchanged after extraction.",
       "evidence": "tests/organization-intent-input.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "contract-and-chat-decomposition-fixture",
+      "summary": "Executable fixtures assert field-level validation rules (bounds, opaque grammars, scope and capability restrictions, secret screening, canonical identity) and Agent Chat state derivation (done-vs-replied mapping, terminal sets, phase grouping, provider failure classification, effort parsing).",
+      "evidence": "tests/organization-validators.test.ts",
       "executableFixture": true
     },
     {

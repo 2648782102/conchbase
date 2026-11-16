@@ -27,7 +27,7 @@ const SUITES = Object.freeze({
   domain: [
     'organization-contract.test.ts', 'organization-store.test.ts', 'organization-execution.test.ts',
     'organization-coordinator.test.ts', 'organization-agent-projection.test.ts',
-    'organization-action-contract.test.ts', 'composition-document.test.ts',
+    'organization-action-contract.test.ts', 'organization-validators.test.ts', 'composition-document.test.ts',
     'configuration-document.test.ts', 'configuration-revision.test.ts',
     'composition-execution.test.ts', 'work-contract.test.ts', 'platform-contract.test.ts',
     'tool-request.test.ts', 'tool-capability.test.ts', 'agent-memory.test.ts', 'secret-filter.test.ts',
@@ -52,7 +52,7 @@ const SUITES = Object.freeze({
     'boss-memory-write.test.ts', 'boss-memory.test.ts', 'organization-intent-input.test.ts', 'worker-outcome-report.test.ts',
   ],
   'agent-chat': [
-    'agent-chat.test.ts', 'agent-chat-history.test.ts', 'agent-chat-store.test.ts',
+    'agent-chat.test.ts', 'agent-chat-state.test.ts', 'agent-chat-history.test.ts', 'agent-chat-store.test.ts',
     'agent-chat-stream.test.ts', 'agent-chat-tools.test.ts', 'agent-done-idle.test.ts', 'primary-conversation.test.ts',
   ],
   capabilities: [

@@ -25,6 +25,7 @@ const EXEMPT = Object.freeze({
   'work-store.ts': 'reached through task-store in work-contract and platform-api tests',
   'organization-contract-http.ts': 'pure transport mapping, asserted through organization-api route tests',
   'organization-public-contract.ts': 'pure projection constants, asserted through organization-api route tests',
+  'agent-chat-types.ts': 'type-only module; every runtime behaviour it types is asserted in agent-chat-state and agent-chat tests',
 });
 
 const runtimeDir = path.join('src', 'runtime');

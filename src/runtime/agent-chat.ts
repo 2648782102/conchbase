@@ -8,6 +8,33 @@ import { chineseAgentDisplayName } from './agent-name.js';
 import type { BossModeService } from './boss-mode-service.js';
 import { containsSecretLike } from './secret-filter.js';
 import {
+  NONTERMINAL_STATES,
+  nonterminalMessageState,
+  parseReasoningEffort as parseReasoningEffortShared,
+  phaseForState,
+  taskStateToMessageState,
+  terminalTaskState,
+  unavailableBody,
+  unavailableError,
+} from './agent-chat-state.js';
+import type {
+  AgentChatActivityKind,
+  AgentChatActivityState,
+  AgentChatMessageAuthor,
+  AgentChatMessagePhase,
+  AgentChatMessageState,
+  AgentChatReasoningEffort,
+} from './agent-chat-types.js';
+
+export type {
+  AgentChatActivityKind,
+  AgentChatActivityState,
+  AgentChatMessageAuthor,
+  AgentChatMessagePhase,
+  AgentChatMessageState,
+  AgentChatReasoningEffort,
+} from './agent-chat-types.js';
+import {
   InMemoryAgentChatStore,
   type AgentChatConversationRecord,
   type AgentChatStore,
@@ -31,40 +58,6 @@ export const BOSS_AGENT_NAME = '老板 Agent';
 export const BOSS_AGENT_REVISION_ID = 'boss-runtime-v1';
 export const BOSS_AGENT_PROVIDER_ID = 'runtime';
 export const BOSS_AGENT_MODEL_ID = '组织编排';
-
-export type AgentChatMessageAuthor = 'user' | 'assistant' | 'runtime';
-export type AgentChatMessageState =
-  | 'published'
-  | 'pending'
-  | 'succeeded'
-  | 'failed'
-  | 'cancelled'
-  | 'thinking'
-  | 'streaming'
-  | 'organizing'
-  | 'waiting_approval'
-  | 'waiting_attention'
-  | 'replied'
-  /**
-   * The agent finished and the user has not looked at the result yet.
-   * Distinct from 'replied' (already seen) and from an idle agent with nothing
-   * to report: "done, unread" is the state a task list should surface first.
-   */
-  | 'done'
-  | 'unavailable';
-
-export type AgentChatMessagePhase =
-  | 'accepted'
-  | 'preparing'
-  | 'model'
-  | 'organization'
-  | 'human'
-  | 'terminal';
-
-export type AgentChatReasoningEffort = 'low' | 'medium' | 'high';
-
-export type AgentChatActivityKind = 'turn' | 'tool' | 'approval' | 'output';
-export type AgentChatActivityState = 'running' | 'succeeded' | 'failed' | 'waiting_approval';
 
 export interface AgentChatActivity {
   readonly id: string;
@@ -98,10 +91,6 @@ export interface AgentChatMessage {
   readonly replyToId: string | null;
   readonly activity: readonly AgentChatActivity[];
 }
-
-const NONTERMINAL_STATES: readonly AgentChatMessageState[] = Object.freeze([
-  'pending', 'thinking', 'streaming', 'organizing', 'waiting_approval',
-]);
 
 export interface AgentChatConversationView {
   readonly version: typeof AGENT_CHAT_CONTRACT_VERSION;
@@ -204,54 +193,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function terminalTaskState(state: TaskSnapshot['state']): boolean {
-  return ['succeeded', 'failed', 'cancelled', 'interrupted'].includes(state);
-}
-
-function nonterminalMessageState(state: AgentChatMessageState): boolean {
-  return NONTERMINAL_STATES.includes(state);
-}
-
-function taskStateToMessageState(task: TaskSnapshot): AgentChatMessageState {
-  // A finished task is `done` (unread) until the user reads the conversation.
-  // Returning `replied` here would skip the distinction entirely.
-  if (task.state === 'succeeded') return 'done';
-  if (task.state === 'failed' || task.state === 'interrupted') return 'failed';
-  if (task.state === 'cancelled') return 'cancelled';
-  if (task.state === 'waiting_approval') return 'waiting_approval';
-  return task.partialOutput && task.partialOutput.length > 0 ? 'streaming' : 'thinking';
-}
-
-function unavailableError(message: string | null): boolean {
-  return /model catalog is unavailable|provider model catalog is unavailable|upstream|not valid JSON|empty completion|invalid JSON|not bounded|unknown fields|secret-like|selected model is not available/i.test(message ?? '');
-}
-
-function unavailableBody(cause: unknown): string {
-  const text = cause instanceof Error ? cause.message : '';
-  if (/HTTP 429|rate limit/i.test(text)) return '模型服务当前请求过多，请稍后重试。';
-  if (/HTTP 5\d\d|upstream/i.test(text)) return '模型服务暂不可用，请检查 Magpie 配置或稍后重试。';
-  if (/not valid JSON|invalid JSON|not bounded|unknown fields|empty completion/i.test(text)) {
-    return '模型返回格式不符合 Runtime 契约，本次回复未采用。';
-  }
-  if (/secret-like/i.test(text)) return '模型返回包含敏感内容，本次回复已拒绝。';
-  return '模型目录暂不可用，请检查 Magpie 配置。';
-}
-
-function phaseForState(state: AgentChatMessageState): AgentChatMessagePhase {
-  if (state === 'thinking' || state === 'streaming' || state === 'pending') return 'preparing';
-  if (state === 'organizing') return 'organization';
-  if (state === 'waiting_attention' || state === 'waiting_approval') return 'human';
-  if (state === 'replied' || state === 'done' || state === 'failed' || state === 'cancelled'
-    || state === 'unavailable' || state === 'succeeded') return 'terminal';
-  return 'accepted';
-}
-
-function parseReasoningEffort(value: unknown): AgentChatReasoningEffort {
-  if (value === undefined) return 'medium';
-  if (value === 'low' || value === 'medium' || value === 'high') return value;
-  throw new AgentChatServiceError('reasoningEffort must be low, medium, or high.');
-}
-
 function message(
   input: Omit<AgentChatMessage, 'phase' | 'progress' | 'updatedAt' | 'replyToId' | 'activity'>
     & Partial<Pick<AgentChatMessage, 'phase' | 'progress' | 'updatedAt' | 'replyToId' | 'activity'>>,
@@ -320,7 +261,14 @@ export class AgentChatService {
       ? this.defaultAgentId()
       : boundedText(input.agentId, 'agentId');
     const modelOverride = this.parseModelOverride(input.modelOverride);
-    const reasoningEffort = parseReasoningEffort(input.reasoningEffort);
+    const reasoningEffort = (() => {
+      try {
+        return parseReasoningEffortShared(input.reasoningEffort);
+      } catch {
+        // The service owns its error type; the shared parser stays transport-free.
+        throw new AgentChatServiceError('reasoningEffort must be low, medium, or high.');
+      }
+    })();
     const isBoss = agentId === BOSS_AGENT_ID;
     if (isBoss && !this.bossMode) throw new AgentChatServiceError('Boss Agent is not configured.', 503);
     const bossView = isBoss ? this.bossAgentView() : null;
