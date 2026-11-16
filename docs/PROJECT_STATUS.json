@@ -175,7 +175,7 @@
     },
     {
       "id": "boss-service-decomposition",
-      "summary": "ADR 0090 extracts three cohesive concerns from the 1518-line Boss service into independently tested modules: organization-intent-input (untrusted admission, bounds, identity derivation, error bounding), boss-memory (bounded scoped index plus reviewed proposal persistence), and worker-outcome-report (reply rendering with secret screening and length bound). The service keeps orchestration and drops to 1267 lines.",
+      "summary": "ADR 0090 extracts three cohesive concerns from the 1518-line Boss service into independently tested modules: organization-intent-input (untrusted admission, bounds, identity derivation, error bounding), boss-memory (bounded scoped index plus reviewed proposal persistence), and worker-outcome-report (reply rendering with secret screening and length bound). The service keeps orchestration and drops to 1267 lines; later cohesion slices add worker-execution-restore and bring it to 1241 lines.",
       "evidence": "src/runtime/boss-memory.ts"
     },
     {
@@ -369,6 +369,11 @@
       "evidence": "src/runtime/capability-grants.ts"
     },
     {
+      "id": "plugin-loader",
+      "summary": "ADR 0096 adds a manifest-declared plugin loader. Plugins supply bounded tool declarations and a ToolProvider implementation at composition time; the Runtime owns ids, Agent grants, approval gating, and invocation. v1 never imports arbitrary plugin paths or exposes SecretHandles to plugin code.",
+      "evidence": "src/runtime/plugin-registry.ts"
+    },
+    {
       "id": "primary-conversation-projection",
       "summary": "ADR 0045 implements an additive 1.4.0 primary-conversation read model over Runtime-owned organization facts, with bounded user messages, Boss acknowledgements, worker activity, reports, Attention, system status, cursors, and no raw transcripts or private state.",
       "evidence": "src/runtime/primary-conversation.ts"
@@ -420,8 +425,8 @@
     },
     {
       "id": "task-service-decomposition",
-      "summary": "ADR 0091 extracts four pure seams from the 1312-line task service: tool-arguments (canonical order-independent digest), read-result-cache (attempt-keyed reuse), task-capabilities (revision-pinned capability resolution, a security boundary), and tool-gate (approval policy). The loop and drain pair is deliberately left in place pending an explicit context-object design.",
-      "evidence": "src/runtime/task-capabilities.ts"
+      "summary": "ADRs 0091 and 0092 extract four pure seams plus the tool-drain loop from the 1312-line task service: tool-arguments (canonical order-independent digest), read-result-cache (attempt-keyed reuse), task-capabilities (revision-pinned capability resolution, a security boundary), tool-gate (approval policy), and agent-loop-tools behind an explicit AgentLoopToolContext. The service drops to 1222 lines; provider turns and lifecycle remain.",
+      "evidence": "src/runtime/agent-loop-tools.ts"
     },
     {
       "id": "tool-approval-write-tools",
@@ -702,6 +707,12 @@
       "executableFixture": true
     },
     {
+      "id": "plugin-loader-fixture",
+      "summary": "Executable fixtures cover manifest validation, undeclared-tool rejection, grant enforcement before plugin code runs, approval enforcement for write tools, missing implementation failures, and duplicate plugin ids.",
+      "evidence": "tests/plugin-loader.test.ts",
+      "executableFixture": true
+    },
+    {
       "id": "primary-conversation-projection-fixture",
       "summary": "An executable fixture covers ordered primary-conversation messages, bounded cursors, duplicate suppression, no private-state leakage, 1.4.0 discovery, and HTTP error paths.",
       "evidence": "tests/primary-conversation.test.ts",
@@ -733,8 +744,8 @@
     },
     {
       "id": "task-service-decomposition-fixture",
-      "summary": "Executable fixtures assert argument digests are order-independent, read reuse is keyed by attempt and never collides across tools or arguments, capability resolution pins to the task revision and yields no grants for a missing revision, and approval policy distinguishes restricted from unrestricted without widening scope.",
-      "evidence": "tests/task-capabilities.test.ts",
+      "summary": "Executable fixtures assert argument digests are order-independent, read reuse is keyed by attempt and never collides across tools or arguments, capability resolution pins to the task revision and yields no grants for a missing revision, approval policy distinguishes restricted from unrestricted without widening scope, and tool draining rejects ungranted tools, pauses consequential tools, refuses repeated applied writes, reuses only same-attempt reads, and emits one message per outcome.",
+      "evidence": "tests/agent-loop-tools.test.ts",
       "executableFixture": true
     },
     {

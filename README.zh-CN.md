@@ -49,6 +49,8 @@ npm run cli -- run '只回复：ok'
 
 `CONCHBASE_ORGANIZATION_INTENT_MODEL` 用于开启老板主会话的真实结构化模型解析；未设置时使用确定性离线解析器。两种模式下模型和解析器输出都只是不可信提案：每个组织动作都会由 Conchbase 重新解析、校验和授权后才能提交。
 
+`CONCHBASE_ENABLE_GIT_TOOLS=1` 会开启三个默认关闭的只读 Git 工具（`git_status`、`git_diff`、`git_log`）。它们使用固定参数、`shell: false`、工作区边界、超时与输出上限；没有写子命令，也没有任意 Git 参数入口。除非 Agent 确实需要版本上下文，否则保持默认关闭。
+
 HTTP API 提供同样的操作：
 
 ```sh

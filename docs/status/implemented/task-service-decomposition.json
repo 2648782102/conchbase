@@ -1,5 +1,5 @@
 {
   "id": "task-service-decomposition",
-  "summary": "ADR 0091 extracts four pure seams from the 1312-line task service: tool-arguments (canonical order-independent digest), read-result-cache (attempt-keyed reuse), task-capabilities (revision-pinned capability resolution, a security boundary), and tool-gate (approval policy). The loop and drain pair is deliberately left in place pending an explicit context-object design.",
-  "evidence": "src/runtime/task-capabilities.ts"
+  "summary": "ADRs 0091 and 0092 extract four pure seams plus the tool-drain loop from the 1312-line task service: tool-arguments (canonical order-independent digest), read-result-cache (attempt-keyed reuse), task-capabilities (revision-pinned capability resolution, a security boundary), tool-gate (approval policy), and agent-loop-tools behind an explicit AgentLoopToolContext. The service drops to 1222 lines; provider turns and lifecycle remain.",
+  "evidence": "src/runtime/agent-loop-tools.ts"
 }

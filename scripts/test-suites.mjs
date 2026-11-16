@@ -56,7 +56,7 @@ const SUITES = Object.freeze({
     'agent-chat-stream.test.ts', 'agent-chat-tools.test.ts', 'agent-done-idle.test.ts', 'primary-conversation.test.ts',
   ],
   capabilities: [
-    'mcp-provider.test.ts', 'skill-provider.test.ts', 'tool-runtime.test.ts', 'git-tools.test.ts', 'isolated-execution.test.ts',
+    'mcp-provider.test.ts', 'skill-provider.test.ts', 'tool-runtime.test.ts', 'git-tools.test.ts', 'plugin-loader.test.ts', 'isolated-execution.test.ts',
     'controlled-execution.test.ts',
     'agent-capability-grants.test.ts',
   ],
