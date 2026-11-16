@@ -100,3 +100,39 @@ test('coordinator has no HTTP, Agent store, model, tool, or public contract depe
   assert.equal([...spec.matchAll(/^  (\/v1\/[^:]+):$/gm)].length, 93);
   assert.doesNotMatch(source, /organization\/session/);
 });
+
+test('coordinator admits only scheduled starts and exposes hold reasons', () => {
+  const store = new InMemoryOrganizationStore();
+  store.apply({
+    type: 'open_project', expectedSequence: 0,
+    projectId: 'project_alpha', originTriggerId: 'trigger_one',
+  });
+  store.apply({ type: 'activate_project', expectedSequence: 1, projectId: 'project_alpha' });
+  store.apply({ ...workerAction('worker_one'), expectedSequence: 2 });
+  store.apply({
+    type: 'authorize_worker', expectedSequence: 3,
+    projectId: 'project_alpha', workerId: 'worker_one',
+  });
+  store.apply({ ...workerAction('worker_two'), workerId: 'worker_two', expectedSequence: 4 });
+  store.apply({
+    type: 'authorize_worker', expectedSequence: 5,
+    projectId: 'project_alpha', workerId: 'worker_two',
+  });
+
+  const calls: string[] = [];
+  const coordinator = new OrganizationCoordinator(store, {
+    // No WorkItems exist yet: the planner derives two start_work commands from
+    // the two authorized workers, which is exactly the admission seam.
+    listWorkState: () => [],
+    startWork: (workItemId, expectedState) => { calls.push(`start:${workItemId}:${expectedState}`); },
+  }, undefined, { globalActive: 1, perProjectActive: 1 });
+
+  const result = coordinator.reconcile();
+  assert.equal(calls.length, 1, 'only one work item may start');
+  assert.equal(result.holds.length, 1);
+  assert.ok(['global-limit', 'project-limit'].includes(result.holds[0]!.reason));
+  assert.equal(
+    result.executions.filter((execution) => execution.command.type === 'start_work').length,
+    1,
+  );
+});

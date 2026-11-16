@@ -419,6 +419,11 @@
       "evidence": "src/runtime/organization-intent-parser.ts"
     },
     {
+      "id": "scheduler-execution-admission",
+      "summary": "ADR 0101 injects the non-preemptive global scheduler into OrganizationCoordinator. Planned start_work commands are admitted by capacity/priority/fairness policy; excess starts become visible hold decisions on the coordinator result and BossModeSubmitResult while the WorkItem remains open. No new action, endpoint, or queue table was introduced.",
+      "evidence": "src/runtime/organization-coordinator.ts"
+    },
+    {
       "id": "skill-provider",
       "summary": "ADR 0056 implements an administrator-configured read-only Skill provider: SKILL.md front matter and body parsing, bounded count and bytes, traversal and symlink rejection, ignored allowed-tools, and non-authoritative system injection into the Agent loop.",
       "evidence": "src/runtime/skill-provider.ts"
@@ -766,6 +771,12 @@
       "id": "runtime-agent-memory-fixture",
       "summary": "Executable fixtures cover scope isolation, deduplication, retention bounds, secret-like and oversize rejection, bounded title-only index rendering, deletion, SQLite reopen persistence, convergence writing exactly one project memory, prompt injection limited to runtime plus active-project memory, and a broken memory store never breaking a Boss turn.",
       "evidence": "tests/agent-memory.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "scheduler-execution-admission-fixture",
+      "summary": "Executable fixtures assert the coordinator admits only scheduled starts, exposes hold reasons, and does not dispatch over-capacity work while preserving existing work-control behaviour.",
+      "evidence": "tests/organization-coordinator.test.ts",
       "executableFixture": true
     },
     {
