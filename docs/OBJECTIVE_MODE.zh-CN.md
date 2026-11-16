@@ -30,12 +30,19 @@
 ## 必须先立 ADR 才能做什么
 
 - 稳定跨进程 SecretHandle、OS keychain、可重放静态加密值和任意外部固定适配器。
-- 真实外部 Source、真实 Outbox 外部写入、真实工具执行、MCP/Skill/plugin 安装与生命周期。
+- 真实外部 Source、真实 Outbox 外部写入、任意工具执行与远程网络能力。manifest 声明的 plugin loader 与受控 stdio 子进程 provider 已由 ADR 0096/0098 实现；插件安装/签名/远程分发仍门控。
 - 生产远程配对 UX、云部署、桌面打包、SSE/保留/重连契约、服务端任务分页与实时历史。
-- 新 provider adapter、模型驱动组合节点、委派、并发、通用角色注册表、生产审批工作流。
+- 新 provider adapter、模型驱动组合节点、通用角色注册表、生产审批工作流。有界并发已由 ADR 0099–0101 接受并实现：同一 Boss turn 内并行等待 worker，全局非抢占调度通过纯策略注入 coordinator。抢占式时间片仍需 checkpoint/resume ADR。
 - 从未经单独接受的 schema 生成客户端类型，或在 Pagurus 发明第二套 Runtime schema。
 
 这些方向在 `docs/PROJECT_STATUS.json` 中一律标为 `blockedDirections`，且 `requiresAcceptedAdr` 为 `true`。涉及双仓的契约必须在两个仓库分别接受对应 ADR 后再实现。
+
+## 当前执行事实补充（2026-11-17）
+
+- ADR 0099：同一 Boss turn 内的多个 worker 终态并行等待，组织事件与汇报仍按派发顺序串行写入。
+- ADR 0100–0101：全局调度是纯策略，以 open WorkItem 为 durable queue；coordinator 在派发 `start_work` 前执行准入，超容量工作以 hold 决策返回。running 任务从不被抢占。
+- ADR 0096/0098：插件是 manifest 声明 + Runtime-owned grants；stdio 子进程只提供故障隔离，不承诺安全沙箱。默认关闭的 git 与插件工具使用固定 argv、最小环境与输出上限。
+- 这些能力不改变公开 HTTP 契约；能力审计通过 `GET /v1/agents/capability-grants` 只读呈现。
 
 ## 辩证取舍
 

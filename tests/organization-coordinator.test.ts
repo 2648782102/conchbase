@@ -136,3 +136,33 @@ test('coordinator admits only scheduled starts and exposes hold reasons', () => 
     1,
   );
 });
+
+test('reconcile is idempotent for valid work controls and capacity holds', () => {
+  const store = new InMemoryOrganizationStore();
+  store.apply({
+    type: 'open_project', expectedSequence: 0,
+    projectId: 'project_alpha', originTriggerId: 'trigger_one',
+  });
+  store.apply({ type: 'activate_project', expectedSequence: 1, projectId: 'project_alpha' });
+  store.apply({ ...workerAction('worker_one'), expectedSequence: 2 });
+  store.apply({
+    type: 'authorize_worker', expectedSequence: 3,
+    projectId: 'project_alpha', workerId: 'worker_one',
+  });
+  const calls: string[] = [];
+  const coordinator = new OrganizationCoordinator(store, {
+    // Returning an already-running WorkItem makes the planner skip start_work;
+    // repeated reconcile must therefore neither start nor invent a new hold.
+    listWorkState: () => [
+      { id: 'work_worker_one', state: 'running', assignmentIds: [], interruptedAssignmentIds: [] },
+    ],
+    startWork: (workItemId) => { calls.push(workItemId); },
+  }, undefined, { globalActive: 1, perProjectActive: 1 });
+  const first = coordinator.reconcile();
+  const second = coordinator.reconcile();
+  assert.deepEqual(calls, []);
+  assert.equal(first.executions.length, 0);
+  assert.equal(second.executions.length, 0);
+  assert.equal(first.holds.length, 0);
+  assert.equal(second.holds.length, 0);
+});
