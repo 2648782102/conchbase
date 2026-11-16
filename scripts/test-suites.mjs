@@ -62,7 +62,7 @@ const SUITES = Object.freeze({
   ],
   api: [
     'http-api.test.ts', 'openapi-contract.test.ts', 'task-api.test.ts',
-    'agent-api.test.ts', 'configuration-api.test.ts', 'organization-api.test.ts',
+    'agent-api.test.ts', 'capability-audit.test.ts', 'configuration-api.test.ts', 'organization-api.test.ts',
     'platform-api.test.ts', 'tool-request-api.test.ts', 'memory-api.test.ts',
   ],
   persistence: [

@@ -209,6 +209,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/agents/capability-grants:
+    get:
+      operationId: listAgentCapabilityGrants
+      summary: Read the current capability grants for every Agent.
+      description: >-
+        Runtime-owned audit view. A grant is pinned to an immutable Agent revision; `stillAvailable` reports whether its
+        tool or Skill is registered in the current Runtime. An inert grant is not authority and can never widen a task.
+      responses:
+        '200':
+          description: Capability grant audit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapabilityAudit'
+        '503':
+          description: Task service is not configured
   /v1/agents/default:
     get:
       operationId: getDefaultAgent
@@ -2459,6 +2475,60 @@ components:
           description: Capabilities pinned to this Agent revision. Grants narrow the Runtime-wide providers and can never widen them. Omitted means the Agent has no tools and no Skills.
           items:
             $ref: '#/components/schemas/CapabilityGrant'
+    CapabilityGrantAuditEntry:
+      allOf:
+        - $ref: '#/components/schemas/CapabilityGrant'
+        - type: object
+          required: [stillAvailable]
+          properties:
+            stillAvailable:
+              type: boolean
+              description: True only when the tool or Skill is registered in this Runtime.
+    AgentCapabilityAudit:
+      type: object
+      additionalProperties: false
+      required: [agentId, currentRevisionId, archived, grants]
+      properties:
+        agentId:
+          type: string
+        currentRevisionId:
+          type: string
+        archived:
+          type: boolean
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/CapabilityGrantAuditEntry'
+    StaleCapabilityGrant:
+      type: object
+      additionalProperties: false
+      required: [agentId, revisionId, kind, name]
+      properties:
+        agentId:
+          type: string
+        revisionId:
+          type: string
+        kind:
+          type: string
+          enum: [tool, skill]
+        name:
+          type: string
+    CapabilityAudit:
+      type: object
+      additionalProperties: false
+      required: [version, agents, staleGrants]
+      properties:
+        version:
+          type: integer
+          const: 1
+        agents:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentCapabilityAudit'
+        staleGrants:
+          type: array
+          items:
+            $ref: '#/components/schemas/StaleCapabilityGrant'
     CapabilityGrant:
       type: object
       additionalProperties: false

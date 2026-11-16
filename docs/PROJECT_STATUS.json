@@ -4,13 +4,13 @@
   "pairedRepository": "pagurus",
   "project": "Conchbase / 海螺",
   "release": "1.0.0",
-  "statusUpdatedAt": "2026-11-16",
+  "statusUpdatedAt": "2026-11-17",
   "objectiveMode": "target-mode",
   "developmentBoundaryAdr": "0026-ai-handoff-readiness-development-boundary.md",
   "publicContract": {
     "openApi": "docs/openapi.yaml",
     "version": "1.0.0",
-    "pathCount": 48,
+    "pathCount": 49,
     "frozen": true,
     "additive": {
       "version": "1.1.0",
@@ -182,6 +182,11 @@
       "id": "bounded-delegation",
       "summary": "Parent/child Delegation actions remain topology-neutral and are enforced by scope/capability subset, recursion depth, TTL, and revival/revalidation rules.",
       "evidence": "src/runtime/organization-contract.ts"
+    },
+    {
+      "id": "capability-grant-audit",
+      "summary": "ADR 0097 adds a Runtime-owned read-only capability grant audit at GET /v1/agents/capability-grants. It reports the grants pinned to each Agent's current revision, marks whether each tool or Skill is registered now, and lists stale grants with agent and revision ids without changing the inert-grant execution rule.",
+      "evidence": "src/runtime/capability-audit.ts"
     },
     {
       "id": "chat-write-read-separation",
@@ -549,6 +554,12 @@
       "id": "boss-service-decomposition-fixture",
       "summary": "Executable fixtures assert intent admission rules (unknown fields, bounds, secret screening, conversation limits, identity stability, diagnostic preservation), memory precedence (shown vs written, reviewer can only narrow, failing reviewer writes nothing, runtime scope needs confirmation), and outcome rendering (states, empty bodies, secret withholding, length bound). The full suite passes unchanged after extraction.",
       "evidence": "tests/organization-intent-input.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "capability-grant-audit-fixture",
+      "summary": "Executable fixtures cover the HTTP audit route, current-revision grant selection, stale-grant reporting, and that the view never mutates Agent revisions or task authorization.",
+      "evidence": "tests/capability-audit.test.ts",
       "executableFixture": true
     },
     {

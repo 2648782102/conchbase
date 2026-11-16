@@ -70,6 +70,7 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
       '/v1/agents/{agentId}/archive',
       '/v1/agents/{agentId}/revisions',
       '/v1/agents/{agentId}/revisions/apply',
+      '/v1/agents/capability-grants',
       '/v1/agents/default',
       '/v1/tasks',
       '/v1/tasks/{taskId}',

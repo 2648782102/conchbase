@@ -191,6 +191,17 @@ export class TaskService {
     return this.loopOptions.preferredChatModelId ?? (this.config.defaultModel || undefined);
   }
 
+  /** Names of currently registered tools and Skills; used by audit views only. */
+  get availableCapabilityNames(): {
+    readonly tools: readonly string[];
+    readonly skills: readonly string[];
+  } {
+    return Object.freeze({
+      tools: Object.freeze(this.loopOptions.tools?.list().map((tool) => tool.id) ?? []),
+      skills: Object.freeze(this.loopOptions.skills?.map((skill) => skill.name) ?? []),
+    });
+  }
+
   get executionMode(): ExecutionMode {
     return this.config.executionMode ?? 'restricted';
   }

@@ -1,0 +1,6 @@
+{
+  "id": "capability-grant-audit-fixture",
+  "summary": "Executable fixtures cover the HTTP audit route, current-revision grant selection, stale-grant reporting, and that the view never mutates Agent revisions or task authorization.",
+  "evidence": "tests/capability-audit.test.ts",
+  "executableFixture": true
+}

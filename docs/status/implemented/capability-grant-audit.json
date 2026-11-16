@@ -1,0 +1,5 @@
+{
+  "id": "capability-grant-audit",
+  "summary": "ADR 0097 adds a Runtime-owned read-only capability grant audit at GET /v1/agents/capability-grants. It reports the grants pinned to each Agent's current revision, marks whether each tool or Skill is registered now, and lists stale grants with agent and revision ids without changing the inert-grant execution rule.",
+  "evidence": "src/runtime/capability-audit.ts"
+}

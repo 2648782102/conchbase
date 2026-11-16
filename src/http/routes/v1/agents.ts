@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { auditCapabilityGrants } from '../../../runtime/capability-audit.js';
 import {
   AgentConflictError,
   AgentNotFoundError,
@@ -56,6 +57,14 @@ export function registerAgentRoutes(app: FastifyInstance, service: TaskService |
       reply.code(201);
       return { agent: await service.createAgent(request.body) };
     } catch (cause) { return replyError(reply, cause); }
+  });
+
+  // Keep this before `/v1/agents/:agentId`: Fastify matches in registration
+  // order, and `capability-grants` must not be interpreted as an agent id.
+  app.get('/v1/agents/capability-grants', async (_request, reply) => {
+    if (!service) return reply.code(503).send({ error: 'Task service is not configured.' });
+    const available = service.availableCapabilityNames;
+    return auditCapabilityGrants(service.store, available.tools, available.skills);
   });
 
   app.get<{ Params: { agentId: string } }>('/v1/agents/:agentId', async (request, reply) => {

@@ -106,6 +106,7 @@ const acceptedPaths = [
   '/v1/agents/{agentId}/archive',
   '/v1/agents/{agentId}/revisions',
   '/v1/agents/{agentId}/revisions/apply',
+  '/v1/agents/capability-grants',
   '/v1/agents/default',
   '/v1/tasks',
   '/v1/tasks/{taskId}',
@@ -189,7 +190,7 @@ const acceptedPaths = [
   '/v1/memory',
   '/v1/memory/{memoryId}',
 ];
-const frozenPathCount = 48;
+const frozenPathCount = 49;
 const organizationPathCount = 18;
 const executionPathCount = 8;
 const executionRunPathCount = 8;
@@ -318,7 +319,7 @@ function assertProjectStatus(source: string, label: string): void {
   assert.equal(status.objectiveMode, 'target-mode', `${label} must record target mode`);
   assert.equal(status.developmentBoundaryAdr, '0026-ai-handoff-readiness-development-boundary.md');
   assert.equal(status.publicContract.version, '1.0.0');
-  assert.equal(status.publicContract.pathCount, 48);
+  assert.equal(status.publicContract.pathCount, 49);
   assert.equal(status.publicContract.frozen, true);
   assert.deepEqual(status.publicContract.additive, {
     version: '1.1.0',
@@ -447,7 +448,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(handoff, /ADR 0021/);
   assert.match(handoff, /ADR 0022/);
   assert.match(handoff, /ADR 0023/);
-  assert.match(handoff, /ADRs `0030`–`0096`/);
+  assert.match(handoff, /ADRs `0030`–`0097`/);
   assert.match(handoff, /ORGANIZATION_RUNTIME_TARGET\.zh-CN\.md/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-contract\.ts/);
   assert.match(read('docs/AI_DEVELOPMENT.md'), /organization-store\.ts/);
@@ -528,7 +529,7 @@ test('AI-first entry documents describe the implemented real-model slice', () =>
   assert.match(read('README.zh-CN.md'), /仍在最终本地优先目标之外/);
   assert.match(read('README.zh-CN.md'), /ADR 0018/);
   assert.match(read('README.zh-CN.md'), /ADR 0019/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0096\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0097\]/);
   assert.match(read('README.md'), /1\.4\.0/);
   assert.match(read('README.md'), /ADR 0021 adds an opt-in live loopback acceptance test/);
   assert.match(read('README.zh-CN.md'), /ADR 0021/);
@@ -908,7 +909,7 @@ test('target-mode status and Chinese objective brief are machine-checkable entry
     assert.match(read(file), /OBJECTIVE_MODE\.zh-CN\.md/, `${file} must link the Chinese objective brief`);
   }
   assert.match(read('docs/AI_TASK_QUEUE.md'), /Target-mode entry/);
-  assert.match(read('README.md'), /accepted ADRs \[0010–0096\]/);
+  assert.match(read('README.md'), /accepted ADRs \[0010–0097\]/);
   assert.match(read('README.md'), /Organization Runtime target/);
   assert.match(read('README.zh-CN.md'), /完整组织运行时目标/);
   assert.match(read('docs/QUICK_START.zh-CN.md'), /ADR 0030–0034/);
