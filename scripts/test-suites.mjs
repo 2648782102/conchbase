@@ -49,7 +49,7 @@ const SUITES = Object.freeze({
     'boss-organization-context.test.ts', 'boss-mode-http.test.ts',
     'organization-convergence.test.ts', 'organization-convergence-runtime.test.ts',
     'organization-resume.test.ts', 'boss-memory-injection.test.ts',
-    'boss-memory-write.test.ts',
+    'boss-memory-write.test.ts', 'boss-memory.test.ts', 'organization-intent-input.test.ts', 'worker-outcome-report.test.ts',
   ],
   'agent-chat': [
     'agent-chat.test.ts', 'agent-chat-history.test.ts', 'agent-chat-store.test.ts',

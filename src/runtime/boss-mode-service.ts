@@ -24,6 +24,23 @@ import { buildBossOrganizationFacts, runtimeCapabilityFacts } from './boss-organ
 import { containsSecretLike } from './secret-filter.js';
 import { MEMORY_LIMITS, renderMemoryIndex, type AgentMemoryInput, type AgentMemoryStore } from './agent-memory.js';
 import type { MemoryReviewInput, MemoryReviewResult } from './memory-review.js';
+import { BossMemory } from './boss-memory.js';
+import { composeOutcomeReply, type WorkerOutcome } from './worker-outcome-report.js';
+
+export { composeOutcomeReply, type WorkerOutcome } from './worker-outcome-report.js';
+import {
+  BossModeServiceError,
+  boundedError,
+  digest,
+  intentId,
+  isRecord,
+  reference,
+  validateSubmission,
+  type BossModeSubmitInput,
+} from './organization-intent-input.js';
+
+// Re-exported so existing importers keep one entry point.
+export { BossModeServiceError, type BossModeSubmitInput } from './organization-intent-input.js';
 
 export const BOSS_MODE_SERVICE_VERSION = 2;
 
@@ -33,33 +50,6 @@ export const BOSS_MODE_SERVICE_VERSION = 2;
  * explicit configuration value rather than a literal.
  */
 export const BOSS_UPSTREAM_PROVIDER_ID = 'magpie';
-
-export class BossModeServiceError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'BossModeServiceError';
-  }
-}
-
-export interface BossModeSubmitInput {
-  readonly text: string;
-  readonly idempotencyKey: string;
-  readonly modelOverride?: {
-    readonly providerId: string;
-    readonly modelId: string;
-  };
-  readonly reasoningEffort?: 'low' | 'medium' | 'high';
-  readonly source?: 'primary-conversation' | 'agent-chat';
-  readonly conversation?: readonly {
-    readonly author: 'user' | 'assistant';
-    readonly body: string;
-  }[];
-  readonly onProgress?: (progress: {
-    readonly state: 'streaming' | 'organizing';
-    readonly percent: number | null;
-    readonly previousText?: string;
-  }) => void;
-}
 
 export interface BossModeExecution {
   readonly action: OrganizationAction;
@@ -123,115 +113,6 @@ interface WorkerExecutionRecord {
   readonly delegationId: string;
 }
 
-interface WorkerOutcome {
-  readonly workerId: string;
-  readonly displayName: string;
-  readonly taskState: 'succeeded' | 'failed' | 'cancelled' | 'interrupted';
-  readonly body: string;
-}
-
-function digest(value: string): string {
-  return `sha256:${createHash('sha256').update(value).digest('hex')}`;
-}
-
-function reference(value: string, length = 24): string {
-  return createHash('sha256').update(value).digest('hex').slice(0, length);
-}
-
-function intentId(idempotencyKey: string): string {
-  return `int_${digest(`intent:${idempotencyKey}`).slice(7, 31)}`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function validateSubmission(input: unknown): BossModeSubmitInput {
-  if (!isRecord(input)) throw new BossModeServiceError('Boss mode intent must be an object.');
-  const allowed = new Set(['text', 'idempotencyKey', 'source']);
-  const conversation = isRecord(input.conversation) || Array.isArray(input.conversation)
-    ? input.conversation
-    : undefined;
-  const unknown = Object.keys(input).filter((key) =>
-    !allowed.has(key) && key !== 'conversation' && key !== 'onProgress'
-      && key !== 'modelOverride' && key !== 'reasoningEffort');
-  if (unknown.length > 0) throw new BossModeServiceError(`Unknown fields: ${unknown.sort().join(', ')}.`);
-  if (typeof input.text !== 'string' || input.text.trim().length === 0 || input.text.length > 20_000) {
-    throw new BossModeServiceError('text must be a non-empty string of at most 20000 characters.');
-  }
-  if (typeof input.idempotencyKey !== 'string' || input.idempotencyKey.length === 0 || input.idempotencyKey.length > 200) {
-    throw new BossModeServiceError('idempotencyKey must be a non-empty string of at most 200 characters.');
-  }
-  if (containsSecretLike(`${input.text} ${input.idempotencyKey}`)) {
-    throw new BossModeServiceError('Boss mode intent contains secret-like content.');
-  }
-  let boundedConversation: readonly { readonly author: 'user' | 'assistant'; readonly body: string }[] | undefined;
-  if (conversation !== undefined) {
-    if (!Array.isArray(conversation) || conversation.length > 8) {
-      throw new BossModeServiceError('conversation must contain at most 8 bounded messages.');
-    }
-    boundedConversation = Object.freeze(conversation.map((item, index) => {
-      if (!isRecord(item) || (item.author !== 'user' && item.author !== 'assistant')
-        || typeof item.body !== 'string' || item.body.length === 0 || item.body.length > 6000
-        || containsSecretLike(item.body)) {
-        throw new BossModeServiceError(`conversation[${index}] is not a bounded safe message.`);
-      }
-      return Object.freeze({ author: item.author, body: item.body });
-    }));
-  }
-  if (input.source !== undefined && input.source !== 'primary-conversation' && input.source !== 'agent-chat') {
-    throw new BossModeServiceError('source must be primary-conversation or agent-chat.');
-  }
-  let modelOverride: { readonly providerId: string; readonly modelId: string } | undefined;
-  if (input.modelOverride !== undefined) {
-    if (!isRecord(input.modelOverride)
-      || typeof input.modelOverride.providerId !== 'string'
-      || typeof input.modelOverride.modelId !== 'string') {
-      throw new BossModeServiceError('modelOverride must contain providerId and modelId.');
-    }
-    modelOverride = Object.freeze({
-      providerId: input.modelOverride.providerId,
-      modelId: input.modelOverride.modelId,
-    });
-  }
-  if (input.reasoningEffort !== undefined
-    && input.reasoningEffort !== 'low'
-    && input.reasoningEffort !== 'medium'
-    && input.reasoningEffort !== 'high') {
-    throw new BossModeServiceError('reasoningEffort must be low, medium, or high.');
-  }
-  return Object.freeze({
-    text: input.text,
-    idempotencyKey: input.idempotencyKey,
-    ...(typeof input.onProgress === 'function'
-      ? { onProgress: input.onProgress as NonNullable<BossModeSubmitInput['onProgress']> }
-      : {}),
-    ...(input.source ? { source: input.source } : {}),
-    ...(modelOverride ? { modelOverride } : {}),
-    ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
-    ...(boundedConversation ? { conversation: boundedConversation } : {}),
-  });
-}
-
-function boundedError(cause: unknown): string {
-  // A thrown non-Error still carries a diagnostic: stringify it rather than
-  // collapsing every such case into one opaque sentence.
-  let message: string;
-  if (cause instanceof Error) {
-    message = cause.message;
-  } else if (typeof cause === 'string') {
-    message = cause;
-  } else {
-    try {
-      message = JSON.stringify(cause) ?? String(cause);
-    } catch {
-      message = String(cause);
-    }
-  }
-  const bounded = message.trim().length > 0 ? message : 'Unknown execution failure.';
-  return bounded.slice(0, 240).replace(/[\u0000-\u001f\u007f]/g, ' ');
-}
-
 function actionAt(action: OrganizationAction, expectedSequence: number): OrganizationAction {
   return Object.freeze({ ...action, expectedSequence }) as OrganizationAction;
 }
@@ -250,8 +131,7 @@ export class BossModeService {
   private readonly workerCapabilityGrants: () => readonly CapabilityGrant[];
   private readonly conversation: BossModeServiceOptions['conversation'];
   private readonly onAccepted: BossModeServiceOptions['onAccepted'];
-  private readonly memory: AgentMemoryStore | undefined;
-  private readonly memoryReviewer: BossModeServiceOptions['memoryReviewer'];
+  private readonly bossMemory: BossMemory;
   private readonly workerExecutions = new Map<string, WorkerExecutionRecord>();
   private readonly startedWorkers = new Set<string>();
   private readonly outcomeByTaskId = new Map<string, string>();
@@ -269,8 +149,10 @@ export class BossModeService {
       ?? (() => Object.freeze([]));
     this.conversation = options.conversation;
     this.onAccepted = options.onAccepted;
-    this.memory = options.memory;
-    this.memoryReviewer = options.memoryReviewer;
+    this.bossMemory = new BossMemory({
+      ...(options.memory ? { memory: options.memory } : {}),
+      ...(options.memoryReviewer ? { reviewer: options.memoryReviewer } : {}),
+    });
     this.restoreRecords();
     this.coordinator = new OrganizationCoordinator(store, {
       listWorkState: () => this.listWorkState(),
@@ -313,7 +195,10 @@ export class BossModeService {
       expectedSequence: snapshot.events.length,
       snapshot,
       organizationFacts,
-      ...(this.memoryIndex() ? { memoryIndex: this.memoryIndex()! } : {}),
+      ...(() => {
+        const index = this.bossMemory.index(snapshot);
+        return index ? { memoryIndex: index } : {};
+      })(),
       ...(submission.reasoningEffort ? { reasoningEffort: submission.reasoningEffort } : {}),
       ...(submission.conversation ? { conversation: submission.conversation } : {}),
       ...(submission.onProgress ? { onProgress: (progress: { state: 'streaming'; percent: number; previousText?: string }) => {
@@ -332,10 +217,11 @@ export class BossModeService {
       this.recordIntentText(resolvedIntentId, submission.text);
     }
     if (direct.memory && direct.memory.length > 0) {
-      await this.recordProposedMemory(direct.memory, {
+      await this.bossMemory.recordProposals(direct.memory, {
         userText: submission.text,
         assistantReply: direct.relay ?? '',
         sourceIntentId: resolvedIntentId,
+        snapshot: this.store.get(),
       });
     }
     if (submission.source === 'agent-chat' && direct.actions.length === 0) {
@@ -412,7 +298,7 @@ export class BossModeService {
     // The model wrote `parsed.relay` before any worker ran, so it can only
     // describe intent ("I prepared..."). Once real results exist, the reply
     // must report those instead of the pre-execution promise.
-    const reply = outcomes.length > 0 ? this.composeOutcomeReply(outcomes) : parsed.relay;
+    const reply = outcomes.length > 0 ? composeOutcomeReply(outcomes) : parsed.relay;
     const result: BossModeSubmitResult = Object.freeze({
       version: BOSS_MODE_SERVICE_VERSION,
       intentId: resolvedIntentId,
@@ -589,120 +475,6 @@ export class BossModeService {
     }
     if (typeof this.conversation?.intentTexts === 'function') return this.conversation.intentTexts();
     return new Map();
-  }
-
-  /**
-   * The compact memory index injected into the Boss prompt.
-   *
-   * Runtime scope applies to every turn; project scope only to the projects
-   * this conversation is currently working with. That keeps a fact learned in
-   * one project from being asserted as a runtime-wide truth.
-   */
-  private memoryIndex(): string {
-    const memory = this.memory;
-    if (!memory) return '';
-    try {
-      const snapshot = this.store.get();
-      const activeProjectIds = new Set(
-        snapshot.projects
-          .filter((project) => project.state === 'active' || project.state === 'resumed')
-          .map((project) => project.id),
-      );
-      const entries = [
-        ...memory.list({ scope: 'runtime', limit: MEMORY_LIMITS.injected }),
-        ...snapshot.projects
-          .filter((project) => activeProjectIds.has(project.id))
-          .flatMap((project) => memory.list({ scope: 'project', scopeId: project.id, limit: 4 })),
-      ];
-      return renderMemoryIndex(entries);
-    } catch {
-      // Memory is an enhancement. A failure must never break a conversation.
-      return '';
-    }
-  }
-
-  /**
-   * Persists memory the model proposed, after Runtime checks.
-   *
-   * The model supplies content; the Runtime supplies authority. An entry whose
-   * scope target does not exist is dropped rather than stored as a dangling
-   * fact, and a bad entry never fails the turn it arrived with.
-   */
-  private async recordProposedMemory(
-    entries: readonly AgentMemoryInput[],
-    context: { readonly userText: string; readonly assistantReply: string; readonly sourceIntentId: string },
-  ): Promise<void> {
-    const memory = this.memory;
-    if (!memory) return;
-    let snapshot: OrganizationSnapshot;
-    try {
-      snapshot = this.store.get();
-    } catch {
-      return;
-    }
-    // Runtime checks come first: a reviewer cannot resurrect an entry whose
-    // scope target does not exist, and it never sees entries the Runtime has
-    // already refused.
-    const candidates = entries.filter((entry) => {
-      if (entry.scope === 'runtime') {
-        // A global fact needs an independent confirmation, not just a model's
-        // proposal; without a reviewer this cannot be established, so drop it.
-        return Boolean(this.memoryReviewer);
-      }
-      return entry.scope === 'project'
-        ? snapshot.projects.some((project) => project.id === entry.scopeId)
-        : snapshot.workers.some((worker) => worker.id === entry.scopeId);
-    });
-    if (candidates.length === 0) return;
-    let accepted: readonly AgentMemoryInput[] = candidates;
-    if (this.memoryReviewer) {
-      let review: MemoryReviewResult | null = null;
-      try {
-        review = await this.memoryReviewer({
-          userText: context.userText,
-          assistantReply: context.assistantReply,
-          // Existing titles, so the reviewer can spot a duplicate; the
-          // candidates themselves are sent separately as `proposals`.
-          existingTitles: [...new Set(candidates.flatMap((entry) => memory.list({
-            scope: entry.scope,
-            ...(entry.scopeId ? { scopeId: entry.scopeId } : {}),
-            limit: 24,
-          }).map((stored) => stored.title)))],
-          proposals: candidates,
-        });
-      } catch {
-        review = null;
-      }
-      if (!review) {
-        // A reviewer is configured but unavailable. Writing unreviewed would
-        // defeat the reason it exists, so the proposal is dropped. Memory is
-        // advisory and the user can always ask again.
-        return;
-      }
-      const verdicts = new Map(review.decisions.map((decision) => [decision.index, decision]));
-      accepted = candidates.filter((entry, index) => {
-        const verdict = verdicts.get(index);
-        if (verdict?.verdict !== 'accept') return false;
-        // A runtime-scope entry additionally needs the explicit confirmation,
-        // so a plain "this is durable" cannot silently promote it to global.
-        if (entry.scope === 'runtime' && verdict.runtimeScopeConfirmed !== true) return false;
-        return true;
-      });
-    }
-    for (const entry of accepted) {
-      try {
-        memory.write({
-          ...entry,
-          sourceIntentId: context.sourceIntentId,
-          // A live, reviewed request may restore a retracted key; only the
-          // automatic path is forbidden from doing so.
-          origin: 'conversational',
-          ...(this.memoryReviewer ? { reviewedBy: 'accepted' as const } : {}),
-        });
-      } catch {
-        // Memory is advisory. A rejected write must not break the conversation.
-      }
-    }
   }
 
   private backfillReportTexts(): void {
@@ -1331,29 +1103,6 @@ export class BossModeService {
    * pre-execution model relay is intentionally not reused: it was written
    * before the work ran, so it cannot state a result.
    */
-  private composeOutcomeReply(outcomes: readonly WorkerOutcome[]): string {
-    const succeeded = outcomes.filter((outcome) => outcome.taskState === 'succeeded').length;
-    const body = outcomes.map((outcome) => {
-      const state = outcome.taskState === 'succeeded' ? '已完成' : outcome.taskState === 'cancelled'
-        ? '已取消'
-        : outcome.taskState === 'interrupted' ? '已中断' : '失败';
-      const text = outcome.body.trim().length > 0
-        ? outcome.body.trim().slice(0, 1_200)
-        : '（员工没有返回正文）';
-      return `- ${outcome.displayName}（${outcome.workerId}）· ${state}\n${text}`;
-    });
-    const composed = [
-      `员工执行完成：${outcomes.length} 名中 ${succeeded} 名成功。`,
-      ...body,
-    ].join('\n\n');
-    // Worker output is untrusted model output. It must not smuggle a secret-like
-    // value into the Boss reply, and the reply stays within the published bound.
-    if (containsSecretLike(composed)) {
-      return `员工执行完成：${outcomes.length} 名中 ${succeeded} 名成功。汇报正文包含疑似敏感内容，已隐藏。`;
-    }
-    return composed.slice(0, 11_500);
-  }
-
   private answerAttention(action: {
     readonly type: 'answer_attention' | 'withdraw_attention' | 'expire_attention';
     readonly expectedSequence: number;

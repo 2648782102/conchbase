@@ -1,0 +1,5 @@
+{
+  "id": "boss-service-decomposition",
+  "summary": "ADR 0090 extracts three cohesive concerns from the 1518-line Boss service into independently tested modules: organization-intent-input (untrusted admission, bounds, identity derivation, error bounding), boss-memory (bounded scoped index plus reviewed proposal persistence), and worker-outcome-report (reply rendering with secret screening and length bound). The service keeps orchestration and drops to 1267 lines.",
+  "evidence": "src/runtime/boss-memory.ts"
+}
