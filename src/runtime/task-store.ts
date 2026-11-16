@@ -37,6 +37,16 @@ import { SqlitePlatformStore, migratePlatformSchema, type PlatformStore } from '
 import { SqliteOrganizationStore, migrateOrganizationSchema } from './organization-store.sqlite.js';
 import type { OrganizationStore } from './organization-store.js';
 import { SqliteAgentChatStore, migrateAgentChatSchema, type AgentChatStore } from './agent-chat-store.js';
+import { migrateAgentSchema } from './task-store-migrations.js';
+import type {
+  AgentRevisionRow,
+  AgentRow,
+  ConfigurationActiveRow,
+  ConfigurationRevisionRow,
+  EventRow,
+  TaskRow,
+  ToolRequestRow,
+} from './task-store-rows.js';
 import { SqliteAgentMemoryStore, type AgentMemoryStore } from './agent-memory.js';
 
 export interface TaskSnapshot {
@@ -164,72 +174,6 @@ export interface TaskStore {
   close(): void;
 }
 
-interface TaskRow {
-  readonly id: string;
-  readonly prompt: string;
-  readonly model: string;
-  readonly configuration_revision_id: string;
-  readonly state: string;
-  readonly attempt: number;
-  readonly output: string | null;
-  readonly partial_output: string | null;
-  readonly error: string | null;
-  readonly agent_id: string | null;
-  readonly agent_revision_id: string | null;
-  readonly provider_id: string | null;
-  readonly model_id: string | null;
-}
-
-interface EventRow {
-  readonly sequence: number;
-  readonly id: string;
-  readonly task_id: string;
-  readonly type: string;
-  readonly state: string;
-  readonly configuration_revision_id: string;
-  readonly attempt: number;
-  readonly data: string;
-  readonly agent_id: string | null;
-  readonly agent_revision_id: string | null;
-  readonly provider_id: string | null;
-  readonly model_id: string | null;
-}
-
-interface AgentRow {
-  readonly id: string;
-  readonly current_revision_id: string;
-  readonly archived: number;
-}
-
-interface AgentRevisionRow {
-  readonly id: string;
-  readonly agent_id: string;
-  readonly name: string;
-  readonly instructions: string;
-  readonly provider_id: string;
-  readonly model_id: string;
-  readonly granted_capabilities: string;
-  readonly created_at: string;
-}
-
-interface ToolRequestRow {
-  readonly id: string;
-  readonly task_id: string;
-  readonly attempt: number;
-  readonly configuration_revision_id: string;
-  readonly composition_document_id: string;
-  readonly composition_node_id: string;
-  readonly tool_name: string;
-  readonly arguments_digest: string;
-  readonly idempotency_key: string;
-  readonly status: string;
-  readonly created_at: string;
-  readonly approval_id: string | null;
-  readonly approval_decision: string | null;
-  readonly approval_reason_digest: string | null;
-  readonly approval_decided_at: string | null;
-}
-
 export class TaskNotFoundError extends Error {
   constructor() {
     super('Task not found.');
@@ -268,17 +212,6 @@ export interface ConfigurationState {
 export interface ApplyConfigurationResult {
   readonly state: ConfigurationState;
   readonly changed: boolean;
-}
-
-interface ConfigurationRevisionRow {
-  readonly id: string;
-  readonly document: string;
-  readonly applied_at: string;
-  readonly ordinal: number;
-}
-
-interface ConfigurationActiveRow {
-  readonly revision_id: string;
 }
 
 function isDatabaseLocked(cause: unknown): boolean {
@@ -1057,103 +990,7 @@ export class SqliteTaskStore implements TaskStore {
   }
 
   private migrateAgentSchema(): void {
-    const versionRow = this.database.prepare('PRAGMA user_version').get() as { user_version: number };
-    if (versionRow.user_version > 9) {
-      throw new Error(`Database schema version ${versionRow.user_version} is newer than this runtime supports.`);
-    }
-    for (const [table, column] of [
-      ['tasks', 'agent_id'],
-      ['tasks', 'agent_revision_id'],
-      ['tasks', 'provider_id'],
-      ['tasks', 'model_id'],
-      ['events', 'agent_id'],
-      ['events', 'agent_revision_id'],
-      ['events', 'provider_id'],
-      ['events', 'model_id'],
-    ] as const) {
-      const columns = this.database.prepare(`PRAGMA table_info(${table})`).all() as unknown as { name: string }[];
-      if (!columns.some((item) => item.name === column)) {
-        this.database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`);
-      }
-    }
-    const revisionColumns = this.database.prepare('PRAGMA table_info(agent_revisions)')
-      .all() as unknown as { name: string }[];
-    if (revisionColumns.length > 0 && !revisionColumns.some((item) => item.name === 'granted_capabilities')) {
-      this.database.exec("ALTER TABLE agent_revisions ADD COLUMN granted_capabilities TEXT NOT NULL DEFAULT '[]'");
-    }
-    this.database.exec(
-      'CREATE INDEX IF NOT EXISTS events_task_sequence ON events (task_id, sequence)',
-    );
-    this.database.exec(`
-      CREATE TABLE IF NOT EXISTS work_triggers (
-        id TEXT PRIMARY KEY,
-        source_event_id TEXT NOT NULL UNIQUE,
-        source_id TEXT NOT NULL,
-        source_kind TEXT NOT NULL,
-        thread_key TEXT NOT NULL,
-        thread_id TEXT NOT NULL,
-        payload_digest TEXT NOT NULL,
-        occurred_at TEXT NOT NULL,
-        canonical_digest TEXT NOT NULL,
-        proposal_digest TEXT NOT NULL
-      ) STRICT;
-      CREATE TABLE IF NOT EXISTS work_threads (
-        id TEXT PRIMARY KEY,
-        thread_key TEXT NOT NULL UNIQUE,
-        context_only INTEGER NOT NULL CHECK (context_only = 1),
-        trigger_ids TEXT NOT NULL,
-        work_item_id TEXT NOT NULL
-      ) STRICT;
-      CREATE TABLE IF NOT EXISTS work_mandates (
-        id TEXT PRIMARY KEY,
-        work_item_id TEXT NOT NULL,
-        revision INTEGER NOT NULL CHECK (revision = 1),
-        scope TEXT NOT NULL,
-        allowed_operations TEXT NOT NULL,
-        capabilities_digest TEXT NOT NULL
-      ) STRICT;
-      CREATE TABLE IF NOT EXISTS work_items (
-        id TEXT PRIMARY KEY,
-        state TEXT NOT NULL CHECK (state IN ('open', 'running', 'paused', 'completed', 'cancelled')),
-        thread_id TEXT NOT NULL,
-        trigger_id TEXT NOT NULL,
-        mandate_id TEXT NOT NULL,
-        mandate_revision INTEGER NOT NULL CHECK (mandate_revision = 1)
-      ) STRICT;
-      CREATE TABLE IF NOT EXISTS work_assignments (
-        id TEXT PRIMARY KEY,
-        work_item_id TEXT NOT NULL,
-        state TEXT NOT NULL CHECK (state IN ('planned', 'running', 'interrupted', 'succeeded', 'failed', 'cancelled')),
-        agent_revision_id TEXT NOT NULL,
-        configuration_revision_id TEXT NOT NULL,
-        mandate_revision INTEGER NOT NULL,
-        provider_id TEXT NOT NULL,
-        model_id TEXT NOT NULL
-      ) STRICT;
-      CREATE TABLE IF NOT EXISTS work_outbox (
-        id TEXT PRIMARY KEY,
-        work_item_id TEXT NOT NULL,
-        assignment_id TEXT NOT NULL,
-        status TEXT NOT NULL CHECK (status IN ('pending', 'sent', 'delivered', 'failed')),
-        destination_digest TEXT NOT NULL,
-        payload_digest TEXT NOT NULL
-      ) STRICT;
-      CREATE TABLE IF NOT EXISTS work_delivery_receipts (
-        id TEXT PRIMARY KEY,
-        work_item_id TEXT NOT NULL,
-        outbox_id TEXT NOT NULL,
-        status TEXT NOT NULL CHECK (status IN ('observed', 'accepted', 'rejected')),
-        destination_digest TEXT NOT NULL,
-        payload_digest TEXT NOT NULL
-      ) STRICT;
-      CREATE TABLE IF NOT EXISTS work_events (
-        sequence INTEGER PRIMARY KEY,
-        id TEXT NOT NULL UNIQUE,
-        type TEXT NOT NULL,
-        work_item_id TEXT NOT NULL,
-        data TEXT NOT NULL
-      ) STRICT;
-    `);
+    migrateAgentSchema(this.database);
   }
 
   private getAgentRow(agentId: string): AgentRow | null {

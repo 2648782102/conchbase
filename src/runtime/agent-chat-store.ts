@@ -4,7 +4,7 @@ import type {
   AgentChatMessageAuthor,
   AgentChatMessagePhase,
   AgentChatMessageState,
-} from './agent-chat.js';
+} from './agent-chat-types.js';
 
 export interface AgentChatConversationRecord {
   readonly id: string;

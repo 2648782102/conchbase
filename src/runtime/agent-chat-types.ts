@@ -39,3 +39,26 @@ export type AgentChatReasoningEffort = 'low' | 'medium' | 'high';
 
 export type AgentChatActivityKind = 'turn' | 'tool' | 'approval' | 'output';
 export type AgentChatActivityState = 'running' | 'succeeded' | 'failed' | 'waiting_approval';
+
+export interface AgentChatActivity {
+  readonly id: string;
+  readonly kind: AgentChatActivityKind;
+  readonly label: string;
+  readonly state: AgentChatActivityState;
+  readonly detail: string | null;
+}
+
+export interface AgentChatMessage {
+  readonly id: string;
+  readonly sequence: number;
+  readonly author: AgentChatMessageAuthor;
+  readonly body: string;
+  readonly state: AgentChatMessageState;
+  readonly taskId: string | null;
+  readonly error: string | null;
+  readonly phase: AgentChatMessagePhase;
+  readonly progress: number | null;
+  readonly updatedAt: string;
+  readonly replyToId: string | null;
+  readonly activity: readonly AgentChatActivity[];
+}

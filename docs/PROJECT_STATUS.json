@@ -184,6 +184,11 @@
       "evidence": "src/runtime/organization-contract.ts"
     },
     {
+      "id": "chat-write-read-separation",
+      "summary": "ADR 0094 extracts a pure projectMessage used by both the write path (which persists) and the read path (which does not). Reads no longer mutate durable conversation state, projection rules live in one testable function, and the per-instance task subscription that leaked a listener was removed in favour of a bounded lazy settle.",
+      "evidence": "src/runtime/agent-chat-projection.ts"
+    },
+    {
       "id": "concurrent-project-work",
       "summary": "Authorized organization workers bind to accepted durable WorkItems and bounded work controls through the existing execution substrate.",
       "evidence": "src/runtime/organization-coordinator.ts"
@@ -534,6 +539,12 @@
       "id": "boss-service-decomposition-fixture",
       "summary": "Executable fixtures assert intent admission rules (unknown fields, bounds, secret screening, conversation limits, identity stability, diagnostic preservation), memory precedence (shown vs written, reviewer can only narrow, failing reviewer writes nothing, runtime scope needs confirmation), and outcome rendering (states, empty bodies, secret withholding, length bound). The full suite passes unchanged after extraction.",
       "evidence": "tests/organization-intent-input.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "chat-projection-fixture",
+      "summary": "Executable fixtures cover streaming partial output, the null no-change contract, done/failed/cancelled/unavailable terminal projections, operator-rejection wording, missing tasks, and refusal to re-project terminal or non-assistant messages.",
+      "evidence": "tests/agent-chat-projection.test.ts",
       "executableFixture": true
     },
     {

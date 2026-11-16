@@ -25,6 +25,7 @@ import { containsSecretLike } from './secret-filter.js';
 import { MEMORY_LIMITS, renderMemoryIndex, type AgentMemoryInput, type AgentMemoryStore } from './agent-memory.js';
 import type { MemoryReviewInput, MemoryReviewResult } from './memory-review.js';
 import { BossMemory } from './boss-memory.js';
+import { restoreWorkerExecutions, type WorkerExecutionRecord } from './worker-execution-restore.js';
 import { composeOutcomeReply, type WorkerOutcome } from './worker-outcome-report.js';
 
 export { composeOutcomeReply, type WorkerOutcome } from './worker-outcome-report.js';
@@ -101,16 +102,6 @@ export interface BossModeServiceOptions {
    * validated and written unreviewed, which is the pre-reviewer behaviour.
    */
   readonly memoryReviewer?: (input: MemoryReviewInput) => Promise<MemoryReviewResult | null>;
-}
-
-interface WorkerExecutionRecord {
-  readonly workerId: string;
-  readonly projectId: string;
-  readonly taskId: string;
-  readonly workItemId: string;
-  readonly agentId: string;
-  readonly agentRevisionId: string;
-  readonly delegationId: string;
 }
 
 function actionAt(action: OrganizationAction, expectedSequence: number): OrganizationAction {
@@ -1209,26 +1200,9 @@ export class BossModeService {
     } catch {
       return;
     }
-    for (const event of snapshot.events) {
-      if (event.type === 'organization.worker_execution_recorded') {
-        const workerId = String(event.data.workerId ?? '');
-        const projectId = event.projectId;
-        const taskId = String(event.data.taskId ?? '');
-        const workItemId = String(event.data.workItemId ?? '');
-        const agentId = String(event.data.agentId ?? '');
-        if (!workerId || !taskId || !workItemId || !agentId) continue;
-        const worker = snapshot.workers.find((item) => item.id === workerId);
-        if (!worker) continue;
-        this.workerExecutions.set(workerId, Object.freeze({
-          workerId,
-          projectId,
-          taskId,
-          workItemId,
-          agentId,
-          agentRevisionId: worker.agentRevisionId,
-          delegationId: worker.delegationId,
-        }));
-      }
+    // The durable event log is the authority; this map is a cache of it.
+    for (const [workerId, record] of restoreWorkerExecutions(snapshot)) {
+      this.workerExecutions.set(workerId, record);
     }
   }
 

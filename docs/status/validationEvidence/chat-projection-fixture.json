@@ -1,0 +1,6 @@
+{
+  "id": "chat-projection-fixture",
+  "summary": "Executable fixtures cover streaming partial output, the null no-change contract, done/failed/cancelled/unavailable terminal projections, operator-rejection wording, missing tasks, and refusal to re-project terminal or non-assistant messages.",
+  "evidence": "tests/agent-chat-projection.test.ts",
+  "executableFixture": true
+}

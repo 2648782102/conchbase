@@ -52,7 +52,7 @@ const SUITES = Object.freeze({
     'boss-memory-write.test.ts', 'boss-memory.test.ts', 'organization-intent-input.test.ts', 'worker-outcome-report.test.ts',
   ],
   'agent-chat': [
-    'agent-chat.test.ts', 'agent-chat-state.test.ts', 'agent-chat-history.test.ts', 'agent-chat-store.test.ts',
+    'agent-chat.test.ts', 'agent-chat-state.test.ts', 'agent-chat-projection.test.ts', 'agent-chat-history.test.ts', 'agent-chat-store.test.ts',
     'agent-chat-stream.test.ts', 'agent-chat-tools.test.ts', 'agent-done-idle.test.ts', 'primary-conversation.test.ts',
   ],
   capabilities: [
@@ -70,7 +70,8 @@ const SUITES = Object.freeze({
     'agent-migration.test.ts', 'configuration-store.test.ts',
   ],
   integration: [
-    'organization-e2e.test.ts', 'agent-paired-runtime.test.ts',
+    'worker-execution-restore.test.ts', 'organization-e2e.test.ts', 'agent-paired-runtime.test.ts',
+    'task-store-migrations.test.ts',
   ],
   meta: [
     'repository-guardrails.test.ts', 'runtime-config.test.ts',

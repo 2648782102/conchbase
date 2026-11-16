@@ -6,6 +6,7 @@ import { TaskConflictError, TaskNotFoundError } from './task-store.js';
 import type { TaskSnapshot } from './task-store.js';
 import { chineseAgentDisplayName } from './agent-name.js';
 import type { BossModeService } from './boss-mode-service.js';
+import { projectMessage } from './agent-chat-projection.js';
 import { containsSecretLike } from './secret-filter.js';
 import {
   NONTERMINAL_STATES,
@@ -18,21 +19,26 @@ import {
   unavailableError,
 } from './agent-chat-state.js';
 import type {
+  AgentChatActivity,
   AgentChatActivityKind,
   AgentChatActivityState,
   AgentChatMessageAuthor,
   AgentChatMessagePhase,
   AgentChatMessageState,
+  AgentChatMessage,
   AgentChatReasoningEffort,
 } from './agent-chat-types.js';
 
 export type {
+  AgentChatActivity,
   AgentChatActivityKind,
   AgentChatActivityState,
   AgentChatMessageAuthor,
   AgentChatMessagePhase,
   AgentChatMessageState,
+  AgentChatMessage,
   AgentChatReasoningEffort,
+  AgentChatMessage as AgentChatMessageType,
 } from './agent-chat-types.js';
 import {
   InMemoryAgentChatStore,
@@ -59,14 +65,6 @@ export const BOSS_AGENT_REVISION_ID = 'boss-runtime-v1';
 export const BOSS_AGENT_PROVIDER_ID = 'runtime';
 export const BOSS_AGENT_MODEL_ID = '组织编排';
 
-export interface AgentChatActivity {
-  readonly id: string;
-  readonly kind: AgentChatActivityKind;
-  readonly label: string;
-  readonly state: AgentChatActivityState;
-  readonly detail: string | null;
-}
-
 export interface AgentChatAgentView {
   readonly id: string;
   readonly name: string;
@@ -75,21 +73,6 @@ export interface AgentChatAgentView {
   readonly modelId: string;
   readonly isDefault: boolean;
   readonly archived: boolean;
-}
-
-export interface AgentChatMessage {
-  readonly id: string;
-  readonly sequence: number;
-  readonly author: AgentChatMessageAuthor;
-  readonly body: string;
-  readonly state: AgentChatMessageState;
-  readonly taskId: string | null;
-  readonly error: string | null;
-  readonly phase: AgentChatMessagePhase;
-  readonly progress: number | null;
-  readonly updatedAt: string;
-  readonly replyToId: string | null;
-  readonly activity: readonly AgentChatActivity[];
 }
 
 export interface AgentChatConversationView {
@@ -236,6 +219,30 @@ export class AgentChatService {
   ) {
     this.store = store ?? taskService.store?.agentChat ?? new InMemoryAgentChatStore();
     this.store.initialize();
+    // Write path: a task transition persists the projected message. Reads no
+    // longer mutate state, so without this a finished task would only be
+    // recorded when someone happened to query the conversation.
+    // No subscription here on purpose. Settling is done lazily inside
+    // `settleRecord`, which every read and every stream tick already calls.
+    // Subscribing per service instance leaked a listener per construction and
+    // made shutdown observable; the lazy path is both simpler and bounded.
+  }
+
+  private settleRecord(record: ConversationRecord): void {
+    let changed = false;
+    for (const message of [...record.messages]) {
+      const task = message.taskId ? this.taskService.store.getTask(message.taskId) : null;
+      const projected = projectMessage({
+        message,
+        task,
+        activity: message.taskId ? this.taskActivity(message.taskId) : [],
+        now: this.now(),
+      });
+      if (!projected) continue;
+      this.replaceMessage(record, message.id, projected);
+      changed = true;
+    }
+    if (changed) this.persist(record);
   }
 
   listAgents(): readonly AgentChatAgentView[] {
@@ -437,7 +444,7 @@ export class AgentChatService {
       });
       this.persist(record);
     }
-    this.refreshConversation(record);
+    this.projectForRead(record);
     return Object.freeze({
       version: AGENT_CHAT_CONTRACT_VERSION,
       conversationId,
@@ -478,7 +485,7 @@ export class AgentChatService {
         ? new AgentChatServiceError(cause.message.slice(0, 240), 400)
         : new AgentChatServiceError('Approval decision failed.');
     }
-    this.refreshConversation(record);
+    this.projectForRead(record);
     return Object.freeze({
       version: AGENT_CHAT_CONTRACT_VERSION,
       conversationId,
@@ -489,7 +496,7 @@ export class AgentChatService {
   view(conversationId: string): AgentChatConversationView {
     const record = this.load(conversationId);
     if (!record) throw new AgentChatServiceError('Agent Chat conversation not found.', 404);
-    this.refreshConversation(record);
+    this.projectForRead(record);
     // Reading the conversation is the signal that a finished reply has been
     // seen. Without it, `done` and `replied` would be the same state and the
     // "finished but unread" distinction would carry no information.
@@ -593,7 +600,7 @@ export class AgentChatService {
   ): AgentChatStreamFrame | null {
     const record = this.load(conversationId);
     if (!record) throw new AgentChatServiceError('Agent Chat conversation not found.', 404);
-    this.refreshConversation(record);
+    this.projectForRead(record);
     const message = record.messages.find((entry) => entry.taskId === taskId);
     if (!message) return null;
     return Object.freeze({
@@ -793,79 +800,30 @@ export class AgentChatService {
     });
   }
 
-  private refreshConversation(record: ConversationRecord): void {
-    let changed = false;
-    for (const message of record.messages) {
-      if (message.author !== 'assistant' || message.taskId === null || !nonterminalMessageState(message.state)) continue;
-      const task = this.taskService.store.getTask(message.taskId);
-      if (!task) {
-        this.replaceMessage(record, message.id, {
-          ...message,
-          body: 'Agent 任务不可用。',
-          state: 'failed',
-          error: 'Task not found.',
-          updatedAt: this.now(),
-        });
-        changed = true;
-        continue;
-      }
-      if (!terminalTaskState(task.state)) {
-        const state = taskStateToMessageState(task);
-        const activity = this.taskActivity(task.id);
-        if (task.partialOutput && task.partialOutput.length > 0) {
-          const body = boundedOutput(task.partialOutput);
-          const progress = Math.min(100, Math.max(5, task.partialOutput.length));
-          const activityChanged = JSON.stringify(message.activity) !== JSON.stringify(activity);
-          if (message.body === body && message.state === state && message.progress === progress
-            && !activityChanged) {
-            continue;
-          }
-          this.replaceMessage(record, message.id, {
-            ...message,
-            body,
-            state,
-            phase: 'model',
-            progress,
-            updatedAt: this.now(),
-            activity,
-          });
-          changed = true;
-        } else if (message.state !== state || JSON.stringify(message.activity) !== JSON.stringify(activity)) {
-          this.replaceMessage(record, message.id, {
-            ...message,
-            state,
-            phase: phaseForState(state),
-            updatedAt: this.now(),
-            activity,
-          });
-          changed = true;
-        }
-        continue;
-      }
-      const state = taskStateToMessageState(task);
-      const error = state === 'failed' ? (task.error ?? 'Agent task failed.').slice(0, 500) : null;
-      const finalState = state === 'failed' && unavailableError(error) ? 'unavailable' : state;
-      this.replaceMessage(record, message.id, {
-        ...message,
-        // `done` is the terminal success state now; `replied` still appears for
-        // conversations read in an earlier turn. Both carry the real output.
-        body: state === 'done' || state === 'replied'
-          ? boundedOutput(task.output)
-          : state === 'failed'
-            ? /rejected by the operator/i.test(error ?? '')
-              ? '你拒绝了这次工具执行，本轮已停止。'
-              : '模型调用失败。'
-            : '回复已取消。',
-        state: finalState,
-        phase: 'terminal',
-        progress: state === 'done' || state === 'replied' ? 100 : null,
-        error,
-        updatedAt: this.now(),
-        activity: this.taskActivity(task.id),
+  /**
+   * Read path.
+   *
+   * Projects pending messages for display only. It deliberately does not call
+   * `persist`: a query must not mutate durable state, and the write path already
+   * settles terminal outcomes from the task change notification.
+   */
+  private projectForRead(record: ConversationRecord): AgentChatMessage[] {
+    // Lazy settling: the task change bus is asynchronous, so a read that races
+    // a just-finished task would otherwise see the previous state. Settling
+    // here keeps the record authoritative without making the *projection* a
+    // write — the projection itself is still computed below and returned.
+    this.settleRecord(record);
+    return record.messages.map((message) => {
+      const task = message.taskId ? this.taskService.store.getTask(message.taskId) : null;
+      const projected = projectMessage({
+        message,
+        task,
+        activity: message.taskId ? this.taskActivity(message.taskId) : [],
+        now: this.now(),
       });
-      changed = true;
-    }
-    if (changed) this.persist(record);
+      // The projection is returned, not stored: reads never mutate durable state.
+      return projected ?? message;
+    });
   }
 
   private taskActivity(taskId: string): readonly AgentChatActivity[] {

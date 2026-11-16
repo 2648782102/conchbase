@@ -25,6 +25,7 @@ const EXEMPT = Object.freeze({
   'work-store.ts': 'reached through task-store in work-contract and platform-api tests',
   'organization-contract-http.ts': 'pure transport mapping, asserted through organization-api route tests',
   'organization-public-contract.ts': 'pure projection constants, asserted through organization-api route tests',
+  'task-store-rows.ts': 'type-only row declarations; every mapping they describe is asserted through task-service and persistence fixtures',
   'agent-chat-types.ts': 'type-only module; every runtime behaviour it types is asserted in agent-chat-state and agent-chat tests',
 });
 
