@@ -184,6 +184,11 @@
       "evidence": "src/runtime/organization-contract.ts"
     },
     {
+      "id": "bounded-worker-concurrency",
+      "summary": "ADR 0099 makes worker outcomes within one Boss turn concurrent: task terminal states are awaited in parallel while reports, attention, retirement, and relays are applied serially in dispatch order. The final reply and organization events remain deterministic.",
+      "evidence": "src/runtime/boss-mode-service.ts"
+    },
+    {
       "id": "capability-grant-audit",
       "summary": "ADR 0097 adds a Runtime-owned read-only capability grant audit at GET /v1/agents/capability-grants. It reports the grants pinned to each Agent's current revision, marks whether each tool or Skill is registered now, and lists stale grants with agent and revision ids without changing the inert-grant execution rule.",
       "evidence": "src/runtime/capability-audit.ts"
@@ -559,6 +564,12 @@
       "id": "boss-service-decomposition-fixture",
       "summary": "Executable fixtures assert intent admission rules (unknown fields, bounds, secret screening, conversation limits, identity stability, diagnostic preservation), memory precedence (shown vs written, reviewer can only narrow, failing reviewer writes nothing, runtime scope needs confirmation), and outcome rendering (states, empty bodies, secret withholding, length bound). The full suite passes unchanged after extraction.",
       "evidence": "tests/organization-intent-input.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "bounded-worker-concurrency-fixture",
+      "summary": "A deterministic fixture proves two workers in one plan start within 80ms of each other, complete in roughly the time of the slower worker rather than the sum, and are reported in dispatch order.",
+      "evidence": "tests/boss-mode-service.test.ts",
       "executableFixture": true
     },
     {

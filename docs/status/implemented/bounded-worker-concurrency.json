@@ -1,0 +1,5 @@
+{
+  "id": "bounded-worker-concurrency",
+  "summary": "ADR 0099 makes worker outcomes within one Boss turn concurrent: task terminal states are awaited in parallel while reports, attention, retirement, and relays are applied serially in dispatch order. The final reply and organization events remain deterministic.",
+  "evidence": "src/runtime/boss-mode-service.ts"
+}

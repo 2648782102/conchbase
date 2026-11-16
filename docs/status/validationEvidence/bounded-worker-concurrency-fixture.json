@@ -1,0 +1,6 @@
+{
+  "id": "bounded-worker-concurrency-fixture",
+  "summary": "A deterministic fixture proves two workers in one plan start within 80ms of each other, complete in roughly the time of the slower worker rather than the sum, and are reported in dispatch order.",
+  "evidence": "tests/boss-mode-service.test.ts",
+  "executableFixture": true
+}

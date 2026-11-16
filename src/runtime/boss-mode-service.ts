@@ -19,6 +19,7 @@ import { OrganizationCoordinator } from './organization-coordinator.js';
 import type { OrganizationRelay } from './organization-execution.js';
 import type { OrganizationStore } from './organization-store.js';
 import type { TaskService } from './task-service.js';
+import type { TaskSnapshot } from './task-store.js';
 import { type WorkTriggerRequest } from './work-contract.js';
 import { buildBossOrganizationFacts, runtimeCapabilityFacts } from './boss-organization-context.js';
 import { containsSecretLike } from './secret-filter.js';
@@ -1012,27 +1013,44 @@ export class BossModeService {
     }
   }
 
+  /**
+   * Waits for one task to reach a terminal state.
+   *
+   * Returns null when the task disappears; outcomes with no final state must
+   * never become a report. This is read-only: the caller applies every event in
+   * dispatch order after all waits settle.
+   */
+  private async waitForTerminalTask(taskId: string): Promise<TaskSnapshot | null> {
+    const taskService = this.taskService;
+    if (!taskService) return null;
+    let task = taskService.store.getTask(taskId);
+    if (!task) return null;
+    while (!['succeeded', 'failed', 'cancelled', 'interrupted'].includes(task.state)) {
+      await new Promise<void>((resolve) => { setTimeout(resolve, 10); });
+      const next = taskService.store.getTask(taskId);
+      if (!next) return null;
+      task = next;
+    }
+    return task;
+  }
+
   private async collectWorkerOutcomes(
     records: readonly WorkerExecutionRecord[],
   ): Promise<readonly WorkerOutcome[]> {
     const taskService = this.taskService;
     if (!taskService) return Object.freeze([]);
+
+    // Wait for all worker tasks in one batch concurrently, but keep the records
+    // in their original order. All writes below stay serial, so concurrency can
+    // never reorder organization events or make the reply timing-dependent.
+    const terminalTasks = await Promise.all(
+      records.map((record) => this.waitForTerminalTask(record.taskId)),
+    );
+
     const outcomes: WorkerOutcome[] = [];
-    for (const record of records) {
-      let task = taskService.store.getTask(record.taskId);
+    for (const [index, record] of records.entries()) {
+      const task = terminalTasks[index];
       if (!task) continue;
-      let missing = false;
-      while (!['succeeded', 'failed', 'cancelled', 'interrupted'].includes(task.state)) {
-        await new Promise<void>((resolve) => { setTimeout(resolve, 10); });
-        const next = taskService.store.getTask(record.taskId);
-        if (!next) {
-          missing = true;
-          break;
-        }
-        task = next;
-      }
-      // A task that disappeared mid-wait has no outcome to report.
-      if (missing) continue;
       const terminalState = task.state as WorkerOutcome['taskState'];
       const output = task.state === 'succeeded' ? task.output ?? '' : task.error ?? task.state;
       outcomes.push(Object.freeze({

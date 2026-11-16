@@ -793,3 +793,86 @@ test('a plan that repeats the implicit authorize and start steps is not a failur
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('workers in one plan are awaited concurrently and reported in dispatch order', async () => {
+  // Two workers each take ~150ms. Sequential waiting costs ~300ms; concurrent
+  // waiting should be close to the slower single task. The assertion is loose
+  // enough for CI jitter but still fails on the old serial implementation.
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-concurrency-'));
+  const delays = new Map<string, number>();
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture-model',
+    fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/v1/models')) {
+        return new Response(JSON.stringify({ data: [{ id: 'fixture-model' }] }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      }
+      const body = JSON.parse(String(init?.body ?? '{}')) as { messages?: readonly { content?: string }[] };
+      const prompt = JSON.stringify(body.messages ?? '');
+      // Worker ids are converted to Chinese display names with a middle dot.
+      const worker = prompt.includes('wrk·slow') ? 'wrk_slow' : prompt.includes('wrk·fast') ? 'wrk_fast' : null;
+      const delay = worker === 'wrk_slow' ? 150 : worker === 'wrk_fast' ? 150 : 0;
+      if (worker) delays.set(worker, Date.now());
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return new Response(
+        `data: ${JSON.stringify({ choices: [{ delta: { content: worker ? `${worker} done` : 'done' } }] })}\n\ndata: [DONE]\n\n`,
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      );
+    }) as typeof globalThis.fetch,
+  });
+  try {
+    const store = new InMemoryOrganizationStore();
+    const parser: OrganizationIntentParser = {
+      async parse(input) {
+        const projectId = 'project_concurrent';
+        const worker = (id: string): OrganizationAction => parseOrganizationAction({
+          type: 'create_agent',
+          expectedSequence: 0,
+          projectId,
+          workerId: id,
+          delegationId: `del_${id}`,
+          agentRevisionId: 'agr_placeholder',
+          displayName: id,
+          instructionsDigest: 'sha256_instructions',
+          scope: ['project:concurrent'],
+          capabilities: ['cap_read_context'],
+          model: { providerId: 'magpie', modelId: 'fixture-model' },
+          maxDelegationDepth: 0,
+          ttlEvents: 100,
+        });
+        return Object.freeze({
+          version: 1 as const,
+          intentId: input.intentId,
+          actions: Object.freeze([
+            parseOrganizationAction({
+              type: 'open_project', expectedSequence: input.expectedSequence,
+              projectId, originTriggerId: input.intentId,
+            }),
+            parseOrganizationAction({
+              type: 'activate_project', expectedSequence: input.expectedSequence + 1, projectId,
+            }),
+            worker('wrk_slow'),
+            worker('wrk_fast'),
+          ]),
+          relay: '开始。',
+        });
+      },
+    };
+    const service = new BossModeService(store, taskService, { parser, waitForTasks: true });
+    const started = Date.now();
+    const result = await service.submit({ text: '并发做两件事', idempotencyKey: 'concurrency-1' });
+    const elapsed = Date.now() - started;
+
+    const fastStart = delays.get('wrk_fast') ?? Number.POSITIVE_INFINITY;
+    const slowStart = delays.get('wrk_slow') ?? Number.POSITIVE_INFINITY;
+    assert.ok(Math.abs(fastStart - slowStart) < 80, `workers did not overlap: ${fastStart} vs ${slowStart}`);
+    assert.ok(elapsed < 450, `expected concurrent completion, took ${elapsed}ms`);
+    // Outcome order is dispatch order, not completion order.
+    assert.match(result.reply ?? '', /wrk_slow[\s\S]*wrk_fast/);
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
