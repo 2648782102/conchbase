@@ -47,10 +47,18 @@ async function runGit(
   maxBytes: number,
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
+    // Minimal environment for the same reason subprocess plugins use one:
+    // an external binary must not inherit unrelated credentials, and hooks
+    // must not be able to prompt for them.
+    const env: NodeJS.ProcessEnv = { GIT_TERMINAL_PROMPT: '0' };
+    for (const name of ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL']) {
+      const value = process.env[name];
+      if (value !== undefined) env[name] = value;
+    }
     const child = spawn('git', [...args], {
       cwd,
       shell: false,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+      env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stdout = '';

@@ -47,6 +47,10 @@ Consequences: blurs the premise that built-ins are pure filesystem operations, a
 
 Consequences: keeps the default surface free of subprocesses, makes the risk explicit and configurable, and reuses the existing provider composition. Accepted.
 
+## Correction recorded
+
+A later security audit found that the first implementation copied the whole parent `process.env` into the git child with only `GIT_TERMINAL_PROMPT` overridden. That would expose unrelated credentials to git hooks or helpers. The subprocess now receives only PATH/HOME/TMPDIR/LANG/LC_ALL (when present) plus `GIT_TERMINAL_PROMPT=0`, matching the minimal-environment rule used by subprocess plugins. A source-level guard test prevents a regression to environment spreading.
+
 ## Validation
 
 - Unit fixtures cover: fixed argument vectors, no-shell invocation, workspace confinement, absent-binary handling, non-repository directories, output caps, and that no write subcommand is reachable.

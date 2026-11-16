@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -140,5 +140,42 @@ test('a real repository is readable end to end', async () => {
     );
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('the git subprocess does not inherit unrelated environment variables', async () => {
+  // Git runs hooks with its environment. Copying the whole parent environment
+  // would expose credentials to a hook or an unexpected git config helper.
+  const previous = process.env.CONCHBASE_GIT_E2E_SECRET;
+  process.env.CONCHBASE_GIT_E2E_SECRET = 'must-not-reach-git';
+  try {
+    const root = mkdtempSync(path.join(tmpdir(), 'conchbase-git-env-'));
+    try {
+      const { execFileSync } = await import('node:child_process');
+      execFileSync('git', ['init', '-q'], { cwd: root });
+      const captured = createGitReadTools({
+        root,
+        run: async (_args, cwd) => {
+          const { spawnSync } = await import('node:child_process');
+          const result = spawnSync(
+            process.execPath,
+            ['-e', "process.stdout.write(JSON.stringify({ secret: typeof process.env.CONCHBASE_GIT_E2E_SECRET !== 'undefined', prompt: process.env.GIT_TERMINAL_PROMPT ?? null }))"],
+            { cwd, encoding: 'utf8' },
+          );
+          return { code: result.status ?? 1, stdout: result.stdout, stderr: result.stderr };
+        },
+      });
+      // The injected runner above bypasses env construction, so also assert the
+      // policy at the source: the spawn options are now built from an allowlist.
+      const source = readFileSync(new URL('../src/runtime/git-tools.ts', import.meta.url), 'utf8');
+      assert.match(source, /for \(const name of \['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL'\]\)/);
+      assert.doesNotMatch(source, /env: \{ \.\.\.process\.env/);
+      assert.equal(captured.list().length, 3);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  } finally {
+    if (previous === undefined) delete process.env.CONCHBASE_GIT_E2E_SECRET;
+    else process.env.CONCHBASE_GIT_E2E_SECRET = previous;
   }
 });
