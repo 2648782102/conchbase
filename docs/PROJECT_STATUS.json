@@ -189,6 +189,11 @@
       "evidence": "src/runtime/organization-action-contract.ts"
     },
     {
+      "id": "done-versus-replied",
+      "summary": "ADR 0089 splits the single terminal success state into `done` (finished, unread) and `replied` (finished, read). Reading a conversation promotes done messages and persists last_read_at durably; the conversation list exposes unread and lastState so a client can surface work needing attention without opening each conversation.",
+      "evidence": "src/runtime/agent-chat.ts"
+    },
+    {
       "id": "durable-intent-text",
       "summary": "ADR 0062 persists bounded intent text in organization_intent_texts so project purpose survives restart, and the Boss prompt allows generating a projectId for open_project.",
       "evidence": "src/runtime/organization-store.sqlite.ts"
@@ -503,6 +508,12 @@
       "id": "controlled-execution-v1-fixture",
       "summary": "An executable fixture covers explicit grants, stale versions, idempotency, approved fake execution, rejected requests, revocation, public paths, discovery, digest-only results, and no plaintext/private-path leakage.",
       "evidence": "tests/controlled-execution.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "done-versus-replied-fixture",
+      "summary": "Executable fixtures assert a completed reply is stored as done before any view, that viewing promotes it to replied and records lastReadAt, and that the conversation list reports the post-read shape.",
+      "evidence": "tests/agent-done-idle.test.ts",
       "executableFixture": true
     },
     {

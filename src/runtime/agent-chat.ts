@@ -45,6 +45,12 @@ export type AgentChatMessageState =
   | 'waiting_approval'
   | 'waiting_attention'
   | 'replied'
+  /**
+   * The agent finished and the user has not looked at the result yet.
+   * Distinct from 'replied' (already seen) and from an idle agent with nothing
+   * to report: "done, unread" is the state a task list should surface first.
+   */
+  | 'done'
   | 'unavailable';
 
 export type AgentChatMessagePhase =
@@ -116,6 +122,13 @@ export interface AgentChatConversationSummary {
   readonly createdAt: string;
   readonly messageCount: number;
   readonly lastMessagePreview: string;
+  /**
+   * True when this conversation has a finished reply the user has not opened.
+   * That is the one case a task list should surface above everything else; an
+   * idle conversation with nothing new is deliberately not flagged.
+   */
+  readonly unread: boolean;
+  readonly lastState: AgentChatMessageState | null;
 }
 
 export interface AgentChatConversationList {
@@ -200,7 +213,9 @@ function nonterminalMessageState(state: AgentChatMessageState): boolean {
 }
 
 function taskStateToMessageState(task: TaskSnapshot): AgentChatMessageState {
-  if (task.state === 'succeeded') return 'replied';
+  // A finished task is `done` (unread) until the user reads the conversation.
+  // Returning `replied` here would skip the distinction entirely.
+  if (task.state === 'succeeded') return 'done';
   if (task.state === 'failed' || task.state === 'interrupted') return 'failed';
   if (task.state === 'cancelled') return 'cancelled';
   if (task.state === 'waiting_approval') return 'waiting_approval';
@@ -226,7 +241,8 @@ function phaseForState(state: AgentChatMessageState): AgentChatMessagePhase {
   if (state === 'thinking' || state === 'streaming' || state === 'pending') return 'preparing';
   if (state === 'organizing') return 'organization';
   if (state === 'waiting_attention' || state === 'waiting_approval') return 'human';
-  if (state === 'replied' || state === 'failed' || state === 'cancelled' || state === 'unavailable' || state === 'succeeded') return 'terminal';
+  if (state === 'replied' || state === 'done' || state === 'failed' || state === 'cancelled'
+    || state === 'unavailable' || state === 'succeeded') return 'terminal';
   return 'accepted';
 }
 
@@ -336,6 +352,7 @@ export class AgentChatService {
       isBoss,
       reasoningEffort,
       createdAt: this.now(),
+      lastReadAt: null,
       messages: [],
       idempotency: new Map(),
     };
@@ -525,6 +542,10 @@ export class AgentChatService {
     const record = this.load(conversationId);
     if (!record) throw new AgentChatServiceError('Agent Chat conversation not found.', 404);
     this.refreshConversation(record);
+    // Reading the conversation is the signal that a finished reply has been
+    // seen. Without it, `done` and `replied` would be the same state and the
+    // "finished but unread" distinction would carry no information.
+    this.markRead(record);
     return Object.freeze({
       version: AGENT_CHAT_CONTRACT_VERSION,
       id: record.id,
@@ -605,7 +626,7 @@ export class AgentChatService {
       sequence: record.messages.length + 1,
       author: 'assistant',
       body: text,
-      state: 'replied',
+      state: 'done',
       taskId: null,
       error: null,
       phase: 'terminal',
@@ -660,12 +681,15 @@ export class AgentChatService {
       version: AGENT_CHAT_CONTRACT_VERSION,
       conversations: Object.freeze(records.map((record) => {
         const last = [...record.messages].reverse().find((entry) => entry.body.length > 0);
+        const unread = record.messages.some((entry) => entry.author === 'assistant' && entry.state === 'done');
         return Object.freeze({
           id: record.id,
           agentId: record.agentId,
           reasoningEffort: record.reasoningEffort,
           createdAt: record.createdAt,
           messageCount: record.messages.length,
+          unread,
+          lastState: last?.state ?? null,
           lastMessagePreview: (last?.body ?? '').slice(0, 120),
         });
       })),
@@ -754,7 +778,7 @@ export class AgentChatService {
         body: submitted.reply ?? (failed
           ? 'Runtime 执行组织动作时失败。'
           : `已提交 ${submitted.actions.length} 个 Runtime 可验证动作。`),
-        state: failed ? 'failed' : waiting ? 'waiting_attention' : dispatched ? 'organizing' : 'replied',
+        state: failed ? 'failed' : waiting ? 'waiting_attention' : dispatched ? 'organizing' : 'done',
         phase: waiting ? 'human' : dispatched ? 'organization' : 'terminal',
         error: failed ? 'Boss Agent execution failed.' : null,
         updatedAt: this.now(),
@@ -795,7 +819,7 @@ export class AgentChatService {
         this.replaceMessage(record, assistantMessage.id, {
           ...this.getMessage(record, assistantMessage.id)!,
           body: settled.reply ?? this.getMessage(record, assistantMessage.id)!.body,
-          state: failed ? 'failed' : waiting ? 'waiting_attention' : 'replied',
+          state: failed ? 'failed' : waiting ? 'waiting_attention' : 'done',
           phase: waiting ? 'human' : 'terminal',
           error: failed ? 'Boss Agent execution failed.' : null,
           updatedAt: this.now(),
@@ -875,7 +899,9 @@ export class AgentChatService {
       const finalState = state === 'failed' && unavailableError(error) ? 'unavailable' : state;
       this.replaceMessage(record, message.id, {
         ...message,
-        body: state === 'replied'
+        // `done` is the terminal success state now; `replied` still appears for
+        // conversations read in an earlier turn. Both carry the real output.
+        body: state === 'done' || state === 'replied'
           ? boundedOutput(task.output)
           : state === 'failed'
             ? /rejected by the operator/i.test(error ?? '')
@@ -884,7 +910,7 @@ export class AgentChatService {
             : '回复已取消。',
         state: finalState,
         phase: 'terminal',
-        progress: state === 'replied' ? 100 : null,
+        progress: state === 'done' || state === 'replied' ? 100 : null,
         error,
         updatedAt: this.now(),
         activity: this.taskActivity(task.id),
@@ -1031,6 +1057,27 @@ export class AgentChatService {
       if (oldest !== undefined && oldest !== conversationId) this.conversations.delete(oldest);
     }
     return record;
+  }
+
+  /**
+   * Records that the user has now seen this conversation.
+   *
+   * `done` means "finished and not yet looked at"; `replied` means "finished and
+   * seen". Only a read can move one to the other, so the marker is durable and
+   * survives restart rather than being a per-process flag.
+   */
+  private markRead(record: ConversationRecord): void {
+    const now = this.now();
+    let changed = false;
+    for (const message of record.messages) {
+      if (message.author !== 'assistant' || message.state !== 'done') continue;
+      this.replaceMessage(record, message.id, Object.freeze({ ...message, state: 'replied' }));
+      changed = true;
+    }
+    if (!changed) return;
+    // `ConversationRecord` is readonly; persist a copy carrying the new marker
+    // rather than mutating the loaded record in place.
+    this.persist({ ...record, lastReadAt: now });
   }
 
   private persist(record: ConversationRecord): void {

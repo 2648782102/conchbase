@@ -23,6 +23,7 @@ function record(id = 'chat_fixture'): AgentChatConversationRecord {
     isBoss: true,
     reasoningEffort: 'medium',
     createdAt: '2026-11-14T00:00:00.000Z',
+    lastReadAt: null,
     messages: Object.freeze([Object.freeze({
       id: 'amsg_fixture',
       sequence: 1,

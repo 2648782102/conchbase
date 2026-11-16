@@ -5399,7 +5399,7 @@ components:
           items:
             type: object
             additionalProperties: false
-            required: [id, agentId, reasoningEffort, createdAt, messageCount, lastMessagePreview]
+            required: [id, agentId, reasoningEffort, createdAt, messageCount, lastMessagePreview, unread, lastState]
             properties:
               id:
                 type: string
@@ -5415,6 +5415,16 @@ components:
               lastMessagePreview:
                 type: string
                 maxLength: 120
+              unread:
+                type: boolean
+                description: >-
+                  True when a finished reply has not been read. This is the flag a task list should
+                  use to surface work; an idle conversation with nothing new is not flagged.
+              lastState:
+                description: Terminal or current state of the last non-empty message.
+                oneOf:
+                  - $ref: '#/components/schemas/AgentChatMessageState'
+                  - type: 'null'
     AgentChatConversationCreateRequest:
       type: object
       additionalProperties: false
@@ -5442,7 +5452,10 @@ components:
               maxLength: 300
     AgentChatMessageState:
       type: string
-      enum: [published, pending, succeeded, failed, cancelled, thinking, streaming, organizing, waiting_approval, waiting_attention, replied, unavailable]
+      enum: [published, pending, succeeded, failed, cancelled, thinking, streaming, organizing, waiting_approval, waiting_attention, done, replied, unavailable]
+      description: >-
+        `done` means the agent finished and the user has not read the conversation yet. Reading it
+        transitions the message to `replied`. A task list should surface `done` and ignore `replied`.
     AgentChatMessagePhase:
       type: string
       enum: [accepted, preparing, model, organization, human, terminal]

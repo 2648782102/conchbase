@@ -16,6 +16,11 @@ export interface AgentChatConversationRecord {
   readonly isBoss: boolean;
   readonly reasoningEffort: 'low' | 'medium' | 'high';
   readonly createdAt: string;
+  /**
+   * Last time the user actually looked at this conversation. A finished reply
+   * stays `done` (unread) until this moves past the message's `updatedAt`.
+   */
+  readonly lastReadAt: string | null;
   readonly messages: readonly AgentChatMessage[];
   readonly idempotency: readonly (readonly [string, string])[];
 }
@@ -90,6 +95,7 @@ interface ConversationRow {
   readonly is_boss: number;
   readonly reasoning_effort: string;
   readonly created_at: string;
+  readonly last_read_at: string | null;
 }
 
 interface MessageRow {
@@ -146,8 +152,8 @@ export class SqliteAgentChatStore implements AgentChatStore {
       this.database.prepare(`
         INSERT INTO agent_chat_conversations (
           id, agent_id, agent_revision_id, provider_id, model_id,
-          configuration_revision_id, is_boss, reasoning_effort, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          configuration_revision_id, is_boss, reasoning_effort, created_at, last_read_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           agent_id = excluded.agent_id,
           agent_revision_id = excluded.agent_revision_id,
@@ -155,7 +161,8 @@ export class SqliteAgentChatStore implements AgentChatStore {
           model_id = excluded.model_id,
           configuration_revision_id = excluded.configuration_revision_id,
           is_boss = excluded.is_boss,
-          reasoning_effort = excluded.reasoning_effort
+          reasoning_effort = excluded.reasoning_effort,
+          last_read_at = excluded.last_read_at
       `).run(
         record.id,
         record.agentId,
@@ -166,6 +173,7 @@ export class SqliteAgentChatStore implements AgentChatStore {
         record.isBoss ? 1 : 0,
         record.reasoningEffort,
         record.createdAt,
+        record.lastReadAt ?? null,
       );
       for (const message of record.messages) {
         this.database.prepare(`
@@ -217,7 +225,7 @@ export class SqliteAgentChatStore implements AgentChatStore {
   get(conversationId: string): AgentChatConversationRecord | null {
     const conversation = this.database.prepare(`
       SELECT id, agent_id, agent_revision_id, provider_id, model_id,
-        configuration_revision_id, is_boss, reasoning_effort, created_at
+        configuration_revision_id, is_boss, reasoning_effort, created_at, last_read_at
       FROM agent_chat_conversations WHERE id = ?
     `).get(conversationId) as ConversationRow | undefined;
     if (!conversation) return null;
@@ -238,6 +246,7 @@ export class SqliteAgentChatStore implements AgentChatStore {
       configurationRevisionId: conversation.configuration_revision_id,
       isBoss: conversation.is_boss === 1,
       reasoningEffort: (conversation.reasoning_effort as AgentChatConversationRecord['reasoningEffort']) ?? 'medium',
+      lastReadAt: conversation.last_read_at ?? null,
       createdAt: conversation.created_at,
       messages: Object.freeze(messages.map(messageFromRow)),
       idempotency: Object.freeze(idempotency.map((row) =>
@@ -299,5 +308,10 @@ export function migrateAgentChatSchema(database: DatabaseSync): void {
   const columns = database.prepare('PRAGMA table_info(agent_chat_conversations)').all() as unknown as { name: string }[];
   if (!columns.some((column) => column.name === 'reasoning_effort')) {
     database.exec("ALTER TABLE agent_chat_conversations ADD COLUMN reasoning_effort TEXT NOT NULL DEFAULT 'medium'");
+  }
+  if (!columns.some((column) => column.name === 'last_read_at')) {
+    // Null means "never observed". A reply finished before this column existed
+    // stays unread rather than silently claiming the user saw it.
+    database.exec('ALTER TABLE agent_chat_conversations ADD COLUMN last_read_at TEXT');
   }
 }
