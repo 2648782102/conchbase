@@ -4377,7 +4377,9 @@ components:
         destinationBinding:
           $ref: '#/components/schemas/PlatformBoundedString'
         valueDigest:
-          $ref: '#/components/schemas/PlatformDigest'
+          allOf:
+            - $ref: '#/components/schemas/PlatformDigest'
+          description: Keyed HMAC-SHA256 fingerprint of the sealed value (ADR 0103). Stable within the process, not across restarts, and never derivable from a database copy alone.
         createdAt:
           $ref: '#/components/schemas/PlatformTimestamp'
         rotatedAt:

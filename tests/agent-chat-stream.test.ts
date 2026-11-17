@@ -698,3 +698,65 @@ test('a conversation with no tasks still publishes its user message', async () =
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('a cursor more than one window behind is re-snapshotted instead of scanned', async () => {
+  // Replay used to read every event after the cursor and filter in JavaScript,
+  // so a cursor from days ago meant scanning the whole backlog. Past the window
+  // the client must receive a snapshot at the window edge and carry on.
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-chat-window-'));
+  const service = new TaskService(
+    new SqliteTaskStore(path.join(directory, 'runtime.sqlite')),
+    { magpieBaseUrl: 'http://127.0.0.1:3425', defaultModel: 'fixture/model', fetch: scripted([() => text('完成。')]) },
+    catalog(),
+  );
+  const agentChat = new AgentChatService(service);
+  const app = createApp({ logger: false, taskService: service, agentChatService: agentChat });
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address();
+  assert.ok(address && typeof address === 'object');
+  const base = `http://127.0.0.1:${address.port}`;
+  try {
+    const agent = await service.createAgent({
+      name: '窗口助手', instructions: 'Reply.', providerId: 'magpie', modelId: 'fixture/model', grantedCapabilities: [],
+    });
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
+    });
+    const conversationId = created.json().id as string;
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: { text: '你好', idempotencyKey: 'window-1' },
+    });
+    const taskId = sent.json().assistantMessage.taskId as string;
+    await waitForTask(service, taskId, 'succeeded');
+
+    const revision = service.store.getActiveConfigurationRevisionId();
+    const first = service.store.listTaskEvents(taskId)[0]!;
+    for (let index = 0; index < 1_005; index += 1) {
+      service.store.recordEvent(taskId, {
+        taskId, type: 'task.output_delta', state: 'running',
+        configurationRevisionId: revision, attempt: 1, data: { index, text: 'x' },
+      });
+    }
+
+    const response = await fetch(
+      `${base}/v1/agent-chat/conversations/${conversationId}/events?after=${first.id}`,
+    );
+    const frames = await readFrames(
+      response,
+      (seen) => seen.filter((frame) => frame.data.kind === 'snapshot').length >= 2,
+    );
+    const snapshots = frames.filter((frame) => frame.data.kind === 'snapshot');
+    assert.ok(snapshots.length >= 2, `expected a re-snapshot, saw ${snapshots.length}`);
+    // The first snapshot repeats the requested cursor; the second is the window
+    // edge, which must be a different, later event.
+    assert.equal(snapshots[0]!.data.eventId, first.id);
+    assert.notEqual(snapshots[1]!.data.eventId, first.id);
+    assert.ok((snapshots[1]!.data.conversation?.messages.length ?? 0) > 0);
+  } finally {
+    await app.close();
+    service.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

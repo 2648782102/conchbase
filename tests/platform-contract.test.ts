@@ -124,7 +124,12 @@ test('write-only handles keep a sealed value out of public state and survive onl
       grantRevision: 'grant_fixture',
     });
     assert.equal(receipt.outcome, 'injected');
-    assert.equal(handle.valueDigest, rawSha256Digest(FIXED_SECRET));
+    // ADR 0102: the fingerprint is keyed, so a database copy no longer hands
+    // back a low-entropy secret to an offline dictionary attack. It keeps the
+    // published `sha256:<hex>` shape and stays stable within the process.
+    assert.match(handle.valueDigest, /^sha256:[0-9a-f]{64}$/);
+    assert.notEqual(handle.valueDigest, rawSha256Digest(FIXED_SECRET));
+    assert.equal(handle.valueDigest, store.platform.listSecretHandles()[0]!.valueDigest);
     const serialized = JSON.stringify({
       handles: store.platform.listSecretHandles(),
       receipts: store.platform.listSecretHandleUseReceipts(),
@@ -133,10 +138,20 @@ test('write-only handles keep a sealed value out of public state and survive onl
     assert.doesNotMatch(serialized, new RegExp(FIXED_SECRET));
     const bytes = readFileSync(filename);
     assert.equal(bytes.includes(Buffer.from(FIXED_SECRET, 'utf8')), false);
+    // The unsalted hash of the plaintext used to sit in the same row as the
+    // ciphertext, which handed a database copy straight to a dictionary attack.
+    const plainHash = rawSha256Digest(FIXED_SECRET).slice('sha256:'.length);
+    assert.equal(
+      bytes.includes(Buffer.from(plainHash, 'utf8')),
+      false,
+      'the database must not contain an unkeyed hash of the secret',
+    );
 
     const rotated = store.platform.rotateSecretHandle(handle.id, 'rotated-value');
     assert.equal(rotated.secretVersion, 2);
-    assert.equal(rotated.valueDigest, rawSha256Digest('rotated-value'));
+    assert.match(rotated.valueDigest, /^sha256:[0-9a-f]{64}$/);
+    assert.notEqual(rotated.valueDigest, rawSha256Digest('rotated-value'));
+    assert.notEqual(rotated.valueDigest, handle.valueDigest);
     store.platform.setSecretHandleStatus(handle.id, 'disabled');
     const denied = store.platform.useSecretHandle({
       handleId: handle.id,

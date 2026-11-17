@@ -5,6 +5,7 @@ import { ControlledExecutionService } from '../src/runtime/controlled-execution.
 import {
   IsolatedExecutionService,
   createIsolatedChildExecutor,
+  type ExecutionRunSnapshot,
 } from '../src/runtime/isolated-execution.js';
 
 const digest = `sha256:${'a'.repeat(64)}`;
@@ -249,5 +250,34 @@ test('1.3.0 HTTP contract publishes run discovery, adapters, and no plaintext', 
     assert.doesNotMatch(JSON.stringify(adapters.json()), /sk-|Bearer|privateKey|runtime\.sqlite/);
   } finally {
     await app.close();
+  }
+});
+
+test('trimming the event log never renumbers or repeats a sequence', async () => {
+  // `sequence` used to be `events.length + 1`. Once the log is capped, length
+  // stops being a counter: reusing it would mint duplicate sequences and
+  // therefore duplicate event ids for different transitions.
+  const { appendEvent } = await import('../src/runtime/isolated-execution.js');
+  const empty: ExecutionRunSnapshot = {
+    version: '1.3.0',
+    adapters: Object.freeze([]),
+    runs: Object.freeze([]),
+    events: Object.freeze([]),
+  };
+  let snapshot: ExecutionRunSnapshot = empty;
+  for (let index = 0; index < 1_005; index += 1) {
+    snapshot = {
+      ...snapshot,
+      events: appendEvent(snapshot, 'execution.run_created', { index }, () => '2026-11-17T00:00:00.000Z'),
+    };
+  }
+  assert.equal(snapshot.events.length, 1_000);
+  assert.equal(snapshot.events[0]!.sequence, 6);
+  assert.equal(snapshot.events.at(-1)!.sequence, 1_005);
+  const sequences = snapshot.events.map((event) => event.sequence);
+  assert.equal(new Set(sequences).size, sequences.length, 'sequences must stay unique');
+  assert.equal(new Set(snapshot.events.map((event) => event.id)).size, snapshot.events.length);
+  for (let index = 1; index < sequences.length; index += 1) {
+    assert.equal(sequences[index], sequences[index - 1]! + 1);
   }
 });

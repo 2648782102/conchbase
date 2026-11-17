@@ -127,6 +127,14 @@ export class ExecutionNotFoundError extends Error {
 }
 
 const CAPABILITY_KINDS: readonly CapabilityKind[] = Object.freeze(['mcp', 'skill', 'plugin', 'secret-handle', 'fake']);
+
+/**
+ * Retention for the in-memory snapshot. A cursor older than the retained log is
+ * answered with an explicit error rather than silently resequenced events.
+ */
+const MAX_SNAPSHOT_EVENTS = 1_000;
+const MAX_SNAPSHOT_REQUESTS = 200;
+const MAX_SNAPSHOT_GRANTS = 100;
 const OPAQUE_PATTERN = /^[a-z][a-z0-9_-]{2,120}$/;
 const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
 const OPERATION_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
@@ -348,14 +356,34 @@ export function createExecutionSnapshot(now = () => new Date().toISOString()): E
   });
 }
 
+/**
+ * Appends one event, keeping the log bounded.
+ *
+ * `sequence` comes from the last event, not from the array length: once the log
+ * is trimmed the length stops being a counter, and reusing it would invent
+ * duplicate sequence numbers and therefore duplicate event ids.
+ */
+/**
+ * Appends and keeps only the newest `maximum` entries.
+ *
+ * Records are append-only and terminal: the oldest ones are the least likely to
+ * be read again, and a cursor that points into the dropped range is answered
+ * with an explicit not-found rather than a wrong record.
+ */
+function trim<T>(items: readonly T[], next: T, maximum: number): readonly T[] {
+  const appended = [...items, next];
+  return appended.length > maximum ? appended.slice(appended.length - maximum) : appended;
+}
+
 function appendEvent(
   snapshot: ExecutionSnapshot,
   type: ExecutionEventType,
   data: Readonly<Record<string, string | number | boolean>>,
   now: () => string,
 ): readonly ExecutionEvent[] {
-  const sequence = snapshot.events.length + 1;
-  return Object.freeze([
+  const last = snapshot.events[snapshot.events.length - 1];
+  const sequence = (last?.sequence ?? 0) + 1;
+  const next = [
     ...snapshot.events,
     Object.freeze({
       version: EXECUTION_CONTRACT_VERSION,
@@ -365,7 +393,12 @@ function appendEvent(
       data: Object.freeze({ ...data }),
       createdAt: now(),
     }),
-  ]);
+  ];
+  // The service is in-memory by design; without a cap a long-lived process
+  // grows one event per transition forever and every append copies the lot.
+  return Object.freeze(next.length > MAX_SNAPSHOT_EVENTS
+    ? next.slice(next.length - MAX_SNAPSHOT_EVENTS)
+    : next);
 }
 
 export class ControlledExecutionService {
@@ -457,7 +490,7 @@ export class ControlledExecutionService {
     });
     this.snapshot = Object.freeze({
       ...this.snapshot,
-      grants: Object.freeze([...this.snapshot.grants, grant]),
+      grants: Object.freeze(trim(this.snapshot.grants, grant, MAX_SNAPSHOT_GRANTS)),
       events: appendEvent(this.snapshot, 'execution.grant_created', {
         grantId: grant.id,
         capabilityId: grant.capabilityId,
@@ -531,7 +564,7 @@ export class ControlledExecutionService {
     });
     this.snapshot = Object.freeze({
       ...this.snapshot,
-      requests: Object.freeze([...this.snapshot.requests, request]),
+      requests: Object.freeze(trim(this.snapshot.requests, request, MAX_SNAPSHOT_REQUESTS)),
       events: appendEvent(this.snapshot, 'execution.request_created', {
         requestId: request.id,
         grantId: request.grantId,
