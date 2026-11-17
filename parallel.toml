@@ -1,0 +1,41 @@
+# Parallel development for the Conchbase Runtime and the Pagurus console.
+#
+# Two independent Git repositories cooperate on one product: Conchbase owns
+# execution and state, Pagurus is a client of its published API. They are
+# separate remotes with separate histories, so each is declared once here and
+# integrated separately.
+#
+# `base` is a committed local ref. `origin/main` is used because the local
+# `main` branch of the Pagurus checkout is held by another worktree and cannot
+# be checked out here.
+version = 1
+
+[[repositories]]
+id = "runtime"
+path = "."
+base = "origin/main"
+
+# A nested repository: must be ignored by the parent (it is, via
+# .git/info/exclude) and must not be a submodule.
+[[repositories]]
+id = "console"
+path = "pagurus"
+base = "origin/main"
+
+[modules.runtime]
+agent-chat = ["src/runtime/agent-chat*.ts", "src/http/routes/v1/agent-chat.ts"]
+organization = ["src/runtime/organization*.ts", "src/runtime/boss-*.ts"]
+tasks = ["src/runtime/task-*.ts", "src/runtime/tool-*.ts"]
+runtime-git = ["src/runtime/git-tools.ts"]
+
+[modules.console]
+agent-app = ["pagurus/src/agent/**"]
+agent-chat-client = ["pagurus/src/features/agent-chat/**", "pagurus/src/shared/api/agent-chat*.ts"]
+console-shell = ["pagurus/src/app/**", "pagurus/src/styles/**"]
+api-clients = ["pagurus/src/shared/api/**"]
+
+# The commands below run with this user's local privileges during integration.
+# They mirror CI: typecheck/check, the full suite, then a production build.
+[tests]
+runtime = "npm run check && npm test && npm run build"
+console = "cd pagurus && npm run check && npm test && npm run build"
