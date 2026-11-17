@@ -767,6 +767,13 @@ export class SqliteTaskStore implements TaskStore {
     return row === undefined ? null : toEvent(row);
   }
 
+  /**
+   * Every event of one task, output deltas included.
+   *
+   * No production caller is left: conversation reads use `listTaskLoopEvents`
+   * because this one grows with streamed output (measured 712 ms for a task with
+   * 100k events). Kept as a general query, but a display path must not adopt it.
+   */
   listTaskEvents(taskId: string): readonly RuntimeEvent[] {
     const rows = this.database.prepare(
       'SELECT * FROM events WHERE task_id = ? ORDER BY sequence',

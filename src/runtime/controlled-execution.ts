@@ -131,6 +131,10 @@ const CAPABILITY_KINDS: readonly CapabilityKind[] = Object.freeze(['mcp', 'skill
 /**
  * Retention for the in-memory snapshot. A cursor older than the retained log is
  * answered with an explicit error rather than silently resequenced events.
+ *
+ * Same caveat as the run snapshot: a grant is a standing permission, so the
+ * ceiling applies to revoked grants and finished requests only. Live records are
+ * never evicted, which makes this a soft bound rather than a hard one.
  */
 const MAX_SNAPSHOT_EVENTS = 1_000;
 const MAX_SNAPSHOT_REQUESTS = 200;

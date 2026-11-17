@@ -231,6 +231,16 @@ export function secretValueDigest(value: string, key: Buffer): string {
 export function opaquePlatformId(prefix: string, value: unknown): string {
   return `${prefix}_${createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 24)}`;
 }
+/**
+ * Bearer-token digest.
+ *
+ * ADR 0103 gave secret *values* a keyed fingerprint, and this is the same
+ * pattern left unkeyed on purpose — not an oversight. A token has to stay valid
+ * across a restart, so it cannot be keyed by a process-scoped key without
+ * invalidating every pairing on every restart. Closing it needs either a
+ * persisted key (a key-storage decision with its own ADR) or the server minting
+ * the token instead of accepting a client-supplied digest (a pairing-UX change).
+ */
 export function tokenDigest(value: string): string {
   return rawSha256Digest(value);
 }

@@ -98,7 +98,13 @@ export class ExecutionRunNotFoundError extends Error {
 
 const OPERATIONS: readonly IsolatedOperation[] = Object.freeze(['hash', 'echo_length', 'fixed_matrix']);
 
-/** Retention for the in-memory snapshot; see trimRuns and appendEvent. */
+/**
+ * Retention for the in-memory snapshot; see trimRuns and appendEvent.
+ *
+ * These are ceilings on *finished* records, not hard bounds: an unfinished run
+ * is never evicted, so a process that leaves runs queued forever keeps them.
+ * Event and run counts are still bounded in every path that finishes work.
+ */
 const MAX_SNAPSHOT_EVENTS = 1_000;
 const MAX_SNAPSHOT_RUNS = 50;
 const FINISHED_RUN_STATES = new Set<ExecutionRunState>(['succeeded', 'failed', 'cancelled', 'interrupted']);
