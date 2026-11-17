@@ -199,6 +199,12 @@ npm 缓存通常是热的，两个仓库合计约 1 秒。
 把分支集成进去，再 cleanup；不要在插件之外直接删状态目录，那会留下悬空的
 worktree 注册和无法追溯的账本记录。
 
+**5. 每个仓库的门禁以自己的仓库根为工作目录。**
+
+`codex-parallel/integration` 为每个仓库准备一个候选树，`[tests]` 里的命令就在那个
+仓库的根目录下执行。所以嵌套仓库**不要再写 `cd pagurus`**——会得到
+`cd: pagurus: No such file or directory`。
+
 **4. 改一次 `parallel.toml`，所有现存会话一起失效。**
 
 每次操作都会校验「会话创建时的 digest」与「当前 manifest 的 digest」。digest 是
