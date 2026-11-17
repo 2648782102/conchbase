@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { closeSync, openSync, readSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { pageToolResult } from './tool-result-paging.js';
 
@@ -62,6 +63,11 @@ export function combineToolProviders(providers: readonly ToolProvider[]): ToolPr
 const DEFAULT_MAX_BYTES = 8_192;
 const MAX_ENTRIES = 200;
 const MAX_MATCHES = 40;
+/** Walk budgets so one search cannot monopolise the event loop. */
+const MAX_SEARCH_DEPTH = 12;
+const MAX_SEARCH_DIRECTORIES = 2_000;
+const MAX_SEARCH_FILES = 5_000;
+const SKIPPED_DIRECTORIES = new Set(['.git', 'node_modules', 'dist', 'build', '.next', '.turbo']);
 
 function digest(value: string): string {
   return `sha256:${createHash('sha256').update(value).digest('hex')}`;
@@ -230,16 +236,37 @@ export function createBuiltinReadTools(options: {
       throw new ToolRejectedError('not_found');
     }
     if (!stats.isFile()) throw new ToolRejectedError('not_a_file');
-    const buffer = readFileSync(target);
-    if (offset > buffer.length) throw new ToolRejectedError('offset_out_of_range');
-    const window = buffer.subarray(offset);
+    if (offset > stats.size) throw new ToolRejectedError('offset_out_of_range');
+    // Read only the requested window, plus one byte so truncation stays
+    // observable. `maxBytes` used to cap the answer but not the work: pointing
+    // this at a multi-gigabyte log allocated the entire file before slicing
+    // 8 KiB out of it.
+    const remaining = Math.max(stats.size - offset, 0);
+    const windowSize = Math.min(maxChars + 1, remaining);
+    const buffer = Buffer.allocUnsafe(windowSize);
+    const handle = openSync(target, 'r');
+    let filled = 0;
+    try {
+      while (filled < windowSize) {
+        const read = readSync(handle, buffer, filled, windowSize - filled, offset + filled);
+        if (read === 0) break;
+        filled += read;
+      }
+    } finally {
+      closeSync(handle);
+    }
     const paged = pageToolResult({
-      text: window.toString('utf8'),
+      text: buffer.subarray(0, filled).toString('utf8'),
       maxBytes: maxChars,
-      continuation: { argument: 'offset', nextValue: offset + maxChars, unit: 'byte' },
+      continuation: {
+        argument: 'offset',
+        nextValue: offset + maxChars,
+        unit: 'byte',
+        totalBytes: remaining,
+      },
     });
     // The continuation must point at a byte boundary that exists in the file.
-    const nextOffset = Math.min(offset + maxChars, buffer.length);
+    const nextOffset = Math.min(offset + maxChars, stats.size);
     const summary = paged.truncated
       ? paged.summary.replace(
         /Continue with offset=\d+\./,
@@ -254,40 +281,93 @@ export function createBuiltinReadTools(options: {
     });
   }
 
-  function search(args: ToolArguments): ToolExecutionResult {
+  /**
+   * Bounded, asynchronous search.
+   *
+   * The previous version used readdirSync/readFileSync recursively, so one call
+   * inside a workspace containing node_modules blocked the event loop for
+   * seconds — no HTTP request and no other task could progress. It also had no
+   * depth, entry, or byte budget, only a match cap.
+   */
+  async function search(args: ToolArguments): Promise<ToolExecutionResult> {
     const pattern = asString(args, 'pattern');
     if (pattern.length === 0) throw new ToolRejectedError('invalid_arguments', 'pattern is required.');
     const relative = asString(args, 'path', '.');
     const start = resolveInsideRoot(root, relative);
     const matches: string[] = [];
-    const visit = (directory: string): void => {
-      if (matches.length >= MAX_MATCHES) return;
-      for (const entry of readdirSync(directory, { withFileTypes: true })) {
-        if (matches.length >= MAX_MATCHES) return;
+    let visitedFiles = 0;
+    let visitedDirectories = 0;
+    let exhausted = false;
+
+    const visit = async (directory: string, depth: number): Promise<void> => {
+      if (matches.length >= MAX_MATCHES || exhausted) return;
+      if (depth > MAX_SEARCH_DEPTH || visitedDirectories >= MAX_SEARCH_DIRECTORIES) {
+        exhausted = true;
+        return;
+      }
+      visitedDirectories += 1;
+      let entries;
+      try {
+        entries = await readdir(directory, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        if (matches.length >= MAX_MATCHES || exhausted) return;
+        if (SKIPPED_DIRECTORIES.has(entry.name)) continue;
         const full = path.join(directory, entry.name);
         if (entry.isDirectory()) {
-          visit(full);
+          await visit(full, depth + 1);
           continue;
         }
         if (!entry.isFile()) continue;
-        if (statSync(full).size > maxBytes) continue;
-        const text = readFileSync(full).toString('utf8');
+        if (visitedFiles >= MAX_SEARCH_FILES) {
+          exhausted = true;
+          return;
+        }
+        visitedFiles += 1;
+        let size: number;
+        try {
+          size = statSync(full).size;
+        } catch {
+          continue;
+        }
+        if (size > maxBytes) continue;
+        let text: string;
+        try {
+          const handle = openSync(full, 'r');
+          try {
+            const buffer = Buffer.allocUnsafe(size);
+            const filled = readSync(handle, buffer, 0, size, 0);
+            text = buffer.subarray(0, filled).toString('utf8');
+          } finally {
+            closeSync(handle);
+          }
+        } catch {
+          continue;
+        }
         if (!text.includes(pattern)) continue;
         matches.push(path.relative(root, full).split(path.sep).join('/'));
       }
     };
-    visit(start);
+
+    await visit(start, 0);
     const raw = matches.join('\n');
     const paged = pageToolResult({ text: raw, maxBytes });
     const capped = matches.length >= MAX_MATCHES;
-    const footer = capped && !paged.truncated
-      ? `\n\n[match cap reached at ${MAX_MATCHES}; narrow the pattern or path to see more.]`
+    const reason = capped
+      ? `match cap reached at ${MAX_MATCHES}`
+      : exhausted
+        ? `search budget reached after ${visitedFiles} files`
+        : null;
+    const footer = reason !== null && !paged.truncated
+      ? `\n\n[${reason}; narrow the pattern or path to see more.]`
       : '';
     const summary = `${paged.summary}${footer}`;
     return Object.freeze({ ok: true, summary, digest: digest(summary), bytes: Buffer.byteLength(summary) });
   }
 
-  const handlers: Readonly<Record<string, (args: ToolArguments) => ToolExecutionResult>> = Object.freeze({
+  const handlers: Readonly<Record<string, (args: ToolArguments) => ToolExecutionResult | Promise<ToolExecutionResult>>> = Object.freeze({
     'text_search': search,
     'workspace_list': list,
     'workspace_read': read,

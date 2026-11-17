@@ -109,9 +109,24 @@ if (config.organizationIntentModel || config.bossModel || config.defaultModel) {
 
 await servingApp.listen(config);
 
-for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-  process.once(signal, () => {
+let shuttingDown = false;
+const shutdown = async (signal: string): Promise<void> => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  servingApp.log.info({ signal }, 'shutting down');
+  try {
+    // Order matters: stop accepting connections first so no new task starts,
+    // then close the tool subprocesses (MCP servers outlive the parent
+    // otherwise), then release the single-owner database lock.
     convergence?.stop();
+    await servingApp.close();
+    await toolRuntime.close();
+    taskService.close();
+  } finally {
     process.exit(0);
-  });
+  }
+};
+
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.once(signal, () => { void shutdown(signal); });
 }

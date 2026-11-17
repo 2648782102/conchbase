@@ -184,7 +184,7 @@ export class TaskService {
   }
 
   get activeConfigurationRevisionId(): string {
-    return this.getConfigurationState().active.id;
+    return this.store.getActiveConfigurationRevisionId();
   }
 
   get preferredChatModelId(): string | undefined {
@@ -384,7 +384,7 @@ export class TaskService {
       id: `task_${randomUUID()}`,
       prompt,
       model,
-      configurationRevisionId: this.getConfigurationState().active.id,
+      configurationRevisionId: this.store.getActiveConfigurationRevisionId(),
       attempt: 1,
     });
   }
@@ -477,21 +477,35 @@ export class TaskService {
 
   waitForTask(taskId: string, signal?: AbortSignal): Promise<TaskSnapshot> {
     return new Promise<TaskSnapshot>((resolve, reject) => {
+      let timer: NodeJS.Timeout | null = null;
+      let settled = false;
+      // One listener for the whole wait. Registering a fresh one per 20 ms poll
+      // left thousands of listeners on the same signal for a long task.
+      const onAbort = () => {
+        if (settled) return;
+        settled = true;
+        if (timer !== null) clearTimeout(timer);
+        reject(new Error('Task wait was interrupted.'));
+      };
+      const settle = (action: () => void) => {
+        settled = true;
+        if (timer !== null) clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+        action();
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
       const poll = () => {
+        if (settled) return;
         const task = this.store.getTask(taskId);
         if (!task) {
-          reject(new TaskNotFoundError());
+          settle(() => reject(new TaskNotFoundError()));
           return;
         }
         if (isTerminalTaskState(task.state)) {
-          resolve(task);
+          settle(() => resolve(task));
           return;
         }
-        const timer = setTimeout(poll, 20);
-        signal?.addEventListener('abort', () => {
-          clearTimeout(timer);
-          reject(new Error('Task wait was interrupted.'));
-        }, { once: true });
+        timer = setTimeout(poll, 20);
       };
       poll();
     });
@@ -923,11 +937,7 @@ export class TaskService {
     toolId: string,
     args: Readonly<Record<string, string | number | boolean | null>>,
   ): boolean {
-    const digest = digestArguments(args);
-    return this.store.listEvents(null).some((event) => event.taskId === task.id
-      && event.type === 'agent_loop.tool_executed'
-      && event.data.toolId === toolId
-      && event.data.argumentsDigest === digest);
+    return this.store.hasToolExecuted(task.id, toolId, digestArguments(args));
   }
 
   /**

@@ -74,6 +74,9 @@ export const STREAMING_OUTPUT_LIMITS = Object.freeze({
   deltaChunks: 5000,
 });
 
+/** Upper bound on parallel tool-call slots in one streamed turn. */
+const MAX_TOOL_CALLS_PER_TURN = 32;
+
 export class ModelProviderError extends Error {
   constructor(message: string) {
     super(message);
@@ -319,7 +322,13 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
           readonly id?: string;
           readonly function?: { readonly name?: string; readonly arguments?: string };
         }[]) {
+          // `index` becomes an array slot. An unbounded value (1e9) turns
+          // `toolCalls` into a sparse array whose `length` then dictates a
+          // billion-slot filter below, hanging the event loop.
           const index = candidate.index ?? 0;
+          if (!Number.isInteger(index) || index < 0 || index >= MAX_TOOL_CALLS_PER_TURN) {
+            throw new ModelProviderError('Model provider returned an out-of-range tool call index.');
+          }
           const current = toolCalls[index] ?? { id: '', name: '', arguments: '' };
           toolCalls[index] = {
             id: candidate.id ?? current.id,
@@ -363,6 +372,12 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
+        // A stream that never emits a newline would otherwise accumulate
+        // forever; per-frame size is already bounded, this bounds the frame that
+        // has not arrived yet.
+        if (buffer.length > STREAMING_OUTPUT_LIMITS.chunkCharacters * 4) {
+          throw new ModelProviderError('Model provider returned an oversized stream frame.');
+        }
         let newline = buffer.indexOf('\n');
         while (newline >= 0) {
           const line = buffer.slice(0, newline).replace(/\r$/, '');

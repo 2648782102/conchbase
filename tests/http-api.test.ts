@@ -56,3 +56,32 @@ test('read-only status routes return the documented API shapes', async () => {
     await configured.close();
   }
 });
+
+test('a loopback binding rejects a rebinding Host header before any route runs', async () => {
+  // Loopback binding carries no token, so the Host name is the only proof that
+  // the caller actually addressed 127.0.0.1. A rebinding page keeps its own
+  // domain in Host while the socket stays local; without this check it reads
+  // task output and tool results as if it were same-origin.
+  const app = createApp({ logger: false });
+  try {
+    const rebinding = await app.inject({
+      method: 'GET', url: '/v1/health', headers: { host: 'evil.example' },
+    });
+    assert.equal(rebinding.statusCode, 421);
+
+    const crossSiteWrite = await app.inject({
+      method: 'POST',
+      url: '/v1/tasks',
+      headers: { host: '127.0.0.1:4318', 'sec-fetch-site': 'cross-site' },
+      payload: { prompt: 'x' },
+    });
+    assert.equal(crossSiteWrite.statusCode, 403);
+
+    for (const host of ['127.0.0.1:4318', 'localhost:4318', '[::1]:4318']) {
+      const allowed = await app.inject({ method: 'GET', url: '/v1/health', headers: { host } });
+      assert.equal(allowed.statusCode, 200, host);
+    }
+  } finally {
+    await app.close();
+  }
+});

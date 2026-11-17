@@ -157,10 +157,12 @@ export interface TaskStore {
   createToolRequest(input: ToolRequestCreateInput): ToolRequestCreateResult;
   getToolRequest(requestId: string): ToolRequestRecord | null;
   decideToolRequest(requestId: string, input: ToolRequestDecisionInput): ToolRequestDecisionResult;
-  listEvents(afterEventId: string | null): readonly RuntimeEvent[];
+  listEvents(afterEventId: string | null, limit?: number): readonly RuntimeEvent[];
   listTaskEvents(taskId: string): readonly RuntimeEvent[];
+  hasToolExecuted(taskId: string, toolId: string, argumentsDigest: string): boolean;
   getEvent(eventId: string): RuntimeEvent | null;
   getConfigurationState(): ConfigurationState;
+  getActiveConfigurationRevisionId(): ConfigurationRevisionId;
   getConfigurationRevision(id: string): ConfigurationRevision | null;
   applyConfiguration(document: ConfigurationDocument): ApplyConfigurationResult;
   rollbackConfiguration(id: string): ApplyConfigurationResult;
@@ -481,7 +483,7 @@ export class SqliteTaskStore implements TaskStore {
       });
       this.database.exec('COMMIT');
     } catch (cause) {
-      this.database.exec('ROLLBACK');
+      this.rollbackQuietly();
       if (String(cause).includes('UNIQUE')) {
         throw new TaskConflictError('Task id already exists.');
       }
@@ -530,7 +532,7 @@ export class SqliteTaskStore implements TaskStore {
       });
       this.database.exec('COMMIT');
     } catch (cause) {
-      this.database.exec('ROLLBACK');
+      this.rollbackQuietly();
       if (String(cause).includes('UNIQUE')) throw new TaskConflictError('Task id already exists.');
       throw cause;
     }
@@ -552,7 +554,7 @@ export class SqliteTaskStore implements TaskStore {
       }
       this.database.exec('COMMIT');
     } catch (cause) {
-      this.database.exec('ROLLBACK');
+      this.rollbackQuietly();
       throw cause;
     }
     return this.getAgent(id)!;
@@ -573,7 +575,7 @@ export class SqliteTaskStore implements TaskStore {
       this.database.prepare('UPDATE agents SET current_revision_id = ? WHERE id = ?').run(revision.id, agentId);
       this.database.exec('COMMIT');
     } catch (cause) {
-      this.database.exec('ROLLBACK');
+      this.rollbackQuietly();
       throw cause;
     }
     return this.getAgent(agentId)!;
@@ -603,7 +605,7 @@ export class SqliteTaskStore implements TaskStore {
       `).run(agentId);
       this.database.exec('COMMIT');
     } catch (cause) {
-      this.database.exec('ROLLBACK');
+      this.rollbackQuietly();
       throw cause;
     }
     return this.agentRecord(agentId)!;
@@ -632,7 +634,7 @@ export class SqliteTaskStore implements TaskStore {
         .run(revision.id, agentId);
       this.database.exec('COMMIT');
     } catch (cause) {
-      this.database.exec('ROLLBACK');
+      this.rollbackQuietly();
       throw cause;
     }
     return this.getAgent(agentId)!;
@@ -649,7 +651,7 @@ export class SqliteTaskStore implements TaskStore {
       this.database.prepare('UPDATE agent_state SET default_agent_id = ? WHERE singleton = 1').run(agentId);
       this.database.exec('COMMIT');
     } catch (cause) {
-      this.database.exec('ROLLBACK');
+      this.rollbackQuietly();
       throw cause;
     }
     return agentId;
@@ -717,13 +719,13 @@ export class SqliteTaskStore implements TaskStore {
       this.insertEvent(event);
       this.database.exec('COMMIT');
     } catch (cause) {
-      this.database.exec('ROLLBACK');
+      this.rollbackQuietly();
       throw cause;
     }
     return this.getTask(taskId)!;
   }
 
-  listEvents(afterEventId: string | null): readonly RuntimeEvent[] {
+  listEvents(afterEventId: string | null, limit?: number): readonly RuntimeEvent[] {
     let afterSequence = 0;
     if (afterEventId !== null) {
       const row = this.database.prepare('SELECT sequence FROM events WHERE id = ?')
@@ -732,9 +734,30 @@ export class SqliteTaskStore implements TaskStore {
       afterSequence = row.sequence;
     }
 
-    const rows = this.database.prepare('SELECT * FROM events WHERE sequence > ? ORDER BY sequence')
-      .all(afterSequence) as unknown as EventRow[];
+    const rows = limit === undefined
+      ? this.database.prepare('SELECT * FROM events WHERE sequence > ? ORDER BY sequence')
+        .all(afterSequence) as unknown as EventRow[]
+      : this.database.prepare('SELECT * FROM events WHERE sequence > ? ORDER BY sequence LIMIT ?')
+        .all(afterSequence, limit) as unknown as EventRow[];
     return Object.freeze(rows.map(toEvent));
+  }
+
+  /**
+   * Has this exact tool call already been recorded as executed for the task?
+   *
+   * Pushed into SQL because the caller used to load the entire event log —
+   * every task, every streamed output delta — and filter it in JavaScript,
+   * which blocked the event loop for hundreds of milliseconds per write call.
+   */
+  hasToolExecuted(taskId: string, toolId: string, argumentsDigest: string): boolean {
+    const row = this.database.prepare(`
+      SELECT 1 AS found FROM events
+      WHERE task_id = ? AND type = 'agent_loop.tool_executed'
+        AND json_extract(data, '$.toolId') = ?
+        AND json_extract(data, '$.argumentsDigest') = ?
+      LIMIT 1
+    `).get(taskId, toolId, argumentsDigest);
+    return row !== undefined;
   }
 
   getEvent(eventId: string): RuntimeEvent | null {
@@ -787,6 +810,21 @@ export class SqliteTaskStore implements TaskStore {
     });
   }
 
+  /**
+   * The active revision id only.
+   *
+   * Task creation needs this one value, and `getConfigurationState()` answers it
+   * by loading every revision's full document and parsing each one — a cost that
+   * grows with configuration churn for no benefit on this path.
+   */
+  getActiveConfigurationRevisionId(): ConfigurationRevisionId {
+    const row = this.database.prepare(
+      'SELECT revision_id FROM configuration_state WHERE singleton = 1',
+    ).get() as ConfigurationActiveRow | undefined;
+    if (!row) throw new Error('Configuration state is missing.');
+    return row.revision_id as ConfigurationRevisionId;
+  }
+
   getConfigurationRevision(id: string): ConfigurationRevision | null {
     if (!/^cfg_[0-9a-f]{24}$/.test(id)) return null;
     const row = this.database.prepare(
@@ -832,7 +870,7 @@ export class SqliteTaskStore implements TaskStore {
       this.insertEvent(event);
       this.database.exec('COMMIT');
     } catch (cause) {
-      this.database.exec('ROLLBACK');
+      this.rollbackQuietly();
       throw cause;
     }
     return this.getTask(taskId)!;
@@ -852,7 +890,7 @@ export class SqliteTaskStore implements TaskStore {
       this.insertEvent(event);
       this.database.exec('COMMIT');
     } catch (cause) {
-      this.database.exec('ROLLBACK');
+      this.rollbackQuietly();
       throw cause;
     }
     return this.getTask(taskId)!;
@@ -866,7 +904,7 @@ export class SqliteTaskStore implements TaskStore {
       this.insertEvent(event);
       this.database.exec('COMMIT');
     } catch (cause) {
-      this.database.exec('ROLLBACK');
+      this.rollbackQuietly();
       throw cause;
     }
     return this.getTask(taskId)!;
@@ -902,7 +940,7 @@ export class SqliteTaskStore implements TaskStore {
       this.insertEvent(input.approvalRequiredEvent);
       this.database.exec('COMMIT');
     } catch (cause) {
-      this.database.exec('ROLLBACK');
+      this.rollbackQuietly();
       throw cause;
     }
     return Object.freeze({ record: this.getToolRequest(input.id)!, created: true });
@@ -962,6 +1000,22 @@ export class SqliteTaskStore implements TaskStore {
       throw cause;
     }
     return Object.freeze({ record: this.getToolRequest(requestId)!, changed: true });
+  }
+
+  /**
+   * Rolls back without masking the original failure.
+   *
+   * `BEGIN IMMEDIATE` runs inside the same `try` as the work it protects. With
+   * `busy_timeout = 0` it fails immediately under contention, and a bare
+   * `ROLLBACK` then throws "cannot rollback - no transaction is active",
+   * replacing the SQLITE_BUSY the caller needs for locked-database detection.
+   */
+  private rollbackQuietly(): void {
+    try {
+      this.database.exec('ROLLBACK');
+    } catch {
+      // No transaction was open.
+    }
   }
 
   private insertEvent(input: TaskEventInput): void {
@@ -1052,7 +1106,7 @@ export class SqliteTaskStore implements TaskStore {
       action();
       this.database.exec('COMMIT');
     } catch (cause) {
-      this.database.exec('ROLLBACK');
+      this.rollbackQuietly();
       throw cause;
     }
   }

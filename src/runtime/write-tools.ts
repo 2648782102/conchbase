@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, lstatSync, openSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   ToolRejectedError,
@@ -73,12 +73,26 @@ export function createBuiltinWriteTools(options: {
     } catch (cause) {
       if (cause instanceof ToolRejectedError) throw cause;
     }
+    // `resolveTarget` only proves the *parent* directory is inside the root. A
+    // symlinked file at the target would still be followed, so a workspace
+    // containing `note.txt -> /etc/passwd` escaped the root with a plain
+    // writeFileSync. O_NOFOLLOW makes the open reject that link atomically
+    // instead of relying on a check-then-act window.
+    let existing;
     try {
-      mkdirSync(path.dirname(target), { recursive: true });
+      existing = lstatSync(target);
     } catch {
-      throw new ToolRejectedError('parent_not_found');
+      existing = undefined;
     }
-    writeFileSync(target, content, 'utf8');
+    if (existing?.isSymbolicLink()) throw new ToolRejectedError('path_escapes_root');
+    const flags = constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC
+      | (constants.O_NOFOLLOW ?? 0);
+    const handle = openSync(target, flags, 0o600);
+    try {
+      writeFileSync(handle, content, 'utf8');
+    } finally {
+      closeSync(handle);
+    }
     return Object.freeze({
       ok: true,
       summary: `wrote ${Buffer.byteLength(content, 'utf8')} bytes`,

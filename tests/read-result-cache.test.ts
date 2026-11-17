@@ -8,7 +8,17 @@ test('argument digests are order-independent and stable', () => {
   // differ only by key order would defeat deduplication.
   assert.equal(digestArguments({ a: 1, b: 2 }), digestArguments({ b: 2, a: 1 }));
   assert.notEqual(digestArguments({ a: 1 }), digestArguments({ a: 2 }));
-  assert.match(digestArguments({}), /^arg_[0-9a-f]{8}$/);
+  assert.match(digestArguments({}), /^arg_[0-9a-f]{24}$/);
+});
+
+test('argument digests cannot be confused by a delimiter inside a value', () => {
+  // Naive `key=value&` concatenation made these two calls share one identity,
+  // which would let "this write already ran" answer for a different write.
+  assert.notEqual(
+    digestArguments({ a: '1&b=2' }),
+    digestArguments({ a: '1', b: '2' }),
+  );
+  assert.notEqual(digestArguments({ a: '1' }), digestArguments({ a: 1 }));
 });
 
 test('an identical read in the same attempt is reused', () => {
