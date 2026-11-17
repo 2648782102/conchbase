@@ -13,6 +13,7 @@ import {
 } from '../src/runtime/organization-intent-parser.js';
 import { InMemoryOrganizationStore } from '../src/runtime/organization-store.js';
 import { createTaskService } from '../src/runtime/task-service.js';
+import { catalogOnlyFetch } from './support/model-catalog-stub.js';
 
 function baseInput(store: InMemoryOrganizationStore): OrganizationIntentParserInput {
   return Object.freeze({
@@ -77,6 +78,7 @@ async function submitWith(
   const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
     magpieBaseUrl: 'http://127.0.0.1:3425',
     defaultModel: 'fixture-model',
+    fetch: catalogOnlyFetch(),
   });
   const store = new InMemoryOrganizationStore();
   store.apply({ type: 'open_project', expectedSequence: 0, projectId: 'project_alpha', originTriggerId: 'int_alpha' });
