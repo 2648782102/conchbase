@@ -357,22 +357,36 @@ export function createExecutionSnapshot(now = () => new Date().toISOString()): E
 }
 
 /**
- * Appends one event, keeping the log bounded.
+ * Appends a record and keeps the array bounded without dropping live state.
  *
- * `sequence` comes from the last event, not from the array length: once the log
- * is trimmed the length stops being a counter, and reusing it would invent
- * duplicate sequence numbers and therefore duplicate event ids.
+ * A plain "newest N" slice would delete a grant that was never revoked and a
+ * request that is still pending or approved — the caller would then be told the
+ * grant does not exist. Only finished records are eligible for eviction; live
+ * ones stay regardless of age.
  */
-/**
- * Appends and keeps only the newest `maximum` entries.
- *
- * Records are append-only and terminal: the oldest ones are the least likely to
- * be read again, and a cursor that points into the dropped range is answered
- * with an explicit not-found rather than a wrong record.
- */
-function trim<T>(items: readonly T[], next: T, maximum: number): readonly T[] {
+function appendBounded<T>(
+  items: readonly T[],
+  next: T,
+  maximum: number,
+  isFinished: (item: T) => boolean,
+): readonly T[] {
   const appended = [...items, next];
-  return appended.length > maximum ? appended.slice(appended.length - maximum) : appended;
+  if (appended.length <= maximum) return appended;
+  const kept: T[] = [];
+  let finishedBudget = maximum;
+  for (let index = appended.length - 1; index >= 0; index -= 1) {
+    const item = appended[index]!;
+    if (isFinished(item)) {
+      if (finishedBudget <= 0) continue;
+      finishedBudget -= 1;
+    }
+    kept.push(item);
+  }
+  return kept.reverse();
+}
+
+function isFinishedRequest(state: ExecutionRequestState): boolean {
+  return state === 'rejected' || state === 'succeeded' || state === 'failed';
 }
 
 function appendEvent(
@@ -490,7 +504,9 @@ export class ControlledExecutionService {
     });
     this.snapshot = Object.freeze({
       ...this.snapshot,
-      grants: Object.freeze(trim(this.snapshot.grants, grant, MAX_SNAPSHOT_GRANTS)),
+      grants: Object.freeze(appendBounded(
+        this.snapshot.grants, grant, MAX_SNAPSHOT_GRANTS, (item) => item.state === 'revoked',
+      )),
       events: appendEvent(this.snapshot, 'execution.grant_created', {
         grantId: grant.id,
         capabilityId: grant.capabilityId,
@@ -564,7 +580,9 @@ export class ControlledExecutionService {
     });
     this.snapshot = Object.freeze({
       ...this.snapshot,
-      requests: Object.freeze(trim(this.snapshot.requests, request, MAX_SNAPSHOT_REQUESTS)),
+      requests: Object.freeze(appendBounded(
+        this.snapshot.requests, request, MAX_SNAPSHOT_REQUESTS, (item) => isFinishedRequest(item.state),
+      )),
       events: appendEvent(this.snapshot, 'execution.request_created', {
         requestId: request.id,
         grantId: request.grantId,

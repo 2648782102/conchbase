@@ -370,9 +370,11 @@ function trimRuns(runs: readonly ExecutionRun[], maximum: number): readonly Exec
       if (finishedBudget <= 0) continue;
       finishedBudget -= 1;
     }
-    kept.unshift(run);
+    // Collected newest-first, reversed once below; `unshift` per item would be
+    // quadratic in the retained count for no benefit.
+    kept.push(run);
   }
-  return Object.freeze(kept);
+  return Object.freeze(kept.reverse());
 }
 
 export class IsolatedExecutionService {

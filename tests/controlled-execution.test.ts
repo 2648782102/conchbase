@@ -173,3 +173,51 @@ test('execution HTTP contract exposes published paths, errors, and no plaintext'
     await app.close();
   }
 });
+
+test('retention never evicts a grant that is still in force', () => {
+  // A grant is a standing permission, not a log entry. Trimming it as "the
+  // oldest of N" would revoke it silently: the next createRun would be told the
+  // grant does not exist even though nobody revoked anything.
+  const execution = service();
+  const first = execution.createGrant(grantInput);
+  for (let index = 0; index < 150; index += 1) {
+    execution.createGrant({ ...grantInput, delegationId: `del_${String(index).padStart(4, '0')}` });
+  }
+  const stillThere = execution.activeGrant(first.id);
+  assert.equal(stillThere?.state, 'granted');
+
+  // A revoked grant is finished and may be evicted.
+  const before = execution.get().grants.find((grant) => grant.id === first.id)!;
+  execution.revokeGrant(first.id, before.expectedVersion);
+  assert.equal(execution.activeGrant(first.id)?.state, 'revoked');
+});
+
+test('retention never evicts a request that is still pending', () => {
+  const execution = service();
+  const grant = execution.createGrant(grantInput);
+  const oldest = execution.createRequest({
+    grantId: grant.id,
+    expectedGrantVersion: grant.expectedVersion,
+    operation: 'observe',
+    argumentsDigest: digest('args-oldest'),
+    idempotencyKey: 'idem-oldest',
+  });
+  for (let index = 0; index < 260; index += 1) {
+    const created = execution.createRequest({
+      grantId: grant.id,
+      expectedGrantVersion: grant.expectedVersion,
+      operation: 'observe',
+      argumentsDigest: digest(`args-${index}`),
+      idempotencyKey: `idem-${index}`,
+    });
+    // Finish most of them so only the oldest stays pending.
+    void execution.decideRequest({
+      requestId: created.id,
+      expectedVersion: created.expectedVersion,
+      decision: 'rejected',
+      reasonDigest: digest('reason'),
+    });
+  }
+  const pending = execution.get().requests.find((request) => request.id === oldest.id);
+  assert.equal(pending?.state, 'pending', 'an unfinished request must survive retention');
+});

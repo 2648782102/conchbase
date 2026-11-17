@@ -60,9 +60,12 @@ gets slower until it matters.
 - A cursor that points into a pruned range fails explicitly
   (`Unknown execution run event cursor`) instead of returning a wrong record.
   This is the same error code the services already used for an unknown cursor.
-- `agent_loop.*` filtering is a residual predicate on top of the
-  `(task_id, sequence)` index. The activity query therefore touches one task's
-  loop events, not its output deltas, which is the part that grew.
+- The activity query is served by a partial index,
+  `events (task_id, sequence) WHERE type GLOB 'agent_loop.*'`. Filtering `type`
+  on top of `events_task_sequence` still visited every output delta of the task:
+  measured at 28 ms for a 100k-event task, versus 0.46 ms with the index. The
+  partial predicate must stay textually identical to the query's `GLOB`, or the
+  planner will not consider the index.
 - Retention bounds are process constants (`MAX_SNAPSHOT_EVENTS = 1000`). They are
   not configuration: an operator-facing knob would imply durability guarantees
   that an in-memory service does not make.

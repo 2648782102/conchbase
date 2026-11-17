@@ -48,6 +48,15 @@ export function migrateAgentSchema(database: DatabaseSync): void {
       CREATE INDEX IF NOT EXISTS events_tool_executed
       ON events (task_id) WHERE type = 'agent_loop.tool_executed'
     `);
+    // Conversation activity reads a task's loop events on every stream tick.
+    // Without this, the planner finds the task through `events_task_sequence`
+    // and then tests `type` on every row — 28 ms on a task with 100k streamed
+    // deltas. The predicate must be textually the same GLOB the query uses, or
+    // SQLite will not consider the index.
+    database.exec(`
+      CREATE INDEX IF NOT EXISTS events_loop_activity
+      ON events (task_id, sequence) WHERE type GLOB 'agent_loop.*'
+    `);
     database.exec(`
       CREATE TABLE IF NOT EXISTS work_triggers (
         id TEXT PRIMARY KEY,
