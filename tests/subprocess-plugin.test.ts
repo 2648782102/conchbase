@@ -148,3 +148,32 @@ test('oversized replies fail the call instead of flooding the Runtime', async ()
     rmSync(path.dirname(file), { recursive: true, force: true });
   }
 });
+
+test('an unlimited result size still bounds the buffer', async () => {
+  // `maxResultBytes` is optional and the guard compared against `undefined * 4`,
+  // which is NaN, so every comparison was false and one endless line grew the
+  // buffer until the process died.
+  const file = script(`process.stdout.write('x'.repeat(2_000_000));`);
+  const client = new SubprocessPluginClient({ command: process.execPath, args: [file], envAllowlist: [] });
+  try {
+    await client.start();
+    await assert.rejects(async () => client.invoke('demo_read', {}), /too much output|exited/);
+  } finally {
+    client.close();
+    rmSync(path.dirname(file), { recursive: true, force: true });
+  }
+});
+
+test('a plugin that cannot spawn fails the start instead of hanging', async () => {
+  const client = new SubprocessPluginClient({
+    command: 'conchbase-plugin-that-does-not-exist',
+    args: [],
+    envAllowlist: [],
+    startTimeoutMs: 500,
+  });
+  try {
+    await assert.rejects(async () => client.start());
+  } finally {
+    client.close();
+  }
+});

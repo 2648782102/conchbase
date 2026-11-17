@@ -116,3 +116,48 @@ test('a large file read is bounded by the requested window, not the file size', 
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('searching a path that is not a directory fails visibly', async () => {
+  // Returning an empty match list here would tell the model "no such text"
+  // when the real problem was a wrong path.
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-tool-search-'));
+  try {
+    writeFileSync(path.join(directory, 'note.txt'), 'alpha');
+    const runtime = await createToolRuntime({ root: directory });
+    try {
+      await assert.rejects(
+        async () => runtime.tools.invoke('text_search', { path: 'note.txt', pattern: 'alpha' }),
+        (cause: { code?: string }) => cause.code === 'not_a_directory',
+      );
+      await assert.rejects(
+        async () => runtime.tools.invoke('text_search', { path: 'missing', pattern: 'alpha' }),
+        (cause: { code?: string }) => cause.code === 'not_found',
+      );
+      const found = await runtime.tools.invoke('text_search', { pattern: 'alpha' });
+      assert.match(found.summary, /note\.txt/);
+    } finally {
+      await runtime.close();
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('search skips dependency directories and reports when it stops early', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-tool-search-budget-'));
+  try {
+    mkdirSync(path.join(directory, 'node_modules', 'left-pad'), { recursive: true });
+    writeFileSync(path.join(directory, 'node_modules', 'left-pad', 'index.js'), 'needle');
+    writeFileSync(path.join(directory, 'app.js'), 'needle');
+    const runtime = await createToolRuntime({ root: directory });
+    try {
+      const found = await runtime.tools.invoke('text_search', { pattern: 'needle' });
+      assert.match(found.summary, /app\.js/);
+      assert.doesNotMatch(found.summary, /node_modules/);
+    } finally {
+      await runtime.close();
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

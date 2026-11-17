@@ -294,6 +294,16 @@ export function createBuiltinReadTools(options: {
     if (pattern.length === 0) throw new ToolRejectedError('invalid_arguments', 'pattern is required.');
     const relative = asString(args, 'path', '.');
     const start = resolveInsideRoot(root, relative);
+    // A missing or non-directory start must fail visibly. Swallowing it into an
+    // empty match list would tell the model "no such text" when the path was
+    // simply wrong — the same silent-empty the rest of this module avoids.
+    let startStats;
+    try {
+      startStats = statSync(start);
+    } catch {
+      throw new ToolRejectedError('not_found');
+    }
+    if (!startStats.isDirectory()) throw new ToolRejectedError('not_a_directory');
     const matches: string[] = [];
     let visitedFiles = 0;
     let visitedDirectories = 0;

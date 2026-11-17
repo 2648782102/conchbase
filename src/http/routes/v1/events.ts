@@ -30,11 +30,15 @@ export function registerEventRoutes(
       // loop. Paging keeps the response proportional to what was asked for.
       const limit = request.query.limit ?? DEFAULT_EVENT_LIMIT;
       try {
-        const events = taskService.store.listEvents(request.query.after ?? null, limit);
+        // Ask for one extra row so `hasMore` reports whether a next page exists
+        // instead of whether this page happened to fill up.
+        const page = taskService.store.listEvents(request.query.after ?? null, limit + 1);
+        const hasMore = page.length > limit;
+        const events = hasMore ? page.slice(0, limit) : page;
         return {
           events,
           cursor: events.at(-1)?.id ?? request.query.after ?? null,
-          hasMore: events.length === limit,
+          hasMore,
           limit,
         };
       } catch (cause) {

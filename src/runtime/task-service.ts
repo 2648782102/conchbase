@@ -476,6 +476,7 @@ export class TaskService {
   }
 
   waitForTask(taskId: string, signal?: AbortSignal): Promise<TaskSnapshot> {
+    if (signal?.aborted) return Promise.reject(new Error('Task wait was interrupted.'));
     return new Promise<TaskSnapshot>((resolve, reject) => {
       let timer: NodeJS.Timeout | null = null;
       let settled = false;

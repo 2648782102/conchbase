@@ -87,7 +87,9 @@ export function createBuiltinWriteTools(options: {
     if (existing?.isSymbolicLink()) throw new ToolRejectedError('path_escapes_root');
     const flags = constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC
       | (constants.O_NOFOLLOW ?? 0);
-    const handle = openSync(target, flags, 0o600);
+    // 0o666 is what `writeFileSync` used: the umask decides the final mode, so
+    // a new file keeps the permissions callers already expect.
+    const handle = openSync(target, flags, 0o666);
     try {
       writeFileSync(handle, content, 'utf8');
     } finally {

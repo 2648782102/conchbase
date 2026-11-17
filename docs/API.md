@@ -1,6 +1,6 @@
 # Runtime API status
 
-The service listens on `127.0.0.1:4318` by default. The machine-readable source of truth for all routes is [`openapi.yaml`](openapi.yaml). Conchbase owns this contract; Pagurus and other clients consume it.
+The service listens on `127.0.0.1:4318` by default. A loopback binding requires a loopback `Host` header and answers `421` otherwise; a browser-initiated cross-site write (`sec-fetch-site: cross-site`) is answered `403`. The machine-readable source of truth for all routes is [`openapi.yaml`](openapi.yaml). Conchbase owns this contract; Pagurus and other clients consume it.
 
 ## Implemented routes
 
@@ -25,7 +25,7 @@ The service listens on `127.0.0.1:4318` by default. The machine-readable source 
 | `GET /v1/tasks/{taskId}` | One persisted task; `404` when absent. |
 | `POST /v1/tasks/{taskId}/cancel` | Request cancellation of an active task; `409` when it is not active. |
 | `POST /v1/tasks/{taskId}/retry` | Start a new attempt from the original prompt and pinned configuration revision for a terminal task; `409` otherwise. |
-| `GET /v1/events?after=<eventId>` | Persisted events strictly after a known global event ID, plus the resulting cursor; `400` for an unknown cursor. |
+| `GET /v1/events?after=<eventId>&limit=<n>` | Persisted events strictly after a known global event ID, plus the resulting cursor and `hasMore`; `limit` defaults to 500 (max 1000); `400` for an unknown cursor or an out-of-range limit. |
 | `GET /v1/configuration` | Active immutable configuration revision and versioned document. |
 | `GET /v1/configuration/revisions` | Revision summaries, newest first, plus the active revision id. |
 | `GET /v1/configuration/revisions/{revisionId}` | One immutable revision document; `404` when absent. |

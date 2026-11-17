@@ -19,6 +19,8 @@ import { AgentChatService } from './runtime/agent-chat.js';
 import { createOpenAiCompatibleMemoryReviewer } from './runtime/memory-review.js';
 
 const config = loadRuntimeConfig();
+/** A shutdown that has not finished by now is not going to; exit anyway. */
+const SHUTDOWN_GRACE_MS = 5_000;
 mkdirSync(path.dirname(config.databasePath), { recursive: true });
 // The workspace root must exist before any tool call: a worker that cannot list
 // its own root reports `not_found` for everything and produces nothing.
@@ -114,15 +116,31 @@ const shutdown = async (signal: string): Promise<void> => {
   if (shuttingDown) return;
   shuttingDown = true;
   servingApp.log.info({ signal }, 'shutting down');
+  // The SSE stream hijacks its socket, so `close()` waits for a connection a
+  // client may hold open indefinitely (verified: it does not resolve while one
+  // is open). Bound the wait instead of never exiting.
+  let drained = true;
+  const grace = new Promise<void>((resolve) => {
+    const timer = setTimeout(() => {
+      drained = false;
+      resolve();
+    }, SHUTDOWN_GRACE_MS);
+    timer.unref?.();
+  });
   try {
     // Order matters: stop accepting connections first so no new task starts,
     // then close the tool subprocesses (MCP servers outlive the parent
     // otherwise), then release the single-owner database lock.
     convergence?.stop();
-    await servingApp.close();
-    await toolRuntime.close();
+    await Promise.race([servingApp.close(), grace]);
+    await Promise.race([toolRuntime.close(), grace]);
     taskService.close();
+  } catch (cause) {
+    servingApp.log.error({ cause: cause instanceof Error ? cause.message : 'unknown' }, 'shutdown failed');
   } finally {
+    if (!drained) {
+      servingApp.log.warn('connections did not drain within the grace window; exiting anyway');
+    }
     process.exit(0);
   }
 };

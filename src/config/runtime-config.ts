@@ -121,8 +121,8 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
   const executionMode = executionModeValue as ExecutionMode;
   // `path.isAbsolute` rather than a leading slash: the latter rejected every
   // Windows drive path, including the default `process.cwd()`, so the runtime
-  // could not start at all there. Resolving afterwards also normalises
-  // `/workspace/../etc` before any tool compares paths against the root.
+  // could not start at all there. Traversal is not handled here — every tool
+  // resolves against the root and re-checks containment after `realpath`.
   const workspaceRoot = env.CONCHBASE_WORKSPACE_ROOT ?? process.cwd();
   if (!path.isAbsolute(workspaceRoot)) {
     throw new Error('CONCHBASE_WORKSPACE_ROOT must be an absolute path.');
