@@ -37,11 +37,12 @@ api-clients = ["pagurus/src/shared/api/**"]
 # The commands below run with this user's local privileges during integration.
 # They mirror CI: typecheck/check, the full suite, then a production build.
 #
-# Each gate installs dependencies first. Integration runs in a fresh candidate
-# tree created by `git worktree`, which never has node_modules; without the
-# install the gate fails with "tsc: command not found". node_modules is
-# git-ignored, so installing does not trip the "test modified the worktree"
-# check that runs after every gate.
+# Each gate runs with its own repository root as the working directory, so a
+# nested repository needs no `cd`. Each installs dependencies first: integration
+# runs in a fresh candidate tree created by `git worktree`, which never has
+# node_modules; without the install the gate fails with "tsc: command not found".
+# node_modules is git-ignored, so installing does not trip the "test modified
+# the worktree" check that runs after every gate.
 [tests]
 runtime = "npm ci --ignore-scripts --no-audit --no-fund && npm run check && npm test && npm run build"
-console = "cd pagurus && npm ci --ignore-scripts --no-audit --no-fund && npm run check && npm test && npm run build"
+console = "npm ci --ignore-scripts --no-audit --no-fund && npm run check && npm test && npm run build"
