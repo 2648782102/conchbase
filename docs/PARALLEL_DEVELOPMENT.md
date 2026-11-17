@@ -4,6 +4,10 @@
 
 > 这是开发约定，不是公开 API 契约。运行时行为以 `docs/openapi.yaml` 与已接受的 ADR 为准。
 
+有两种方式可用：手写 `git worktree`（下面「开一个新会话」），或 `codex-parallel`
+插件（「用 codex-parallel 插件」一节）。两者都靠 worktree 隔离工作区；区别在于插件
+额外提供路径租约、checkpoint 重叠检测和串行集成。
+
 ## 一句话结论
 
 Git worktree 本身就是隔离的；**需要隔离的是端口、数据库、工作区和文档编号**。仓库已经把这几件事做成了自动派生。
@@ -117,3 +121,80 @@ git push -u origin codex/<方向>
 git worktree remove ../Conchbase-<方向>
 git branch -d codex/<方向>   # 已合并后
 ```
+
+## 用 codex-parallel 插件
+
+插件把「租约、重叠检测、集成」做成了工具，适合**两条线真的会互相踩到**的时候。
+只推进一个方向时，手写 worktree 更轻。
+
+### 一次性准备
+
+`parallel.toml` 在仓库根，已提交。它声明两个独立仓库：
+
+| id | 路径 | 说明 |
+|---|---|---|
+| `runtime` | `.` | Conchbase 本体 |
+| `console` | `pagurus` | 独立仓库，在父仓库被 `.git/info/exclude` 忽略 |
+
+状态目录必须在所有业务仓库之外：
+
+```sh
+export CP_MANIFEST="/path/Conchbase-codex-parallel/parallel.toml"
+export CP_STATE="/path/conchbase-parallel-state"
+```
+
+### 一轮流程
+
+```sh
+# 1. 开一个会话：两个仓库各得一个独立 worktree
+codex-parallel start --name <方向>
+
+# 2. 声明要动的模块（见 parallel.toml 的 [modules]）
+codex-parallel claim --session <ID> --repo console --module agent-app
+
+# 3. 开发并提交，然后发布 checkpoint
+codex-parallel checkpoint --session <ID> --summary "改了什么"
+#    -> overlaps / unclaimed 应当为空；unclaimed 非空说明改到了没声明的路径
+
+# 4. 集成预览，确认会跑哪些命令
+codex-parallel integrate --session <ID> --preview
+
+# 5. 用户确认后执行；只写集成分支，不碰 main
+codex-parallel integrate --session <ID> --authorize-tests
+```
+
+### 三个必须知道的坑
+
+**1. 新 worktree 没有 `node_modules`。**
+插件不装依赖，直接跑集成门禁会得到 `sh: tsc: command not found`。开完会话先装：
+
+```sh
+cd <workspace> && npm ci --ignore-scripts        # runtime
+cd <workspace>/pagurus && npm ci --ignore-scripts # console
+```
+
+npm 缓存通常是热的，两个仓库合计约 1 秒。
+
+**2. `base` 是提交，不是工作区。**
+`parallel.toml` 用 `origin/main`，所以**未推送的本地提交不会出现在新会话里**。
+开工前先把要共享的工作推上去，否则新会话会缺文件（manifest 自己就踩过这个：它不在
+`origin/main` 时，会话里根本读不到 `parallel.toml`）。
+
+**3. 端口有两套。**
+仓库自己的端口派生（分支名哈希，见上表）与插件分配的 `resources.port` 是两套机制。
+`npm run dev` 用的是前者；`CONCHBASE_PORT` 显式设置时永远优先。两者不会互相覆盖，
+但排查「页面连错 Runtime」时要知道自己在看哪一个。
+
+### 清理
+
+插件只在同时满足以下条件时才允许清理，任何一条不满足都会拒绝并列出原因：
+
+- 每个仓库的会话提交都已进入集成分支
+- worktree 里没有已跟踪、未跟踪或被忽略的文件
+- 会话不再持有租约
+- 会话的资源目录已不存在
+
+注意「空会话」也会因为「session commit is not integrated」被拒绝——它要求的是
+**已集成**，而不是**没改动**。所以想回收一个试验会话，正规做法是先释放租约、
+把分支集成进去，再 cleanup；不要在插件之外直接删状态目录，那会留下悬空的
+worktree 注册和无法追溯的账本记录。
