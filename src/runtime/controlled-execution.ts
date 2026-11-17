@@ -127,6 +127,18 @@ export class ExecutionNotFoundError extends Error {
 }
 
 const CAPABILITY_KINDS: readonly CapabilityKind[] = Object.freeze(['mcp', 'skill', 'plugin', 'secret-handle', 'fake']);
+
+/**
+ * Retention for the in-memory snapshot. A cursor older than the retained log is
+ * answered with an explicit error rather than silently resequenced events.
+ *
+ * Same caveat as the run snapshot: a grant is a standing permission, so the
+ * ceiling applies to revoked grants and finished requests only. Live records are
+ * never evicted, which makes this a soft bound rather than a hard one.
+ */
+const MAX_SNAPSHOT_EVENTS = 1_000;
+const MAX_SNAPSHOT_REQUESTS = 200;
+const MAX_SNAPSHOT_GRANTS = 100;
 const OPAQUE_PATTERN = /^[a-z][a-z0-9_-]{2,120}$/;
 const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
 const OPERATION_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
@@ -348,14 +360,48 @@ export function createExecutionSnapshot(now = () => new Date().toISOString()): E
   });
 }
 
+/**
+ * Appends a record and keeps the array bounded without dropping live state.
+ *
+ * A plain "newest N" slice would delete a grant that was never revoked and a
+ * request that is still pending or approved — the caller would then be told the
+ * grant does not exist. Only finished records are eligible for eviction; live
+ * ones stay regardless of age.
+ */
+function appendBounded<T>(
+  items: readonly T[],
+  next: T,
+  maximum: number,
+  isFinished: (item: T) => boolean,
+): readonly T[] {
+  const appended = [...items, next];
+  if (appended.length <= maximum) return appended;
+  const kept: T[] = [];
+  let finishedBudget = maximum;
+  for (let index = appended.length - 1; index >= 0; index -= 1) {
+    const item = appended[index]!;
+    if (isFinished(item)) {
+      if (finishedBudget <= 0) continue;
+      finishedBudget -= 1;
+    }
+    kept.push(item);
+  }
+  return kept.reverse();
+}
+
+function isFinishedRequest(state: ExecutionRequestState): boolean {
+  return state === 'rejected' || state === 'succeeded' || state === 'failed';
+}
+
 function appendEvent(
   snapshot: ExecutionSnapshot,
   type: ExecutionEventType,
   data: Readonly<Record<string, string | number | boolean>>,
   now: () => string,
 ): readonly ExecutionEvent[] {
-  const sequence = snapshot.events.length + 1;
-  return Object.freeze([
+  const last = snapshot.events[snapshot.events.length - 1];
+  const sequence = (last?.sequence ?? 0) + 1;
+  const next = [
     ...snapshot.events,
     Object.freeze({
       version: EXECUTION_CONTRACT_VERSION,
@@ -365,7 +411,12 @@ function appendEvent(
       data: Object.freeze({ ...data }),
       createdAt: now(),
     }),
-  ]);
+  ];
+  // The service is in-memory by design; without a cap a long-lived process
+  // grows one event per transition forever and every append copies the lot.
+  return Object.freeze(next.length > MAX_SNAPSHOT_EVENTS
+    ? next.slice(next.length - MAX_SNAPSHOT_EVENTS)
+    : next);
 }
 
 export class ControlledExecutionService {
@@ -457,7 +508,9 @@ export class ControlledExecutionService {
     });
     this.snapshot = Object.freeze({
       ...this.snapshot,
-      grants: Object.freeze([...this.snapshot.grants, grant]),
+      grants: Object.freeze(appendBounded(
+        this.snapshot.grants, grant, MAX_SNAPSHOT_GRANTS, (item) => item.state === 'revoked',
+      )),
       events: appendEvent(this.snapshot, 'execution.grant_created', {
         grantId: grant.id,
         capabilityId: grant.capabilityId,
@@ -531,7 +584,9 @@ export class ControlledExecutionService {
     });
     this.snapshot = Object.freeze({
       ...this.snapshot,
-      requests: Object.freeze([...this.snapshot.requests, request]),
+      requests: Object.freeze(appendBounded(
+        this.snapshot.requests, request, MAX_SNAPSHOT_REQUESTS, (item) => isFinishedRequest(item.state),
+      )),
       events: appendEvent(this.snapshot, 'execution.request_created', {
         requestId: request.id,
         grantId: request.grantId,

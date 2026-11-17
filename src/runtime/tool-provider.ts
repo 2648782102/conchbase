@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { closeSync, openSync, readSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { closeSync, openSync, opendirSync, readSync, realpathSync, statSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { pageToolResult } from './tool-result-paging.js';
@@ -186,16 +186,32 @@ export function createBuiltinReadTools(options: {
       throw new ToolRejectedError('not_found');
     }
     if (!stats.isDirectory()) throw new ToolRejectedError('not_a_directory');
-    const all = readdirSync(target, { withFileTypes: true });
-    const entries = all
-      .slice(offset, offset + limit)
-      .map((entry) => {
-        const full = path.join(target, entry.name);
-        const size = entry.isFile() ? statSync(full).size : null;
-        return { name: entry.name, kind: entry.isDirectory() ? 'dir' : 'file', size };
-      });
+    // Iterate instead of readdirSync: reading every entry to return 50 of them
+    // allocated the whole directory, which is unbounded work for a tool that
+    // already promises a bounded answer. One extra entry decides `hasMore`.
+    const entries: { name: string; kind: 'dir' | 'file'; size: number | null }[] = [];
+    let hasMore = false;
+    let skipped = 0;
+    const directory = opendirSync(target);
+    try {
+      for (;;) {
+        const entry = directory.readSync();
+        if (entry === null) break;
+        if (skipped < offset) {
+          skipped += 1;
+          continue;
+        }
+        if (entries.length >= limit) {
+          hasMore = true;
+          break;
+        }
+        const size = entry.isFile() ? statSync(path.join(target, entry.name)).size : null;
+        entries.push({ name: entry.name, kind: entry.isDirectory() ? 'dir' : 'file', size });
+      }
+    } finally {
+      directory.closeSync();
+    }
     const raw = entries.map((entry) => `${entry.kind}\t${entry.name}\t${entry.size ?? '-'}`).join('\n');
-    const hasMore = offset + entries.length < all.length;
     const paged = pageToolResult({
       text: raw,
       maxBytes,

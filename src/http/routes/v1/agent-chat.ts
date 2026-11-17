@@ -11,6 +11,8 @@ import { agUiEventType } from '../../../runtime/ag-ui-events.js';
 const STREAM_INTERVAL_MS = 300;
 const HEARTBEAT_MS = 15_000;
 const REPLAY_LIMIT = 500;
+/** Events one stream pass may scan; past this the client is re-snapshotted. */
+const STREAM_SCAN_LIMIT = 1_000;
 const MAX_STREAM_CONNECTIONS = 32;
 
 function frameText(frame: AgentChatStreamFrame): string {
@@ -207,13 +209,23 @@ export function registerAgentChatRoutes(
       write(service.snapshotFrame(conversationId, cursor));
 
       try {
-        const replayed = service.taskService.store.listEvents(cursor)
-          .filter((event) => taskIds.includes(event.taskId))
-          .slice(0, REPLAY_LIMIT);
-        for (const event of replayed) {
-          const frame = service.eventFrame(conversationId, event.id, event.taskId);
-          if (frame) write(frame);
-          else cursor = event.id;
+        // A cursor can be days old. Scanning the whole backlog to find this
+        // conversation's events is unbounded work on the event loop, so the read
+        // is windowed: past the window the client gets a fresh snapshot, which
+        // carries the full conversation state and a cursor at the window edge.
+        const scanned = service.taskService.store.listEvents(cursor, STREAM_SCAN_LIMIT + 1);
+        if (scanned.length > STREAM_SCAN_LIMIT) {
+          cursor = scanned[STREAM_SCAN_LIMIT - 1]!.id;
+          write(service.snapshotFrame(conversationId, cursor));
+        } else {
+          const replayed = scanned
+            .filter((event) => taskIds.includes(event.taskId))
+            .slice(0, REPLAY_LIMIT);
+          for (const event of replayed) {
+            const frame = service.eventFrame(conversationId, event.id, event.taskId);
+            if (frame) write(frame);
+            else cursor = event.id;
+          }
         }
       } catch (cause) {
         close();
@@ -228,8 +240,10 @@ export function registerAgentChatRoutes(
           const newTaskIds = latestTaskIds.filter((taskId) => !taskIds.includes(taskId));
           if (newTaskIds.length > 0) taskIds = latestTaskIds;
           const latestRevision = service.conversationRevision(conversationId);
-          const next = service.taskService.store.listEvents(cursor)
-            .filter((event) => taskIds.includes(event.taskId));
+          const scanned = service.taskService.store.listEvents(cursor, STREAM_SCAN_LIMIT + 1);
+          const backlogged = scanned.length > STREAM_SCAN_LIMIT;
+          const batch = backlogged ? scanned.slice(0, STREAM_SCAN_LIMIT) : scanned;
+          const next = batch.filter((event) => taskIds.includes(event.taskId));
           if (latestRevision !== revision || next.length > 0) {
             revision = latestRevision;
             const current = service.view(conversationId);
@@ -264,6 +278,13 @@ export function registerAgentChatRoutes(
             const frame = service.eventFrame(conversationId, event.id, event.taskId);
             if (frame) write(frame);
             else cursor = event.id;
+          }
+          if (backlogged) {
+            // More events are waiting than this window covers. Move to its edge
+            // and re-state the conversation rather than silently skipping the
+            // gap; every subsequent pump then resumes from a known cursor.
+            cursor = batch[batch.length - 1]!.id;
+            write(service.snapshotFrame(conversationId, cursor));
           }
         } catch (cause) {
           if (cause instanceof EventOrderError) {

@@ -97,6 +97,17 @@ export class ExecutionRunNotFoundError extends Error {
 }
 
 const OPERATIONS: readonly IsolatedOperation[] = Object.freeze(['hash', 'echo_length', 'fixed_matrix']);
+
+/**
+ * Retention for the in-memory snapshot; see trimRuns and appendEvent.
+ *
+ * These are ceilings on *finished* records, not hard bounds: an unfinished run
+ * is never evicted, so a process that leaves runs queued forever keeps them.
+ * Event and run counts are still bounded in every path that finishes work.
+ */
+const MAX_SNAPSHOT_EVENTS = 1_000;
+const MAX_SNAPSHOT_RUNS = 50;
+const FINISHED_RUN_STATES = new Set<ExecutionRunState>(['succeeded', 'failed', 'cancelled', 'interrupted']);
 const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
 const OPAQUE_PATTERN = /^[a-z][a-z0-9_-]{2,120}$/;
 
@@ -317,14 +328,23 @@ function createSnapshot(now: () => string): ExecutionRunSnapshot {
   });
 }
 
-function appendEvent(
+/**
+ * Appends one run event, keeping the log bounded.
+ *
+ * `sequence` comes from the last event rather than the array length: after
+ * trimming, the length stops being a counter and reusing it would mint duplicate
+ * sequence numbers, and therefore duplicate event ids.
+ */
+/** Exported for tests: trimming must not renumber events. */
+export function appendEvent(
   snapshot: ExecutionRunSnapshot,
   type: ExecutionRunEventType,
   data: Readonly<Record<string, string | number | boolean>>,
   now: () => string,
 ): readonly ExecutionRunEvent[] {
-  const sequence = snapshot.events.length + 1;
-  return Object.freeze([
+  const last = snapshot.events[snapshot.events.length - 1];
+  const sequence = (last?.sequence ?? 0) + 1;
+  const next = [
     ...snapshot.events,
     Object.freeze({
       version: EXECUTION_RUN_CONTRACT_VERSION,
@@ -334,7 +354,33 @@ function appendEvent(
       data: Object.freeze({ ...data }),
       createdAt: now(),
     }),
-  ]);
+  ];
+  return Object.freeze(next.length > MAX_SNAPSHOT_EVENTS
+    ? next.slice(next.length - MAX_SNAPSHOT_EVENTS)
+    : next);
+}
+
+/**
+ * Keeps every unfinished run and only the newest finished ones.
+ *
+ * Runs are terminal records; dropping the oldest finished ones bounds an
+ * in-memory service that would otherwise grow one entry per run forever.
+ */
+function trimRuns(runs: readonly ExecutionRun[], maximum: number): readonly ExecutionRun[] {
+  if (runs.length <= maximum) return runs;
+  const kept: ExecutionRun[] = [];
+  let finishedBudget = maximum;
+  for (let index = runs.length - 1; index >= 0; index -= 1) {
+    const run = runs[index]!;
+    if (FINISHED_RUN_STATES.has(run.state)) {
+      if (finishedBudget <= 0) continue;
+      finishedBudget -= 1;
+    }
+    // Collected newest-first, reversed once below; `unshift` per item would be
+    // quadratic in the retained count for no benefit.
+    kept.push(run);
+  }
+  return Object.freeze(kept.reverse());
 }
 
 export class IsolatedExecutionService {
@@ -407,7 +453,7 @@ export class IsolatedExecutionService {
     });
     this.snapshot = Object.freeze({
       ...this.snapshot,
-      runs: Object.freeze([...this.snapshot.runs, run]),
+      runs: trimRuns([...this.snapshot.runs, run], MAX_SNAPSHOT_RUNS),
       events: appendEvent(this.snapshot, 'execution.run_created', {
         runId: run.id,
         requestId: run.requestId,

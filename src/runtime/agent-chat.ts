@@ -5,6 +5,7 @@ import { agUiEventType } from './ag-ui-events.js';
 import { boundedOutput } from './agent-chat-output.js';
 import { TaskConflictError, TaskNotFoundError } from './task-store.js';
 import type { TaskSnapshot } from './task-store.js';
+import type { RuntimeEvent } from './event-log.js';
 import { chineseAgentDisplayName } from './agent-name.js';
 import type { BossModeService } from './boss-mode-service.js';
 import { projectMessage } from './agent-chat-projection.js';
@@ -205,6 +206,12 @@ function boundedString(value: unknown, fallback = ''): string {
 export class AgentChatService {
   private readonly conversations = new Map<string, ConversationRecord>();
   private static readonly MAX_CACHED_CONVERSATIONS = 64;
+  /**
+   * Activity keyed by `taskId:lastEventId`. The event log is append-only, so
+   * that id versions the whole fold; the cache is an LRU over both.
+   */
+  private readonly activityCache = new Map<string, readonly AgentChatActivity[]>();
+  private static readonly MAX_CACHED_ACTIVITY = 128;
   private readonly store: AgentChatStore;
 
   constructor(
@@ -224,14 +231,40 @@ export class AgentChatService {
     // made shutdown observable; the lazy path is both simpler and bounded.
   }
 
-  private settleRecord(record: ConversationRecord): void {
+  /**
+   * Settles every message against its task before a read.
+   *
+   * This is the read path's only side effect: a task that finished since the
+   * last change notification is folded into the durable record, so a read never
+   * shows a stale state. It returns the loop activity it resolved, because the
+   * caller renders exactly the same data — computing it twice was most of the
+   * read cost.
+   *
+   * Task state and events are fetched for the whole conversation at once. Before
+   * this, each message asked for its own task's entire event log, and the
+   * projection it produced here was thrown away by every caller.
+   */
+  private settleRecord(record: ConversationRecord): ReadonlyMap<string, readonly AgentChatActivity[]> {
+    const taskIds = [...new Set(record.messages.flatMap((message) => (
+      message.taskId === null ? [] : [message.taskId])))];
+    const tasks = new Map<string, TaskSnapshot | null>();
+    for (const taskId of taskIds) tasks.set(taskId, this.taskService.store.getTask(taskId));
+    const events = taskIds.length > 0
+      ? this.taskService.store.listTaskLoopEvents(taskIds)
+      : new Map<string, readonly RuntimeEvent[]>();
+    const activityByTask = new Map<string, readonly AgentChatActivity[]>();
+
     let changed = false;
     for (const message of [...record.messages]) {
-      const task = message.taskId ? this.taskService.store.getTask(message.taskId) : null;
+      const task = message.taskId ? tasks.get(message.taskId) ?? null : null;
+      const activity = message.taskId
+        ? this.activityFor(message.taskId, events.get(message.taskId) ?? [])
+        : Object.freeze([] as AgentChatActivity[]);
+      if (message.taskId) activityByTask.set(message.taskId, activity);
       const projected = projectMessage({
         message,
         task,
-        activity: message.taskId ? this.taskActivity(message.taskId) : [],
+        activity,
         now: this.now(),
       });
       if (!projected) continue;
@@ -239,6 +272,7 @@ export class AgentChatService {
       changed = true;
     }
     if (changed) this.persist(record);
+    return activityByTask;
   }
 
   listAgents(): readonly AgentChatAgentView[] {
@@ -440,7 +474,7 @@ export class AgentChatService {
       });
       this.persist(record);
     }
-    this.projectForRead(record);
+    this.settleBeforeRead(record);
     return Object.freeze({
       version: AGENT_CHAT_CONTRACT_VERSION,
       conversationId,
@@ -481,7 +515,7 @@ export class AgentChatService {
         ? new AgentChatServiceError(cause.message.slice(0, 240), 400)
         : new AgentChatServiceError('Approval decision failed.');
     }
-    this.projectForRead(record);
+    this.settleBeforeRead(record);
     return Object.freeze({
       version: AGENT_CHAT_CONTRACT_VERSION,
       conversationId,
@@ -492,7 +526,7 @@ export class AgentChatService {
   view(conversationId: string): AgentChatConversationView {
     const record = this.load(conversationId);
     if (!record) throw new AgentChatServiceError('Agent Chat conversation not found.', 404);
-    this.projectForRead(record);
+    const settledActivity = this.settleBeforeRead(record);
     // Reading the conversation is the signal that a finished reply has been
     // seen. Without it, `done` and `replied` would be the same state and the
     // "finished but unread" distinction would carry no information.
@@ -510,7 +544,7 @@ export class AgentChatService {
         if (message.activity.length > 0 || message.taskId === null) {
           return Object.freeze({ ...message });
         }
-        const activity = this.taskActivity(message.taskId);
+        const activity = settledActivity.get(message.taskId) ?? [];
         return Object.freeze({
           ...message,
           activity: activity.length > 0 ? activity : message.activity,
@@ -596,7 +630,7 @@ export class AgentChatService {
   ): AgentChatStreamFrame | null {
     const record = this.load(conversationId);
     if (!record) throw new AgentChatServiceError('Agent Chat conversation not found.', 404);
-    this.projectForRead(record);
+    this.settleBeforeRead(record);
     const message = record.messages.find((entry) => entry.taskId === taskId);
     if (!message) return null;
     return Object.freeze({
@@ -797,37 +831,113 @@ export class AgentChatService {
   }
 
   /**
-   * Read path.
+   * Read path entry: settles, then hands back the activity it resolved.
    *
-   * Projects pending messages for display only. It deliberately does not call
-   * `persist`: a query must not mutate durable state, and the write path already
-   * settles terminal outcomes from the task change notification.
+   * The task change bus is asynchronous, so a read that races a just-finished
+   * task would see the previous state. Settling here keeps the record
+   * authoritative. It used to also compute a projection that every caller threw
+   * away — two full event reads per message for an answer nobody rendered.
    */
-  private projectForRead(record: ConversationRecord): AgentChatMessage[] {
-    // Lazy settling: the task change bus is asynchronous, so a read that races
-    // a just-finished task would otherwise see the previous state. Settling
-    // here keeps the record authoritative without making the *projection* a
-    // write — the projection itself is still computed below and returned.
-    this.settleRecord(record);
-    return record.messages.map((message) => {
-      const task = message.taskId ? this.taskService.store.getTask(message.taskId) : null;
-      const projected = projectMessage({
-        message,
-        task,
-        activity: message.taskId ? this.taskActivity(message.taskId) : [],
-        now: this.now(),
-      });
-      // The projection is returned, not stored: reads never mutate durable state.
-      return projected ?? message;
-    });
+  private settleBeforeRead(record: ConversationRecord): ReadonlyMap<string, readonly AgentChatActivity[]> {
+    return this.settleRecord(record);
   }
 
-  private taskActivity(taskId: string): readonly AgentChatActivity[] {
-    const events = this.taskService.store.listTaskEvents(taskId);
-    const activity: AgentChatActivity[] = [];
-    let lastTurn: AgentChatActivity | null = null;
-    const byTool = new Map<string, AgentChatActivity[]>();
-    for (const event of events) {
+  /**
+   * Loop activity for one task, computed from events the caller already has.
+   *
+   * Activity is a pure fold over that task's `agent_loop.*` events, so it is
+   * cached against the id of the last one: the log is append-only, which makes
+   * that id a version for the whole sequence. A streaming conversation asks for
+   * this every few hundred milliseconds per message, and almost always for an
+   * unchanged task.
+   */
+  private activityFor(taskId: string, events: readonly RuntimeEvent[]): readonly AgentChatActivity[] {
+    const version = events.length === 0 ? '' : events[events.length - 1]!.id;
+    const key = `${taskId}:${version}`;
+    const cached = this.activityCache.get(key);
+    if (cached) {
+      this.activityCache.delete(key);
+      this.activityCache.set(key, cached);
+      return cached;
+    }
+    const activity = computeActivity(events);
+    this.activityCache.set(key, activity);
+    if (this.activityCache.size > AgentChatService.MAX_CACHED_ACTIVITY) {
+      const oldest = this.activityCache.keys().next().value;
+      if (oldest !== undefined) this.activityCache.delete(oldest);
+    }
+    return activity;
+  }
+
+  private getMessage(record: ConversationRecord, messageId: string): AgentChatMessage | undefined {
+    return record.messages.find((message) => message.id === messageId);
+  }
+
+  private replaceMessage(record: ConversationRecord, messageId: string, next: AgentChatMessage): void {
+    const index = record.messages.findIndex((message) => message.id === messageId);
+    if (index >= 0) record.messages[index] = Object.freeze(next);
+  }
+
+  private load(conversationId: string): ConversationRecord | null {
+    const existing = this.conversations.get(conversationId);
+    if (existing) return existing;
+    const stored = this.store.get(conversationId);
+    if (!stored) return null;
+    const record: ConversationRecord = {
+      ...stored,
+      messages: [...stored.messages],
+      idempotency: new Map(stored.idempotency),
+    };
+    this.conversations.set(conversationId, record);
+    if (this.conversations.size > AgentChatService.MAX_CACHED_CONVERSATIONS) {
+      const oldest = this.conversations.keys().next().value;
+      if (oldest !== undefined && oldest !== conversationId) this.conversations.delete(oldest);
+    }
+    return record;
+  }
+
+  /**
+   * Records that the user has now seen this conversation.
+   *
+   * `done` means "finished and not yet looked at"; `replied` means "finished and
+   * seen". Only a read can move one to the other, so the marker is durable and
+   * survives restart rather than being a per-process flag.
+   */
+  private markRead(record: ConversationRecord): void {
+    const now = this.now();
+    let changed = false;
+    for (const message of record.messages) {
+      if (message.author !== 'assistant' || message.state !== 'done') continue;
+      this.replaceMessage(record, message.id, Object.freeze({ ...message, state: 'replied' }));
+      changed = true;
+    }
+    if (!changed) return;
+    // `ConversationRecord` is readonly; persist a copy carrying the new marker
+    // rather than mutating the loaded record in place.
+    this.persist({ ...record, lastReadAt: now });
+  }
+
+  private persist(record: ConversationRecord): void {
+    this.store.save({
+      ...record,
+      messages: Object.freeze([...record.messages]),
+      idempotency: Object.freeze([...record.idempotency.entries()].map(([key, value]) =>
+        Object.freeze([key, value] as const))),
+    });
+  }
+}
+
+/**
+ * Folds one task's `agent_loop.*` events into display activity.
+ *
+ * Pure: no store access, no clock. The caller owns where the events came from
+ * and whether the result may be cached.
+ */
+function computeActivity(events: readonly RuntimeEvent[]): readonly AgentChatActivity[] {
+  const activity: AgentChatActivity[] = [];
+  let lastTurn: AgentChatActivity | null = null;
+  const byTool = new Map<string, AgentChatActivity[]>();
+  for (const event of events) {
       if (event.type === 'agent_loop.turn_started') {
         const iteration = typeof event.data.iteration === 'number' ? event.data.iteration : 0;
         const next: AgentChatActivity = Object.freeze({
@@ -933,61 +1043,3 @@ export class AgentChatService {
     if (activity.length > MAX_ACTIVITY) return Object.freeze(activity.slice(-MAX_ACTIVITY));
     return Object.freeze(activity);
   }
-
-  private getMessage(record: ConversationRecord, messageId: string): AgentChatMessage | undefined {
-    return record.messages.find((message) => message.id === messageId);
-  }
-
-  private replaceMessage(record: ConversationRecord, messageId: string, next: AgentChatMessage): void {
-    const index = record.messages.findIndex((message) => message.id === messageId);
-    if (index >= 0) record.messages[index] = Object.freeze(next);
-  }
-
-  private load(conversationId: string): ConversationRecord | null {
-    const existing = this.conversations.get(conversationId);
-    if (existing) return existing;
-    const stored = this.store.get(conversationId);
-    if (!stored) return null;
-    const record: ConversationRecord = {
-      ...stored,
-      messages: [...stored.messages],
-      idempotency: new Map(stored.idempotency),
-    };
-    this.conversations.set(conversationId, record);
-    if (this.conversations.size > AgentChatService.MAX_CACHED_CONVERSATIONS) {
-      const oldest = this.conversations.keys().next().value;
-      if (oldest !== undefined && oldest !== conversationId) this.conversations.delete(oldest);
-    }
-    return record;
-  }
-
-  /**
-   * Records that the user has now seen this conversation.
-   *
-   * `done` means "finished and not yet looked at"; `replied` means "finished and
-   * seen". Only a read can move one to the other, so the marker is durable and
-   * survives restart rather than being a per-process flag.
-   */
-  private markRead(record: ConversationRecord): void {
-    const now = this.now();
-    let changed = false;
-    for (const message of record.messages) {
-      if (message.author !== 'assistant' || message.state !== 'done') continue;
-      this.replaceMessage(record, message.id, Object.freeze({ ...message, state: 'replied' }));
-      changed = true;
-    }
-    if (!changed) return;
-    // `ConversationRecord` is readonly; persist a copy carrying the new marker
-    // rather than mutating the loaded record in place.
-    this.persist({ ...record, lastReadAt: now });
-  }
-
-  private persist(record: ConversationRecord): void {
-    this.store.save({
-      ...record,
-      messages: Object.freeze([...record.messages]),
-      idempotency: Object.freeze([...record.idempotency.entries()].map(([key, value]) =>
-        Object.freeze([key, value] as const))),
-    });
-  }
-}

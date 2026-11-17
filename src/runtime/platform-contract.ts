@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 
 export const PLATFORM_CONTRACT_VERSION = 2;
 export const WORK_STATES = Object.freeze(['open', 'running', 'paused', 'completed', 'cancelled'] as const);
@@ -215,12 +215,32 @@ export function sha256Digest(value: unknown): string {
 export function rawSha256Digest(value: string): string {
   return `sha256:${createHash('sha256').update(value, 'utf8').digest('hex')}`;
 }
-export function secretValueDigest(value: string): string {
-  return rawSha256Digest(value);
+/**
+ * Keyed fingerprint for a sealed secret value.
+ *
+ * A plain SHA-256 of the plaintext was stored beside the AES-GCM ciphertext, so
+ * the ciphertext protected the value while the digest handed it back: any
+ * low-entropy secret (a password, a short token) fell to an offline dictionary
+ * attack against a database copy. The key lives in this process only, exactly
+ * like the key that seals the value, so the fingerprint dies with the seal it
+ * describes. Callers must pass the key; there is no unkeyed variant left.
+ */
+export function secretValueDigest(value: string, key: Buffer): string {
+  return `sha256:${createHmac('sha256', key).update(value, 'utf8').digest('hex')}`;
 }
 export function opaquePlatformId(prefix: string, value: unknown): string {
   return `${prefix}_${createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 24)}`;
 }
+/**
+ * Bearer-token digest.
+ *
+ * ADR 0103 gave secret *values* a keyed fingerprint, and this is the same
+ * pattern left unkeyed on purpose — not an oversight. A token has to stay valid
+ * across a restart, so it cannot be keyed by a process-scoped key without
+ * invalidating every pairing on every restart. Closing it needs either a
+ * persisted key (a key-storage decision with its own ADR) or the server minting
+ * the token instead of accepting a client-supplied digest (a pairing-UX change).
+ */
 export function tokenDigest(value: string): string {
   return rawSha256Digest(value);
 }

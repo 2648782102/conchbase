@@ -208,3 +208,47 @@ test('task event lookup uses a task_id index and returns only that task', () => 
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('loop events are read for many tasks at once and deltas are excluded', async () => {
+  // Conversation reads used to fetch each task's whole log — output deltas
+  // included — and discard everything that was not agent_loop.*. The batched
+  // read must return exactly the loop events, grouped, so activity can be folded
+  // without touching the part of the log that grows with streamed output.
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-loop-events-'));
+  const store = new SqliteTaskStore(path.join(directory, 'runtime.sqlite'));
+  try {
+    const revision = store.getActiveConfigurationRevisionId();
+    const taskIds = ['task_loop_a', 'task_loop_b'];
+    for (const id of taskIds) {
+      store.createTask({ id, prompt: 'p', model: 'magpie/m', configurationRevisionId: revision, attempt: 1 });
+    }
+    const emit = (taskId: string, type: 'task.output_delta' | 'agent_loop.tool_requested') => {
+      store.recordEvent(taskId, {
+        taskId, type, state: 'running', configurationRevisionId: revision, attempt: 1,
+        data: type === 'agent_loop.tool_requested'
+          ? { iteration: 1, toolId: 'workspace_read', argumentsDigest: 'arg_x' }
+          : { index: 1, text: 'chunk' },
+      });
+    };
+    for (let index = 0; index < 5; index += 1) {
+      emit(taskIds[0]!, 'task.output_delta');
+      emit(taskIds[1]!, 'task.output_delta');
+    }
+    emit(taskIds[0]!, 'agent_loop.tool_requested');
+    emit(taskIds[1]!, 'agent_loop.tool_requested');
+    emit(taskIds[1]!, 'agent_loop.tool_requested');
+
+    const grouped = store.listTaskLoopEvents([...taskIds, 'task_absent']);
+    assert.deepEqual([...grouped.keys()].sort(), [...taskIds].sort());
+    assert.equal(grouped.get(taskIds[0]!)!.length, 1);
+    assert.equal(grouped.get(taskIds[1]!)!.length, 2);
+    for (const events of grouped.values()) {
+      assert.ok(events.every((event) => event.type.startsWith('agent_loop.')));
+    }
+    assert.equal(grouped.has('task_absent'), false);
+    assert.equal(store.listTaskLoopEvents([]).size, 0);
+  } finally {
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

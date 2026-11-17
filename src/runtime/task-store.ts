@@ -159,6 +159,7 @@ export interface TaskStore {
   decideToolRequest(requestId: string, input: ToolRequestDecisionInput): ToolRequestDecisionResult;
   listEvents(afterEventId: string | null, limit?: number): readonly RuntimeEvent[];
   listTaskEvents(taskId: string): readonly RuntimeEvent[];
+  listTaskLoopEvents(taskIds: readonly string[]): ReadonlyMap<string, readonly RuntimeEvent[]>;
   hasToolExecuted(taskId: string, toolId: string, argumentsDigest: string): boolean;
   getEvent(eventId: string): RuntimeEvent | null;
   getConfigurationState(): ConfigurationState;
@@ -766,11 +767,47 @@ export class SqliteTaskStore implements TaskStore {
     return row === undefined ? null : toEvent(row);
   }
 
+  /**
+   * Every event of one task, output deltas included.
+   *
+   * No production caller is left: conversation reads use `listTaskLoopEvents`
+   * because this one grows with streamed output (measured 712 ms for a task with
+   * 100k events). Kept as a general query, but a display path must not adopt it.
+   */
   listTaskEvents(taskId: string): readonly RuntimeEvent[] {
     const rows = this.database.prepare(
       'SELECT * FROM events WHERE task_id = ? ORDER BY sequence',
     ).all(taskId) as unknown as EventRow[];
     return Object.freeze(rows.map(toEvent));
+  }
+
+  /**
+   * Agent-loop events for many tasks at once.
+   *
+   * A conversation view needs the loop activity of every task it shows, and it
+   * used to ask once per task — each answer being that task's whole event log,
+   * output deltas included, parsed and then discarded. `GLOB` rather than `LIKE`
+   * because `_` is a wildcard in `LIKE`, and the type prefix contains one.
+   */
+  listTaskLoopEvents(taskIds: readonly string[]): ReadonlyMap<string, readonly RuntimeEvent[]> {
+    const grouped = new Map<string, RuntimeEvent[]>();
+    const unique = [...new Set(taskIds)];
+    if (unique.length === 0) return new Map();
+    const placeholders = unique.map(() => '?').join(', ');
+    const rows = this.database.prepare(`
+      SELECT * FROM events
+      WHERE task_id IN (${placeholders}) AND type GLOB 'agent_loop.*'
+      ORDER BY sequence
+    `).all(...unique) as unknown as EventRow[];
+    for (const row of rows) {
+      const event = toEvent(row);
+      const bucket = grouped.get(event.taskId);
+      if (bucket) bucket.push(event);
+      else grouped.set(event.taskId, [event]);
+    }
+    const frozen = new Map<string, readonly RuntimeEvent[]>();
+    for (const [taskId, events] of grouped) frozen.set(taskId, Object.freeze(events));
+    return frozen;
   }
 
   close(): void {

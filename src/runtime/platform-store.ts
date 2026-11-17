@@ -93,6 +93,13 @@ export interface FixedAdapter {
 }
 
 const PROCESS_SEALED_VALUE_KEY = randomBytes(32);
+/**
+ * Separate key for the value fingerprint. Same lifetime as the sealing key —
+ * both are process-scoped, so a restart invalidates sealed values and their
+ * fingerprints together — but separate so a leak of one does not weaken the
+ * other.
+ */
+const PROCESS_VALUE_FINGERPRINT_KEY = randomBytes(32);
 
 class DeterministicFixedAdapter implements FixedAdapter {
   readonly id = 'local-bound-fixture';
@@ -110,7 +117,7 @@ function sealValue(value: string): { cipher: string; iv: string; tag: string; di
     cipher: encrypted.toString('base64'),
     iv: iv.toString('base64'),
     tag: cipher.getAuthTag().toString('base64'),
-    digest: secretValueDigest(value),
+    digest: secretValueDigest(value, PROCESS_VALUE_FINGERPRINT_KEY),
   });
 }
 

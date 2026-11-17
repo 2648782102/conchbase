@@ -255,6 +255,10 @@ class CancelOnFirstNodeStore implements TaskStore {
     return this.inner.listTaskEvents(taskId);
   }
 
+  listTaskLoopEvents(taskIds: readonly string[]): ReadonlyMap<string, readonly RuntimeEvent[]> {
+    return this.inner.listTaskLoopEvents(taskIds);
+  }
+
   getConfigurationState(): ConfigurationState {
     return this.inner.getConfigurationState();
   }

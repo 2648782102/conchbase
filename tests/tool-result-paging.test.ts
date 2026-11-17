@@ -108,3 +108,57 @@ test('builtin tools publish their parameter schema to the model surface', async 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('workspace_list stops at the requested page instead of reading the directory', async () => {
+  // The listing used to read every entry and then slice, so the cost was the
+  // directory size rather than the page size.
+  const root = mkdtempSync(path.join(tmpdir(), 'conchbase-list-page-'));
+  try {
+    for (let index = 0; index < 25; index += 1) {
+      writeFileSync(path.join(root, `file-${String(index).padStart(2, '0')}.txt`), 'x');
+    }
+    const tools = createBuiltinReadTools({ root });
+
+    const first = await tools.invoke('workspace_list', { limit: 10 });
+    assert.equal(first.summary.split('\n').filter((line) => line.includes('.txt')).length, 10);
+    assert.match(first.summary, /more entries available\. Continue with offset=10\./);
+
+    const middle = await tools.invoke('workspace_list', { offset: 20, limit: 10 });
+    assert.equal(middle.summary.split('\n').filter((line) => line.includes('.txt')).length, 5);
+    assert.doesNotMatch(middle.summary, /more entries available/);
+
+    const past = await tools.invoke('workspace_list', { offset: 40, limit: 10 });
+    assert.equal(past.summary.includes('.txt'), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('the loop-activity index is present on a fresh database', async () => {
+  // Without it the planner finds the task, then tests `type` on every streamed
+  // output delta: 28 ms on a 100k-event task against 0.46 ms indexed.
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-loop-index-'));
+  const { DatabaseSync } = await import('node:sqlite');
+  const { SqliteTaskStore } = await import('../src/runtime/task-store.js');
+  const filename = path.join(directory, 'runtime.sqlite');
+  // The store holds the file with locking_mode = EXCLUSIVE, so the plan is
+  // inspected on a separate read-only connection after it closes.
+  new SqliteTaskStore(filename).close();
+  try {
+    const database = new DatabaseSync(filename, { readOnly: true });
+    try {
+      const plan = database.prepare(`EXPLAIN QUERY PLAN
+        SELECT * FROM events WHERE task_id IN (?) AND type GLOB 'agent_loop.*' ORDER BY sequence
+      `).all('task_x') as unknown as { detail: string }[];
+      assert.equal(
+        plan.some((row) => row.detail.includes('events_loop_activity')),
+        true,
+        plan.map((row) => row.detail).join(' | '),
+      );
+    } finally {
+      database.close();
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
