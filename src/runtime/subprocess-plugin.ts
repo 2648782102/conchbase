@@ -79,9 +79,13 @@ export class SubprocessPluginClient {
       // Stderr is deliberately discarded: a plugin must not write raw diagnostics
       // into task events or the model's context.
     });
+    // A child that dies mid-call leaves stdin open on our side; writing to it
+    // emits 'error', and an unhandled stream error would take the Runtime down
+    // instead of failing one tool call.
+    child.stdin.on('error', () => this.failAll(new Error('Plugin stdin closed.')));
     child.once('exit', () => this.failAll(new Error('Plugin process exited.')));
     child.once('error', (cause) => this.failAll(cause instanceof Error ? cause : new Error('Plugin process error.')));
-    await this.waitReady();
+    await this.waitReady(child);
   }
 
   invoke(toolId: string, args: ToolArguments): Promise<ToolExecutionResult> {
@@ -130,14 +134,34 @@ export class SubprocessPluginClient {
     this.child = null;
   }
 
-  private waitReady(): Promise<void> {
+  private waitReady(child: ChildProcessWithoutNullStreams): Promise<void> {
     // No discovery or handshake: process spawn success is readiness. The first
     // call will fail with a bounded error if the child cannot speak the protocol.
-    return Promise.resolve();
+    // The start timeout only guards a binary that never finishes spawning.
+    const startTimeoutMs = this.options.startTimeoutMs ?? DEFAULT_START_TIMEOUT_MS;
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        child.kill('SIGKILL');
+        reject(new Error('Plugin did not start in time.'));
+      }, startTimeoutMs);
+      timer.unref?.();
+      child.once('spawn', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      child.once('error', (cause: Error) => {
+        clearTimeout(timer);
+        reject(cause);
+      });
+    });
   }
 
   private onChunk(chunk: string): void {
-    if (this.buffer.length + chunk.length > this.options.maxResultBytes! * 4) {
+    // `maxResultBytes` is optional; without the fallback the comparison was
+    // `n > undefined * 4` (NaN), which is always false, so a plugin emitting one
+    // endless line grew this buffer without bound.
+    const cap = (this.options.maxResultBytes ?? DEFAULT_MAX_RESULT_BYTES) * 4;
+    if (this.buffer.length + chunk.length > cap) {
       this.buffer = '';
       this.failAll(new Error('Plugin returned too much output.'));
       return;

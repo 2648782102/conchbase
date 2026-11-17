@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Conchbase Runtime API
   version: 1.1.0
-  description: Local, versioned API for Conchbase Agent profiles and revisions, provider-neutral model references, pinned tasks, bounded composition execution, ordered progress events, versioned runtime configuration, durable tool request/approval records without execution, durable asynchronous work control, reviewed authenticated pairing, one local Source, a capability directory, and write-only SecretHandles with digest-only use receipts. Runtime capabilities include agents, provider-neutral-model-catalog, tool-approval-ledger, provider-tool-call-observation records, durable-work-contract, authenticated-pairing, asynchronous-work-control, local-source-policy, capability-directory, and write-only-secret-handles.
+  description: Local, versioned API for Conchbase Agent profiles and revisions, provider-neutral model references, pinned tasks, bounded composition execution, ordered progress events, versioned runtime configuration, durable tool request/approval records without execution, durable asynchronous work control, reviewed authenticated pairing, one local Source, a capability directory, and write-only SecretHandles with digest-only use receipts. A loopback binding requires a loopback `Host` header and rejects a browser-initiated cross-site write with 421 and 403 respectively; CLI clients send neither and are unaffected. Runtime capabilities include agents, provider-neutral-model-catalog, tool-approval-ledger, provider-tool-call-observation records, durable-work-contract, authenticated-pairing, asynchronous-work-control, local-source-policy, capability-directory, and write-only-secret-handles.
 servers:
   - url: http://127.0.0.1:4318
     description: Local runtime default; loopback only.
@@ -413,9 +413,17 @@ paths:
           schema:
             type: string
             pattern: '^evt_[0-9]{12}$'
+        - name: limit
+          in: query
+          required: false
+          description: Maximum events to return. Defaults to 500.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
       responses:
         '200':
-          description: Events strictly after the cursor and the resulting cursor.
+          description: Events strictly after the cursor, the resulting cursor, and whether the page filled the limit.
           content:
             application/json:
               schema:
@@ -3361,7 +3369,7 @@ components:
     EventList:
       type: object
       additionalProperties: false
-      required: [events, cursor]
+      required: [events, cursor, hasMore, limit]
       properties:
         events:
           type: array
@@ -3369,6 +3377,12 @@ components:
             $ref: '#/components/schemas/RuntimeEvent'
         cursor:
           type: [string, 'null']
+        hasMore:
+          type: boolean
+          description: True when the page filled the limit; pass the cursor to continue.
+        limit:
+          type: integer
+          description: Limit that produced this page.
     ModelCatalogEntry:
       type: object
       additionalProperties: false

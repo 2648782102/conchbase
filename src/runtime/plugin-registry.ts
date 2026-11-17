@@ -69,7 +69,10 @@ export class PluginRegistry {
         ...(manifest.process.callTimeoutMs !== undefined ? { callTimeoutMs: manifest.process.callTimeoutMs } : {}),
         ...(manifest.process.maxResultBytes !== undefined ? { maxResultBytes: manifest.process.maxResultBytes } : {}),
       });
-      void client.start();
+      // A failed spawn or start timeout must not surface as an unhandled
+      // rejection, which would take the process down. The plugin stays loaded
+      // and every call fails with 'Plugin is not running.', as before.
+      void client.start().catch(() => undefined);
       implementation = Object.freeze({
         list: () => definition.implementation.list(),
         has: (id: string) => definition.implementation.has(id),

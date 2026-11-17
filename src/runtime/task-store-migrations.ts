@@ -41,6 +41,13 @@ export function migrateAgentSchema(database: DatabaseSync): void {
     database.exec(
       'CREATE INDEX IF NOT EXISTS events_task_sequence ON events (task_id, sequence)',
     );
+    // Idempotent-write checks scan only this task's executed-tool events instead
+    // of the whole log; output deltas dominate the table and are excluded by the
+    // partial predicate.
+    database.exec(`
+      CREATE INDEX IF NOT EXISTS events_tool_executed
+      ON events (task_id) WHERE type = 'agent_loop.tool_executed'
+    `);
     database.exec(`
       CREATE TABLE IF NOT EXISTS work_triggers (
         id TEXT PRIMARY KEY,

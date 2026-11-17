@@ -235,8 +235,16 @@ class CancelOnFirstNodeStore implements TaskStore {
     return this.inner.decideToolRequest(requestId, input);
   }
 
-  listEvents(afterEventId: string | null): readonly RuntimeEvent[] {
-    return this.inner.listEvents(afterEventId);
+  listEvents(afterEventId: string | null, limit?: number): readonly RuntimeEvent[] {
+    return this.inner.listEvents(afterEventId, limit);
+  }
+
+  hasToolExecuted(taskId: string, toolId: string, argumentsDigest: string): boolean {
+    return this.inner.hasToolExecuted(taskId, toolId, argumentsDigest);
+  }
+
+  getActiveConfigurationRevisionId(): ConfigurationRevisionId {
+    return this.inner.getActiveConfigurationRevisionId();
   }
 
   getEvent(eventId: string): RuntimeEvent | null {

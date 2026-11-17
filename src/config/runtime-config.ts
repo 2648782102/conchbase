@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 const LOOPBACK_URL_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 
@@ -117,8 +119,12 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     throw new Error('CONCHBASE_EXECUTION_MODE must be restricted or unrestricted.');
   }
   const executionMode = executionModeValue as ExecutionMode;
+  // `path.isAbsolute` rather than a leading slash: the latter rejected every
+  // Windows drive path, including the default `process.cwd()`, so the runtime
+  // could not start at all there. Traversal is not handled here — every tool
+  // resolves against the root and re-checks containment after `realpath`.
   const workspaceRoot = env.CONCHBASE_WORKSPACE_ROOT ?? process.cwd();
-  if (!workspaceRoot.startsWith('/')) {
+  if (!path.isAbsolute(workspaceRoot)) {
     throw new Error('CONCHBASE_WORKSPACE_ROOT must be an absolute path.');
   }
   const allowToolWrites = env.CONCHBASE_ALLOW_TOOL_WRITES === '1';

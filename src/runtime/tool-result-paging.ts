@@ -17,6 +17,12 @@ export interface PageableResult {
     readonly argument: string;
     readonly nextValue: number;
     readonly unit: 'byte' | 'item';
+    /**
+     * Bytes the caller knows about beyond this slice (for example the rest of a
+     * file). Defaults to the length of `text`, which is only correct when the
+     * caller handed over the whole remaining body.
+     */
+    readonly totalBytes?: number;
   };
 }
 
@@ -63,10 +69,8 @@ function buildFooter(
   continuation: NonNullable<PageableResult['continuation']>,
   totalBytes: number,
 ): string {
-  const where = continuation.unit === 'byte'
-    ? `${totalBytes} bytes total`
-    : `${totalBytes} bytes total`;
-  return `\n\n[truncated: ${where}. Continue with ${continuation.argument}=${continuation.nextValue}.]`;
+  const bytes = continuation.totalBytes ?? totalBytes;
+  return `\n\n[truncated: ${bytes} bytes total. Continue with ${continuation.argument}=${continuation.nextValue}.]`;
 }
 
 function truncateUtf8(buffer: Buffer, budget: number): string {
