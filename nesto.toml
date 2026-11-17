@@ -28,11 +28,14 @@ organization = ["src/runtime/organization*.ts", "src/runtime/boss-*.ts"]
 tasks = ["src/runtime/task-*.ts", "src/runtime/tool-*.ts"]
 runtime-git = ["src/runtime/git-tools.ts"]
 
+# Module globs are matched against paths relative to each repository's own root,
+# not against the parent project. A nested repository must therefore not repeat
+# its own directory prefix.
 [modules.console]
-agent-app = ["pagurus/src/agent/**"]
-agent-chat-client = ["pagurus/src/features/agent-chat/**", "pagurus/src/shared/api/agent-chat*.ts"]
-console-shell = ["pagurus/src/app/**", "pagurus/src/styles/**"]
-api-clients = ["pagurus/src/shared/api/**"]
+agent-app = ["src/agent/**"]
+agent-chat-client = ["src/features/agent-chat/**", "src/shared/api/agent-chat*.ts"]
+console-shell = ["src/app/**", "src/styles/**"]
+api-clients = ["src/shared/api/**"]
 
 # The commands below run with this user's local privileges during integration.
 # They mirror CI: typecheck/check, the full suite, then a production build.

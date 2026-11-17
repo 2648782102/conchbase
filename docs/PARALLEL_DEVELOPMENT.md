@@ -4,8 +4,8 @@
 
 > 这是开发约定，不是公开 API 契约。运行时行为以 `docs/openapi.yaml` 与已接受的 ADR 为准。
 
-有两种方式可用：手写 `git worktree`（下面「开一个新会话」），或 `codex-parallel`
-插件（「用 codex-parallel 插件」一节）。两者都靠 worktree 隔离工作区；区别在于插件
+有两种方式可用：手写 `git worktree`（下面「开一个新会话」），或 Nesto
+插件（「用 Nesto 插件」一节）。两者都靠 worktree 隔离工作区；区别在于插件
 额外提供路径租约、checkpoint 重叠检测和串行集成。
 
 ## 一句话结论
@@ -122,14 +122,14 @@ git worktree remove ../Conchbase-<方向>
 git branch -d codex/<方向>   # 已合并后
 ```
 
-## 用 codex-parallel 插件
+## 用 Nesto 插件
 
 插件把「租约、重叠检测、集成」做成了工具，适合**两条线真的会互相踩到**的时候。
 只推进一个方向时，手写 worktree 更轻。
 
 ### 一次性准备
 
-`parallel.toml` 在仓库根，已提交。它声明两个独立仓库：
+`nesto.toml` 在仓库根，已提交。它声明两个独立仓库：
 
 | id | 路径 | 说明 |
 |---|---|---|
@@ -139,48 +139,54 @@ git branch -d codex/<方向>   # 已合并后
 状态目录必须在所有业务仓库之外：
 
 ```sh
-export CP_MANIFEST="/path/Conchbase-codex-parallel/parallel.toml"
-export CP_STATE="/path/conchbase-parallel-state"
+export NESTO_MANIFEST="/path/Conchbase-codex-parallel/nesto.toml"
+export NESTO_STATE="/path/conchbase-nesto-state"
 ```
 
 ### 一轮流程
 
 ```sh
 # 1. 开一个会话：两个仓库各得一个独立 worktree
-codex-parallel start --name <方向>
+nesto start --name <方向>
 
-# 2. 声明要动的模块（见 parallel.toml 的 [modules]）
-codex-parallel claim --session <ID> --repo console --module agent-app
+# 2. 声明要动的模块（见 nesto.toml 的 [modules]）
+nesto claim --session <ID> --repo console --module agent-app
 
 # 3. 开发并提交，然后发布 checkpoint
-codex-parallel checkpoint --session <ID> --summary "改了什么"
+nesto checkpoint --session <ID> --summary "改了什么"
 #    -> overlaps / unclaimed 应当为空；unclaimed 非空说明改到了没声明的路径
 
 # 4. 集成预览，确认会跑哪些命令
-codex-parallel integrate --session <ID> --preview
+nesto integrate --session <ID> --preview
 
 # 5. 用户确认后执行；只写集成分支，不碰 main
-codex-parallel integrate --session <ID> --authorize-tests
+nesto integrate --session <ID> --authorize-tests
+
+# 6. 确认门禁进程已退出后，回收候选树
+nesto candidate-cleanup --operation <OPERATION_ID>
+nesto candidate-cleanup --operation <OPERATION_ID> --confirm
 ```
 
-### 三个必须知道的坑
+### 必须知道的坑
 
-**1. 新 worktree 没有 `node_modules`。**
-插件不装依赖，直接跑集成门禁会得到 `sh: tsc: command not found`。开完会话先装：
+**1. 候选树没有 `node_modules`，门禁必须自己装。**
+集成在 `git worktree` 新建的候选树里跑，被忽略的依赖不会被复制。`nesto.toml` 的
+`[tests]` 已经前置 `npm ci --ignore-scripts`；少这一步会得到 `sh: tsc: command not
+found`。`start` 和 `integrate --preview` 都会打印这条提示和每个仓库的候选工作目录。
 
-```sh
-cd <workspace> && npm ci --ignore-scripts        # runtime
-cd <workspace>/pagurus && npm ci --ignore-scripts # console
-```
+**2. 门禁在各自仓库的候选根目录执行。**
+嵌套仓库**不要再写 `cd pagurus`**——会得到 `cd: pagurus: No such file or directory`。
 
-npm 缓存通常是热的，两个仓库合计约 1 秒。
+**3. 模块 glob 相对各自仓库根。**
+`[modules.console]` 里写 `src/agent/**`，不要重复 `pagurus/` 前缀。写错不会报错，
+只会让租约和重叠检测永久失效。
 
-**2. `base` 是提交，不是工作区。**
-`parallel.toml` 用 `origin/main`，所以**未推送的本地提交不会出现在新会话里**。
+**4. `base` 是提交，不是工作区。**
+`nesto.toml` 用 `origin/main`，所以**未推送的本地提交不会出现在新会话里**。
 开工前先把要共享的工作推上去，否则新会话会缺文件（manifest 自己就踩过这个：它不在
-`origin/main` 时，会话里根本读不到 `parallel.toml`）。
+`origin/main` 时，会话里根本读不到 `nesto.toml`）。
 
-**3. 端口有两套。**
+**5. 端口有两套。**
 仓库自己的端口派生（分支名哈希，见上表）与插件分配的 `resources.port` 是两套机制。
 `npm run dev` 用的是前者；`CONCHBASE_PORT` 显式设置时永远优先。两者不会互相覆盖，
 但排查「页面连错 Runtime」时要知道自己在看哪一个。
@@ -194,34 +200,32 @@ npm 缓存通常是热的，两个仓库合计约 1 秒。
 - 会话不再持有租约
 - 会话的资源目录已不存在
 
-注意「空会话」也会因为「session commit is not integrated」被拒绝——它要求的是
-**已集成**，而不是**没改动**。所以想回收一个试验会话，正规做法是先释放租约、
-把分支集成进去，再 cleanup；不要在插件之外直接删状态目录，那会留下悬空的
-worktree 注册和无法追溯的账本记录。
+完全没改动过的会话（HEAD 仍是基线、reflog 无额外记录、无脏文件、无租约）可以走
+「未改动例外」直接清理，不必先集成。有过提交的会话仍要求已集成。
 
-**5. 每个仓库的门禁以自己的仓库根为工作目录。**
+集成**默认保留候选树**，因为门禁派生的后台进程可能还没退出。确认进程已停后，用
+`candidate-cleanup` 先预览、再确认；它不是沙箱，忽略/未跟踪数据一律保留。
 
-`codex-parallel/integration` 为每个仓库准备一个候选树，`[tests]` 里的命令就在那个
-仓库的根目录下执行。所以嵌套仓库**不要再写 `cd pagurus`**——会得到
-`cd: pagurus: No such file or directory`。
+不要在插件之外直接删状态目录，那会留下悬空的 worktree 注册和无法追溯的账本记录。
 
-**4. 改一次 `parallel.toml`，所有现存会话一起失效。**
+### manifest 变更不再死锁
 
 每次操作都会校验「会话创建时的 digest」与「当前 manifest 的 digest」。digest 是
-**解析后配置对象**的 sha256，不是文件哈希，所以无法用 `shasum` 直接对比。一旦两者
-不等，插件返回 `MANIFEST_CHANGED` 并拒绝**该项目下所有操作**——包括 `status`、
-`claim --release` 和新建会话之外的一切。
+**解析后配置对象**的 sha256，不是文件哈希，所以无法用 `shasum` 直接对比。
 
-危险之处在于它是**项目级阻塞**：一个会话带着旧 digest，会让同一个状态目录里的
-新会话也用不了，而且旧会话连释放自己的租约都做不到，形成死锁。
+早期版本里，一个过期会话会让整个项目失效，连 `status` 和释放自己的租约都做不到。
+现在：
 
-调整 manifest 的正确顺序：
+- `status` 逐会话显示 `manifest.state`、保存/当前 digest、`integrity` 和 `staleReason`；
+- 过期会话仍可释放自己**已核实**的精确租约；
+- 全新会话使用当前配置正常创建和集成；
+- 集成会在还有未清退的过期会话时返回 `MANIFEST_CHANGED`，并指出是哪一个。
 
-1. 先把所有会话的工作提交并推送（它们此后无法再操作）。
-2. 修改 `parallel.toml` 并推送。
-3. 删除 `$CP_STATE/<projectId>/sessions/*` 里 digest 过期的会话目录，以及它们在
-   `leases/` 下对应的文件（先备份整个 `sessions/` 和 `leases/`）。
-4. `git worktree prune` 清理悬空注册。
-5. 重新 `start`。
+调整 manifest 的顺序：
 
-所以：**manifest 尽量一次定稿**。尤其是 `[tests]` 与仓库列表，改一次就要付上面的代价。
+1. 先在**原 manifest** 下把过期会话的工作提交并清理（`cleanup --session <ID>`）。
+2. 修改 `nesto.toml` 并推送。
+3. 新建会话继续。
+
+关键点：清理会话要用**它自己那个 digest 对应的 manifest**，否则会报
+`MANIFEST_CHANGED`。保留一份旧 manifest 备份，或改回原值再清理。

@@ -9,6 +9,8 @@ import type { OrganizationIntentParser, OrganizationIntentParserInput } from '..
 import { InMemoryOrganizationStore } from '../src/runtime/organization-store.js';
 import { createTaskService } from '../src/runtime/task-service.js';
 
+import { catalogOnlyFetch } from './support/model-catalog-stub.js';
+
 /** A parser that records what the Boss service hands it. */
 function recordingParser(): { parser: OrganizationIntentParser; seen: OrganizationIntentParserInput[] } {
   const seen: OrganizationIntentParserInput[] = [];
@@ -31,6 +33,7 @@ test('the Boss prompt receives a bounded memory index', async () => {
   const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
     magpieBaseUrl: 'http://127.0.0.1:3425',
     defaultModel: 'fixture-model',
+    fetch: catalogOnlyFetch(),
   });
   try {
     const store = new InMemoryOrganizationStore();
@@ -64,6 +67,7 @@ test('a memory-store failure never breaks a Boss turn', async () => {
   const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
     magpieBaseUrl: 'http://127.0.0.1:3425',
     defaultModel: 'fixture-model',
+    fetch: catalogOnlyFetch(),
   });
   try {
     const store = new InMemoryOrganizationStore();
@@ -91,6 +95,7 @@ test('a retracted entry disappears from the injected index', async () => {
   const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
     magpieBaseUrl: 'http://127.0.0.1:3425',
     defaultModel: 'fixture-model',
+    fetch: catalogOnlyFetch(),
   });
   try {
     const store = new InMemoryOrganizationStore();
