@@ -8,6 +8,12 @@
 # `base` is a committed local ref. `origin/main` is used because the local
 # `main` branch of the Pagurus checkout is held by another worktree and cannot
 # be checked out here.
+#
+# IMPORTANT: every session must load this file from the MAIN checkout
+# (Conchbase/nesto.toml). The Nesto project id is derived from the manifest's
+# own directory, so running this worktree's copy produces a separate ledger
+# that cannot see or block the other session. This copy exists only so the
+# setting is versioned alongside the code.
 version = 1
 
 [[repositories]]
