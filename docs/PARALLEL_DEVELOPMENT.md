@@ -139,9 +139,13 @@ git branch -d codex/<方向>   # 已合并后
 状态目录必须在所有业务仓库之外：
 
 ```sh
-export NESTO_MANIFEST="/path/Conchbase-codex-parallel/nesto.toml"
+export NESTO_MANIFEST="/path/Conchbase/nesto.toml"
 export NESTO_STATE="/path/conchbase-nesto-state"
 ```
+
+**两个会话必须用同一份 manifest。** 项目 ID 由 manifest 所在目录推导：从主检出和
+从链接工作树各指一次 `nesto.toml`，会得到两个互不相干的账本，`status` 里互相看不见、
+租约也不互相阻塞。所以一律指向**主检出**（`Conchbase`）里的那份，其余检出只作为工作区。
 
 ### 一轮流程
 
