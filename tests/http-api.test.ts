@@ -6,6 +6,12 @@ test('read-only status routes return the documented API shapes', async () => {
   const app = createApp({ logger: false });
 
   try {
+    const index = await app.inject({ method: 'GET', url: '/' });
+    assert.equal(index.statusCode, 200);
+    assert.equal(index.json().service, 'conchbase');
+    assert.equal(index.json().entryPoints.conversations, '/v1/agent-chat/conversations');
+    assert.match(index.json().hint, /agent-chat\/conversations/);
+
     const health = await app.inject({ method: 'GET', url: '/v1/health' });
     assert.equal(health.statusCode, 200);
     assert.deepEqual(health.json(), {

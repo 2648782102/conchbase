@@ -132,5 +132,30 @@ export function createApp(options: CreateAppOptions = {}) {
   registerExecutionRoutes(app, execution);
   registerExecutionRunRoutes(app, executionRuns);
 
+  // Service discovery for a human or agent arriving at the Runtime without
+  // prior knowledge of the route surface. This is a non-versioned convenience
+  // index; the versioned /v1/* contract remains the source of truth.
+  app.get('/', async () => ({
+    service: 'conchbase',
+    status: 'ok',
+    apiVersion: 1,
+    capabilities: {
+      agentChat: Boolean(agentChat),
+      organization: Boolean(organization),
+      taskExecution: Boolean(options.taskService),
+      models: Boolean(options.taskService),
+    },
+    entryPoints: {
+      health: '/v1/health',
+      models: '/v1/models',
+      agents: '/v1/agent-chat/agents',
+      // Stateful multi-turn conversation is the primary user entry point.
+      conversations: '/v1/agent-chat/conversations',
+      singleShotTasks: '/v1/tasks',
+      openapi: 'docs/openapi.yaml in the repository checkout',
+    },
+    hint: 'For a multi-turn assistant, POST /v1/agent-chat/conversations, then POST /v1/agent-chat/conversations/{id}/messages with {text, idempotencyKey}.',
+  }));
+
   return app;
 }
