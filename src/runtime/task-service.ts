@@ -99,6 +99,32 @@ const DEFAULT_LOOP_BUDGET: LoopBudget = Object.freeze({
   deadlineMs: 120_000,
 });
 
+interface LoopContinuationCheckpoint {
+  readonly version: 1;
+  readonly iteration: number;
+  readonly messages: ProviderMessage[];
+}
+
+function parseLoopContinuation(raw: string | null): LoopContinuationCheckpoint | undefined {
+  if (!raw) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return undefined;
+  const candidate = parsed as Partial<LoopContinuationCheckpoint>;
+  if (candidate.version !== 1) return undefined;
+  if (!Number.isInteger(candidate.iteration) || (candidate.iteration ?? -1) < 0) return undefined;
+  if (!Array.isArray(candidate.messages)) return undefined;
+  return {
+    version: 1,
+    iteration: candidate.iteration as number,
+    messages: candidate.messages as ProviderMessage[],
+  };
+}
+
 export interface CreateTaskInput {
   readonly prompt: string;
   readonly model?: string;
@@ -179,8 +205,9 @@ export class TaskService {
       ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
       ...(config.fetch ? { fetch: config.fetch } : {}),
     });
-    this.interruptIncompleteTasks();
+    const resumable = this.interruptIncompleteTasks();
     this.store.platform.recoverAssignments();
+    for (const taskId of resumable) this.startTask(taskId);
   }
 
   get activeConfigurationRevisionId(): string {
@@ -500,7 +527,8 @@ export class TaskService {
   startTask(taskId: string): void {
     const task = this.store.getTask(taskId);
     if (!task) throw new TaskNotFoundError();
-    if (this.active.has(taskId) || task.state !== 'queued') {
+    const resuming = task.state === 'running' && parseLoopContinuation(this.store.getLoopState(taskId)) !== undefined;
+    if (this.active.has(taskId) || (task.state !== 'queued' && !resuming)) {
       throw new TaskConflictError('Task is not queued.');
     }
 
@@ -622,11 +650,13 @@ export class TaskService {
       throw new TaskConflictError('Only a finished task can be retried.');
     }
     const attempt = task.attempt + 1;
-    return this.store.resetTask(
+    const reset = this.store.resetTask(
       taskId,
       attempt,
       this.eventInput(task, 'task.queued', 'queued', attempt),
     );
+    this.store.saveLoopState(taskId, null);
+    return reset;
   }
 
   listModels(fetchImpl?: typeof globalThis.fetch): Promise<readonly ModelCatalogEntry[]> {
@@ -731,11 +761,15 @@ export class TaskService {
         this.finishCancelled(task);
         return;
       }
-      this.store.transitionTask(
-        task.id,
-        'running',
-        this.eventInput(task, 'task.started', 'running', task.attempt),
-      );
+      const resuming = task.state === 'running'
+        && parseLoopContinuation(this.store.getLoopState(task.id)) !== undefined;
+      if (!resuming) {
+        this.store.transitionTask(
+          task.id,
+          'running',
+          this.eventInput(task, 'task.started', 'running', task.attempt),
+        );
+      }
       const revision = this.store.getConfigurationRevision(task.configurationRevisionId);
       if (!revision) throw new Error('Pinned configuration revision is missing.');
       if (!task.agentId && isConfigurationDocumentV2(revision.document)) {
@@ -759,12 +793,25 @@ export class TaskService {
         this.eventInput(task, 'task.failed', 'failed', task.attempt),
         { error: message.slice(0, 500) },
       );
+      this.store.saveLoopState(task.id, null);
     }
   }
 
   private async executeAgentLoop(task: TaskSnapshot, signal: AbortSignal): Promise<void> {
     if (task.providerId !== undefined && task.providerId !== 'magpie') {
       throw new Error(`Model provider '${task.providerId}' is not available in this runtime.`);
+    }
+    const continuation = parseLoopContinuation(this.store.getLoopState(task.id));
+    if (continuation) {
+      const capabilities = this.taskCapabilities(task);
+      await this.runAgentLoop(
+        task,
+        continuation.messages,
+        continuation.iteration + 1,
+        signal,
+        capabilities,
+      );
+      return;
     }
     const provider = new OpenAiChatCompletionsProvider({
       baseUrl: this.config.magpieBaseUrl,
@@ -885,6 +932,11 @@ export class TaskService {
       });
       const outcome = await this.drainToolCalls(task, turn.calls, iteration, messages, signal, capabilities);
       if (outcome === 'paused') return;
+      this.store.saveLoopState(task.id, JSON.stringify({
+        version: 1,
+        iteration,
+        messages,
+      } satisfies LoopContinuationCheckpoint));
       if (messages.length > 200) throw new Error('Agent loop exceeded its context budget.');
     }
     if (!completed) {
@@ -902,6 +954,7 @@ export class TaskService {
       this.eventInput(task, 'task.completed', 'succeeded', task.attempt),
       { output: turn.output },
     );
+    this.store.saveLoopState(task.id, null);
     this.notifyChange(task.id);
   }
 
@@ -1145,6 +1198,7 @@ export class TaskService {
       'cancelled',
       this.eventInput(task, 'task.cancelled', 'cancelled', task.attempt),
     );
+    this.store.saveLoopState(task.id, null);
   }
 
   private beginCancellation(task: TaskSnapshot): boolean {
@@ -1218,10 +1272,16 @@ export class TaskService {
     };
   }
 
-  private interruptIncompleteTasks(): void {
+  private interruptIncompleteTasks(): string[] {
+    const resumable: string[] = [];
     for (const task of this.store.listTasks()) {
       if (isTerminalTaskState(task.state)) continue;
       if (task.state === 'waiting_approval') continue;
+      if (task.state === 'running'
+        && parseLoopContinuation(this.store.getLoopState(task.id)) !== undefined) {
+        resumable.push(task.id);
+        continue;
+      }
       this.store.transitionTask(
         task.id,
         'interrupted',
@@ -1229,5 +1289,6 @@ export class TaskService {
         { error: 'Runtime restarted before this task finished.' },
       );
     }
+    return resumable;
   }
 }

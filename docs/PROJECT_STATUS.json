@@ -4,7 +4,7 @@
   "pairedRepository": "pagurus",
   "project": "Conchbase / 海螺",
   "release": "1.0.0",
-  "statusUpdatedAt": "2026-11-17",
+  "statusUpdatedAt": "2026-11-19",
   "objectiveMode": "target-mode",
   "developmentBoundaryAdr": "0026-ai-handoff-readiness-development-boundary.md",
   "publicContract": {
@@ -277,6 +277,11 @@
       "id": "local-first-v1-platform",
       "summary": "The exact 47-path local-first 1.0.0 platform is implemented, including authentication metadata, work control, recovery, one local Source, capability records, and process-scoped write-only SecretHandles.",
       "evidence": "docs/decisions/0025-local-first-v1-platform.md"
+    },
+    {
+      "id": "loop-iteration-checkpoint-resume",
+      "summary": "ADR 0103 persists a versioned checkpoint at each completed Agent-loop iteration and resumes a running task from that iteration on restart instead of marking it interrupted; a legacy approval checkpoint or a retry clears the continuation state.",
+      "evidence": "src/runtime/task-service.ts"
     },
     {
       "id": "mcp-official-sdk",

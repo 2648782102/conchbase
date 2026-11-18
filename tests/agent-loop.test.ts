@@ -261,3 +261,131 @@ function stubFetch(): typeof globalThis.fetch {
     headers: { 'content-type': 'text/event-stream' },
   })) as typeof globalThis.fetch;
 }
+
+test('a restart after a completed iteration resumes from its checkpoint', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-loop-resume-'));
+  const filename = path.join(directory, 'runtime.sqlite');
+  const space = workspace();
+  let calls = 0;
+  const firstFetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    calls += 1;
+    if (calls === 1) {
+      return new Response(sseToolCall('workspace_list', { path: 'notes' }), {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    }
+    const signal = init?.signal;
+    return new Promise<Response>((_resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new Error('aborted'));
+        return;
+      }
+      signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+    });
+  }) as typeof globalThis.fetch;
+  const loopOptions = {
+    tools: createBuiltinReadTools({ root: space.root }),
+  };
+  const first = new TaskService(
+    new SqliteTaskStore(filename),
+    { magpieBaseUrl: 'http://127.0.0.1:3425', defaultModel: 'fixture/model', fetch: firstFetch },
+    catalogStub(),
+    loopOptions,
+  );
+  let taskId: string;
+  try {
+    const agent = await first.createAgent({
+      name: '续跑测试员',
+      instructions: 'Use tools.',
+      providerId: 'magpie',
+      modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_list' }],
+    });
+    const created = await first.createAgentTask({ prompt: 'loop', agentId: agent.id });
+    taskId = created.id;
+    first.startTask(taskId);
+    const deadline = Date.now() + 2000;
+    while (!first.store.getLoopState(taskId) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    assert.ok(first.store.getLoopState(taskId), 'a checkpoint is written after the first iteration');
+  } finally {
+    await first.stop();
+  }
+
+  const second = new TaskService(
+    new SqliteTaskStore(filename),
+    { magpieBaseUrl: 'http://127.0.0.1:3425', defaultModel: 'fixture/model', fetch: stubFetch() },
+    catalogStub(),
+    loopOptions,
+  );
+  try {
+    const resumed = await second.waitForTask(taskId);
+    assert.equal(resumed.state, 'succeeded');
+    assert.equal(second.store.getLoopState(taskId), null, 'checkpoint is cleared on completion');
+    const types = second.store.listEvents(null)
+      .filter((event) => event.taskId === taskId)
+      .map((event) => event.type);
+    assert.equal(types.filter((type) => type === 'agent_loop.tool_executed').length, 1,
+      'the completed iteration is not re-executed');
+    assert.ok(types.includes('agent_loop.turn_completed'));
+  } finally {
+    second.close();
+    space.cleanup();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('retry clears a stale continuation checkpoint', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-loop-retry-'));
+  const filename = path.join(directory, 'runtime.sqlite');
+  const service = new TaskService(
+    new SqliteTaskStore(filename),
+    { magpieBaseUrl: 'http://127.0.0.1:3425', defaultModel: 'fixture/model', fetch: stubFetch() },
+    catalogStub(),
+    {},
+  );
+  try {
+    const created = await service.createTask({ prompt: 'plain' });
+    service.startTask(created.id);
+    await service.waitForTask(created.id);
+    service.store.saveLoopState(created.id, JSON.stringify({ version: 1, iteration: 2, messages: [] }));
+    service.retryTask(created.id);
+    assert.equal(service.store.getLoopState(created.id), null);
+  } finally {
+    service.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('a legacy approval checkpoint is not treated as a continuation', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-loop-legacy-'));
+  const filename = path.join(directory, 'runtime.sqlite');
+  const first = new TaskService(
+    new SqliteTaskStore(filename),
+    { magpieBaseUrl: 'http://127.0.0.1:3425', defaultModel: 'fixture/model', fetch: stubFetch() },
+    catalogStub(),
+    {},
+  );
+  let taskId: string;
+  try {
+    const created = await first.createTask({ prompt: 'plain' });
+    taskId = created.id;
+    first.store.saveLoopState(taskId, JSON.stringify({ iteration: 1, messages: [], pending: [] }));
+  } finally {
+    first.close();
+  }
+  const second = new TaskService(
+    new SqliteTaskStore(filename),
+    { magpieBaseUrl: 'http://127.0.0.1:3425', defaultModel: 'fixture/model', fetch: stubFetch() },
+    catalogStub(),
+    {},
+  );
+  try {
+    assert.equal(second.store.getTask(taskId)?.state, 'interrupted');
+  } finally {
+    second.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
