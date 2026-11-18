@@ -1,0 +1,5 @@
+{
+  "id": "cooperative-worker-slice-yield",
+  "summary": "ADR 0105 adds an opt-in worker slice budget (CONCHBASE_WORKER_SLICE_ITERATIONS): a worker yields at a loop-iteration boundary with an ADR 0103 checkpoint, pauses its WorkItem, and resumes in place when re-admitted, without preemption or public contract change.",
+  "evidence": "src/runtime/task-service.ts"
+}

@@ -60,6 +60,7 @@ export interface PlatformStore {
   getWorkItemDetail(workItemId: string): PlatformWorkDetail;
   listWorkEvents(): readonly WorkEventRecord[];
   startWork(workItemId: string, expectedState: WorkState): WorkSnapshot;
+  pauseWork(workItemId: string, expectedState: WorkState): WorkSnapshot;
   stopWork(workItemId: string, expectedState: WorkState): WorkSnapshot;
   completeWork(workItemId: string, expectedState: WorkState): WorkSnapshot;
   recoverAssignments(): readonly { assignmentId: string; workItemId: string; state: 'interrupted' }[];
@@ -433,6 +434,21 @@ export class SqlitePlatformStore implements PlatformStore {
 
   startWork(workItemId: string, expectedState: WorkState): WorkSnapshot {
     return this.transitionWork(workItemId, expectedState, 'running', ['open', 'paused'], 'work.started');
+  }
+
+  /** ADR 0105: a running worker voluntarily yields its slot at a slice boundary. */
+  pauseWork(workItemId: string, expectedState: WorkState): WorkSnapshot {
+    const current = this.getWorkItemOrThrow(workItemId);
+    if (current.state !== expectedState || current.state !== 'running') {
+      throw new PlatformConflictError('WorkItem cannot be paused from its current state.');
+    }
+    return this.transaction(() => {
+      this.database.prepare('UPDATE work_items SET state = ? WHERE id = ?').run('paused', workItemId);
+      this.database.prepare("UPDATE work_assignments SET state = 'interrupted' WHERE work_item_id = ? AND state = 'running'")
+        .run(workItemId);
+      this.appendWorkEvent(workItemId, 'work.paused', { state: 'paused' });
+      return this.getWorkItemOrThrow(workItemId);
+    });
   }
 
   stopWork(workItemId: string, expectedState: WorkState): WorkSnapshot {

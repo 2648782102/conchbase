@@ -59,6 +59,7 @@ export function createApp(options: CreateAppOptions = {}) {
               globalActive: options.config.globalActiveWork,
               perProjectActive: options.config.perProjectActiveWork,
             },
+            workerSliceIterations: options.config.workerSliceIterations,
           } : {}),
           conversation: {
             recordIntentText: (intentId, text) => conversation.recordIntentText(intentId, text),
@@ -72,6 +73,7 @@ export function createApp(options: CreateAppOptions = {}) {
               globalActive: options.config.globalActiveWork,
               perProjectActive: options.config.perProjectActiveWork,
             },
+            workerSliceIterations: options.config.workerSliceIterations,
           } : {}),
         })
       : undefined);

@@ -189,6 +189,7 @@ export class TaskService {
   private readonly catalog: ModelCatalogClient;
   private readonly loopOptions: AgentLoopOptions;
   private readonly effortByTaskId = new Map<string, 'low' | 'medium' | 'high'>();
+  private readonly sliceBudgetByTaskId = new Map<string, number>();
   private readonly readResults = new ReadResultCache();
 
   constructor(
@@ -524,10 +525,22 @@ export class TaskService {
     });
   }
 
+  /** ADR 0105: the Boss marks worker tasks with a Runtime-owned slice budget. */
+  setTaskSliceBudget(taskId: string, sliceIterations: number): void {
+    if (!Number.isInteger(sliceIterations) || sliceIterations < 1) {
+      this.sliceBudgetByTaskId.delete(taskId);
+      return;
+    }
+    this.sliceBudgetByTaskId.set(taskId, sliceIterations);
+  }
+
   startTask(taskId: string): void {
     const task = this.store.getTask(taskId);
     if (!task) throw new TaskNotFoundError();
-    const resuming = task.state === 'running' && parseLoopContinuation(this.store.getLoopState(taskId)) !== undefined;
+    // ADR 0105: a cooperative slice yield interrupts the task at a safe
+    // boundary but keeps its checkpoint; re-admission resumes it in place.
+    const resuming = (task.state === 'running' || task.state === 'interrupted')
+      && parseLoopContinuation(this.store.getLoopState(taskId)) !== undefined;
     if (this.active.has(taskId) || (task.state !== 'queued' && !resuming)) {
       throw new TaskConflictError('Task is not queued.');
     }
@@ -761,9 +774,15 @@ export class TaskService {
         this.finishCancelled(task);
         return;
       }
-      const resuming = task.state === 'running'
+      const resuming = (task.state === 'running' || task.state === 'interrupted')
         && parseLoopContinuation(this.store.getLoopState(task.id)) !== undefined;
-      if (!resuming) {
+      if (task.state === 'interrupted' && resuming) {
+        this.store.transitionTask(
+          task.id,
+          'running',
+          this.eventInput(task, 'task.resumed', 'running', task.attempt),
+        );
+      } else if (!resuming) {
         this.store.transitionTask(
           task.id,
           'running',
@@ -937,6 +956,19 @@ export class TaskService {
         iteration,
         messages,
       } satisfies LoopContinuationCheckpoint));
+      // ADR 0105: a worker that used its slice budget yields at this safe
+      // boundary. The checkpoint above lets a later re-admission continue.
+      const sliceBudget = this.sliceBudgetByTaskId.get(task.id);
+      if (sliceBudget !== undefined && iteration + 1 - startIteration >= sliceBudget) {
+        this.recordLoopEvent(task, 'agent_loop.turn_completed', 'running', { iteration, kind: 'slice_yield' });
+        this.store.transitionTask(
+          task.id,
+          'interrupted',
+          this.eventInput(task, 'task.interrupted', 'interrupted'),
+          { error: 'cooperative slice yield' },
+        );
+        return;
+      }
       if (messages.length > 200) throw new Error('Agent loop exceeded its context budget.');
     }
     if (!completed) {

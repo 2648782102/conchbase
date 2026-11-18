@@ -117,6 +117,7 @@ export type WorkEventType =
   | 'work.outbox_recorded'
   | 'work.delivery_observed'
   | 'work.started'
+  | 'work.paused'
   | 'work.stopped'
   | 'work.completed'
   | 'work.recovered'

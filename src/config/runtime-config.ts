@@ -58,6 +58,8 @@ export interface RuntimeConfig {
   workspaceRoot: string;
   executionMode: ExecutionMode;
   loopBudget: LoopBudget;
+  /** ADR 0105: worker loop iterations per cooperative slice. 0 disables yielding. */
+  workerSliceIterations: number;
   /**
    * ADR 0081. How long a project may receive no observable activity before the
    * Runtime closes it. Operator configuration only: a model, task, or client
@@ -156,6 +158,11 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     'CONCHBASE_PER_PROJECT_ACTIVE_WORK',
     { fallback: 2, min: 1, max: 16 },
   );
+  const workerSliceIterations = boundedInteger(
+    env.CONCHBASE_WORKER_SLICE_ITERATIONS,
+    'CONCHBASE_WORKER_SLICE_ITERATIONS',
+    { fallback: 0, min: 0, max: 63 },
+  );
   const projectIdleMs = boundedInteger(
     env.CONCHBASE_PROJECT_IDLE_MS,
     'CONCHBASE_PROJECT_IDLE_MS',
@@ -179,6 +186,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     workspaceRoot,
     executionMode,
     loopBudget,
+    workerSliceIterations,
     projectIdleMs,
     globalActiveWork,
     perProjectActiveWork,
