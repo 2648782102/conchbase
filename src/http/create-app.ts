@@ -54,12 +54,26 @@ export function createApp(options: CreateAppOptions = {}) {
       ? new BossModeService(organization, options.taskService, conversation
         ? {
           workerCapabilityGrants: options.workerCapabilityGrants ?? (() => Object.freeze([])),
+          ...(options.config ? {
+            schedulerLimits: {
+              globalActive: options.config.globalActiveWork,
+              perProjectActive: options.config.perProjectActiveWork,
+            },
+          } : {}),
           conversation: {
             recordIntentText: (intentId, text) => conversation.recordIntentText(intentId, text),
             intentTexts: () => conversation.intentTextsView(),
           },
         }
-        : { workerCapabilityGrants: options.workerCapabilityGrants ?? (() => Object.freeze([])) })
+        : {
+          workerCapabilityGrants: options.workerCapabilityGrants ?? (() => Object.freeze([])),
+          ...(options.config ? {
+            schedulerLimits: {
+              globalActive: options.config.globalActiveWork,
+              perProjectActive: options.config.perProjectActiveWork,
+            },
+          } : {}),
+        })
       : undefined);
   const agentChat = options.agentChatService
     ?? (options.taskService ? new AgentChatService(options.taskService, bossMode) : undefined);

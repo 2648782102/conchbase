@@ -16,6 +16,11 @@ import {
 import { chineseAgentDisplayName } from './agent-name.js';
 import type { CapabilityGrant } from './agent-profile.js';
 import { OrganizationCoordinator } from './organization-coordinator.js';
+import {
+  scheduleGlobalWork,
+  type HoldReason,
+  type SchedulerLimits,
+} from './global-work-scheduler.js';
 import type { OrganizationRelay } from './organization-execution.js';
 import type { OrganizationStore } from './organization-store.js';
 import type { TaskService } from './task-service.js';
@@ -108,6 +113,11 @@ export interface BossModeServiceOptions {
    * validated and written unreviewed, which is the pre-reviewer behaviour.
    */
   readonly memoryReviewer?: (input: MemoryReviewInput) => Promise<MemoryReviewResult | null>;
+  /**
+   * Capacity used to admit worker starts through the global scheduler. When
+   * absent the scheduler's defaults apply.
+   */
+  readonly schedulerLimits?: SchedulerLimits;
 }
 
 function actionAt(action: OrganizationAction, expectedSequence: number): OrganizationAction {
@@ -132,6 +142,12 @@ export class BossModeService {
   private readonly workerExecutions = new Map<string, WorkerExecutionRecord>();
   private readonly startedWorkers = new Set<string>();
   private readonly outcomeByTaskId = new Map<string, string>();
+  private readonly schedulerLimits: SchedulerLimits | undefined;
+  private turnAdmissionHolds: {
+    readonly workItemId: string;
+    readonly projectId: string;
+    readonly reason: HoldReason;
+  }[] = [];
 
   constructor(
     private readonly store: OrganizationStore,
@@ -150,6 +166,7 @@ export class BossModeService {
       ...(options.memory ? { memory: options.memory } : {}),
       ...(options.memoryReviewer ? { reviewer: options.memoryReviewer } : {}),
     });
+    this.schedulerLimits = options.schedulerLimits;
     this.restoreRecords();
     this.coordinator = new OrganizationCoordinator(store, {
       listWorkState: () => this.listWorkState(),
@@ -178,6 +195,7 @@ export class BossModeService {
     if (recorded) return recorded;
 
     const snapshot = this.store.get();
+    this.turnAdmissionHolds = [];
     this.backfillReportTexts();
     const organizationFacts = buildBossOrganizationFacts({
       snapshot,
@@ -293,6 +311,9 @@ export class BossModeService {
     if (createdWorkers.length > 0 && this.waitForTasks) {
       outcomes = await this.collectWorkerOutcomes(createdWorkers);
     }
+    // Capacity released by this turn's workers may let previously held workers
+    // start. Re-admit them in bounded rounds before composing the final reply.
+    outcomes = [...outcomes, ...await this.drainHeldWorkers()];
     const coordination = this.coordinator.reconcile();
     // The model wrote `parsed.relay` before any worker ran, so it can only
     // describe intent ("I prepared..."). Once real results exist, the reply
@@ -305,7 +326,7 @@ export class BossModeService {
       expectedSequence: this.store.get().events.length,
       actions: Object.freeze(actions),
       executions: Object.freeze(executions),
-      holds: Object.freeze(coordination.holds),
+      holds: Object.freeze(this.mergeHolds(coordination.holds)),
       relays: coordination.relays,
       reply,
     });
@@ -398,24 +419,20 @@ export class BossModeService {
       }
       const worker = this.store.get().workers.find((item) => item.id === action.workerId);
       const mutated = Boolean(worker && ['authorized', 'idle'].includes(worker.state));
-      if (mutated) applyAction(this.store, action);
-      this.startedWorkers.add(action.workerId);
       const execution = this.ensureWorkItem(action);
       context.executions.push(execution);
-      // A re-run dispatches a new task; it must be awaited like a fresh hire,
-      // otherwise the Boss reports on the old result and never sees the new one.
-      if (execution.status === 'dispatched') {
+      if (execution.status !== 'dispatched') {
+        // Held or failed: the worker stays authorized/idle for a later turn.
+        return;
+      }
+      if (mutated) applyAction(this.store, action);
+      this.startedWorkers.add(action.workerId);
+      {
+        // A re-run dispatches a new task; it must be awaited like a fresh hire,
+        // otherwise the Boss reports on the old result and never sees the new one.
         const record = this.workerExecutions.get(action.workerId);
         if (record) context.createdWorkers.push(record);
         context.dispatchedThisTurn.add(action.workerId);
-      }
-      if (execution.status === 'skipped' && mutated) {
-        // The worker was already marked running; leaving it there would strand a
-        // "running" worker with no task. Report a failure so the UI sees the truth.
-        const blocked = this.blockStartedWorker(action);
-        if (blocked) {
-          context.executions.push(Object.freeze({ action, status: 'failed' as const, detail: execution.detail ?? 'Worker could not start.' }));
-        }
       }
       return;
     }
@@ -716,8 +733,6 @@ export class BossModeService {
       });
       const worker = this.store.get().workers.find((item) => item.id === action.workerId);
       if (worker && ['authorized', 'idle'].includes(worker.state)) {
-        applyAction(this.store, start);
-        this.startedWorkers.add(action.workerId);
         const execution = this.ensureWorkItem(start as Extract<OrganizationAction, { type: 'start_worker' }>);
         if (execution.status === 'failed') {
           return Object.freeze({
@@ -726,6 +741,15 @@ export class BossModeService {
             detail: execution.detail ?? 'WorkItem binding failed.',
           });
         }
+        if (execution.status === 'skipped') {
+          return Object.freeze({
+            action: normalized,
+            status: 'skipped' as const,
+            detail: execution.detail ?? 'Worker start was held.',
+          });
+        }
+        applyAction(this.store, start);
+        this.startedWorkers.add(action.workerId);
       }
       return Object.freeze({ action: normalized, status: 'created-agent' as const });
     } catch (cause) {
@@ -832,26 +856,6 @@ export class BossModeService {
     // back with no Agent at all. `startedWorkers` is still cleared so a resume
     // is allowed to dispatch again.
     this.startedWorkers.delete(workerId);
-  }
-
-  private blockStartedWorker(action: Extract<OrganizationAction, { type: 'start_worker' }>): boolean {
-    const worker = this.store.get().workers.find((item) => item.id === action.workerId);
-    if (!worker || worker.state !== 'running') return false;
-    try {
-      applyAction(this.store, {
-        type: 'report_worker',
-        expectedSequence: this.store.get().events.length,
-        projectId: action.projectId,
-        workerId: action.workerId,
-        reportId: `rpt_${reference(`${action.workerId}:start-blocked:${this.store.get().events.length}`)}`,
-        state: 'failed',
-        summaryDigest: digest(`start-blocked:${action.workerId}`),
-      });
-      this.startedWorkers.delete(action.workerId);
-      return true;
-    } catch {
-      return false;
-    }
   }
 
   /**
@@ -967,6 +971,117 @@ export class BossModeService {
       grant.kind === 'tool' && grant.name === 'workspace_write');
   }
 
+  /**
+   * Asks the pure global scheduler whether one worker's open WorkItem may
+   * start now, given every other WorkItem's current state. Only a `start`
+   * decision for this work item admits the dispatch; a `hold` leaves it open.
+   */
+  private admitWorkerStart(workItemId: string, projectId: string): {
+    admitted: boolean;
+    reason: HoldReason;
+  } {
+    const platform = this.taskService?.store.platform;
+    if (!platform) return { admitted: true, reason: 'global-limit' };
+    const interactiveProjects = new Set(
+      this.store.get().attentionRequests
+        .filter((request) => request.state === 'open')
+        .map((request) => request.projectId),
+    );
+    const projectFor = (id: string): string => {
+      for (const record of this.workerExecutions.values()) {
+        if (record.workItemId === id) return record.projectId;
+      }
+      return projectId;
+    };
+    const work = platform.listWorkItems()
+      .filter((item) => item.state === 'open' || item.state === 'paused' || item.state === 'running')
+      .map((item, index) => {
+        const itemProject = projectFor(item.id);
+        return {
+          workItemId: item.id,
+          projectId: itemProject,
+          state: item.state,
+          priority: interactiveProjects.has(itemProject) ? 'interactive' as const : 'normal' as const,
+          enqueueSequence: index,
+        };
+      });
+    const scheduled = scheduleGlobalWork(work, this.schedulerLimits);
+    const decision = scheduled.decisions.find((candidate) => candidate.workItemId === workItemId);
+    if (decision?.type === 'start') return { admitted: true, reason: 'global-limit' };
+    const reason = decision?.type === 'hold' ? decision.reason : 'global-limit';
+    return { admitted: false, reason };
+  }
+
+  private mergeHolds(coordinationHolds: readonly {
+    readonly workItemId: string;
+    readonly projectId: string;
+    readonly reason: HoldReason;
+  }[]): readonly {
+    readonly workItemId: string;
+    readonly projectId: string;
+    readonly reason: HoldReason;
+  }[] {
+    const seen = new Set(coordinationHolds.map((hold) => hold.workItemId));
+    return [
+      ...coordinationHolds,
+      ...this.turnAdmissionHolds.filter((hold) => {
+        if (seen.has(hold.workItemId)) return false;
+        seen.add(hold.workItemId);
+        return true;
+      }),
+    ];
+  }
+
+  /**
+   * A held worker is authorized, has an `open` WorkItem and an unstarted task.
+   * Try to admit it again now that capacity may have freed.
+   */
+  private tryStartHeldWorker(record: WorkerExecutionRecord): boolean {
+    const worker = this.store.get().workers.find((item) => item.id === record.workerId);
+    if (!worker || !['authorized', 'idle'].includes(worker.state)) return false;
+    const platform = this.taskService?.store.platform;
+    if (!platform) return false;
+    if (platform.getWorkItemDetail(record.workItemId).workItem.state !== 'open') return false;
+    const task = this.taskService?.store.getTask(record.taskId);
+    if (!task || task.state !== 'queued') return false;
+    const start = parseOrganizationAction({
+      type: 'start_worker',
+      expectedSequence: this.store.get().events.length,
+      projectId: record.projectId,
+      workerId: record.workerId,
+    });
+    const execution = this.ensureWorkItem(start as Extract<OrganizationAction, { type: 'start_worker' }>);
+    if (execution.status !== 'dispatched') return false;
+    applyAction(this.store, start);
+    this.startedWorkers.add(record.workerId);
+    return true;
+  }
+
+  /**
+   * Re-admit previously held workers as admitted ones finish and release
+   * capacity. Each round starts whatever the scheduler now admits, waits for
+   * those workers, and repeats until nothing new can start.
+   */
+  private async drainHeldWorkers(): Promise<readonly WorkerOutcome[]> {
+    const outcomes: WorkerOutcome[] = [];
+    if (!this.waitForTasks) {
+      // Without awaiting, start whatever the scheduler admits right now. A later
+      // submit drains further capacity; no round loop is possible without waits.
+      for (const record of this.workerExecutions.values()) this.tryStartHeldWorker(record);
+      return Object.freeze([]);
+    }
+    const maxRounds = this.workerExecutions.size;
+    for (let round = 0; round < maxRounds; round += 1) {
+      const admittedRecords: WorkerExecutionRecord[] = [];
+      for (const record of this.workerExecutions.values()) {
+        if (this.tryStartHeldWorker(record)) admittedRecords.push(record);
+      }
+      if (admittedRecords.length === 0) break;
+      outcomes.push(...await this.collectWorkerOutcomes(admittedRecords));
+    }
+    return Object.freeze(outcomes);
+  }
+
   private ensureWorkItem(action: Extract<OrganizationAction, { type: 'start_worker' }>): BossModeExecution {
     const record = this.workerExecutions.get(action.workerId);
     if (!record) return Object.freeze({ action, status: 'skipped' as const, detail: 'No validated Agent revision.' });
@@ -980,6 +1095,20 @@ export class BossModeService {
         action,
         status: 'skipped' as const,
         detail: `Open attention ${blocking.id} in this project blocks new work until it is answered or withdrawn.`,
+      });
+    }
+    // Admit by project capacity before binding a (possibly fresh) WorkItem, so a
+    // held start creates no new work. A held worker keeps its current binding.
+    const admission = this.admitWorkerStart(record.workItemId, action.projectId);
+    if (!admission.admitted) {
+      this.turnAdmissionHolds = [
+        ...this.turnAdmissionHolds,
+        { workItemId: record.workItemId, projectId: action.projectId, reason: admission.reason },
+      ];
+      return Object.freeze({
+        action,
+        status: 'skipped' as const,
+        detail: `Worker start held by ${admission.reason}; capacity is unavailable.`,
       });
     }
     try {
