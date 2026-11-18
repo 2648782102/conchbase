@@ -1,0 +1,5 @@
+{
+  "id": "published-scheduled-holds",
+  "summary": "ADR 0102 derives scheduler hold reasons from organization state and publishes them as an optional heldBy field on GET /v1/organization/work-items. Running workers consume capacity, running workers are never held, and no new action, path, or queue state is introduced.",
+  "evidence": "src/runtime/work-hold-projection.ts"
+}

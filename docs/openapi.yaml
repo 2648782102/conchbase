@@ -4760,6 +4760,12 @@ components:
           $ref: '#/components/schemas/OrganizationOpaqueId'
         state:
           $ref: '#/components/schemas/OrganizationState'
+        heldBy:
+          type: string
+          enum: [global-limit, project-limit]
+          description: >-
+            Present only when the worker is authorized but its WorkItem is held by the non-preemptive
+            global scheduler. Derived from current capacity; not an organization action.
     OrganizationWorkItemList:
       type: object
       additionalProperties: false

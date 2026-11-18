@@ -20,6 +20,7 @@ import {
 import { ORGANIZATION_PUBLIC_CONTRACT_VERSION } from '../../../runtime/organization-public-contract.js';
 import type { OrganizationStore } from '../../../runtime/organization-store.js';
 import type { BossModeService } from '../../../runtime/boss-mode-service.js';
+import { projectWorkHolds } from '../../../runtime/work-hold-projection.js';
 
 function unavailable(reply: { code(status: number): { send(payload: unknown): unknown } }) {
   return reply.code(503).send({ error: 'Organization Runtime is not configured.' });
@@ -248,14 +249,20 @@ export function registerOrganizationRoutes(
     scope.get('/v1/organization/work-items', async (_request, reply) => {
       if (!organizationStore) return unavailable(reply);
       const snapshot = organizationStore.get();
+      const holds = new Map(projectWorkHolds(snapshot).map((hold) => [hold.workItemId, hold.heldBy]));
       return {
         version: ORGANIZATION_PUBLIC_CONTRACT_VERSION,
-        workItems: Object.freeze(snapshot.workers.map((worker) => Object.freeze({
-          workItemId: `work_${worker.id}`,
-          projectId: worker.projectId,
-          workerId: worker.id,
-          state: worker.state,
-        }))),
+        workItems: Object.freeze(snapshot.workers.map((worker) => {
+          const workItemId = `work_${worker.id}`;
+          const heldBy = holds.get(workItemId);
+          return Object.freeze({
+            workItemId,
+            projectId: worker.projectId,
+            workerId: worker.id,
+            state: worker.state,
+            ...(heldBy ? { heldBy } : {}),
+          });
+        })),
       };
     });
 

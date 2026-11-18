@@ -399,6 +399,11 @@
       "evidence": "src/runtime/magpie-provider.ts"
     },
     {
+      "id": "published-scheduled-holds",
+      "summary": "ADR 0102 derives scheduler hold reasons from organization state and publishes them as an optional heldBy field on GET /v1/organization/work-items. Running workers consume capacity, running workers are never held, and no new action, path, or queue state is introduced.",
+      "evidence": "src/runtime/work-hold-projection.ts"
+    },
+    {
       "id": "report-text-and-action-isolation",
       "summary": "ADR 0063 persists bounded worker report text in organization_report_texts, backfills legacy reports from task output, projects summaries into Boss facts, isolates per-action failures, and normalizes a malformed agent model.",
       "evidence": "src/runtime/boss-mode-service.ts"
@@ -765,6 +770,12 @@
       "id": "provider-conformance-fixture",
       "summary": "An executable credential-free local HTTP fixture covers catalog, non-streaming, streaming, observation, error, limit, and cancellation compatibility for the current adapter.",
       "evidence": "tests/provider-conformance.test.ts",
+      "executableFixture": true
+    },
+    {
+      "id": "published-scheduled-holds-fixture",
+      "summary": "Executable fixtures cover project-capacity holds, running capacity consumption, custom limits, deterministic read-only projection, and the published work-item heldBy field over HTTP.",
+      "evidence": "tests/work-hold-projection.test.ts",
       "executableFixture": true
     },
     {
