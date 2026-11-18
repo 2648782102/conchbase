@@ -1,0 +1,5 @@
+{
+  "id": "loop-iteration-checkpoint-resume",
+  "summary": "ADR 0103 persists a versioned checkpoint at each completed Agent-loop iteration and resumes a running task from that iteration on restart instead of marking it interrupted; a legacy approval checkpoint or a retry clears the continuation state.",
+  "evidence": "src/runtime/task-service.ts"
+}

@@ -32,7 +32,7 @@
 - 稳定跨进程 SecretHandle、OS keychain、可重放静态加密值和任意外部固定适配器。
 - 真实外部 Source、真实 Outbox 外部写入、任意工具执行与远程网络能力。manifest 声明的 plugin loader 与受控 stdio 子进程 provider 已由 ADR 0096/0098 实现；插件安装/签名/远程分发仍门控。
 - 生产远程配对 UX、云部署、桌面打包、SSE/保留/重连契约、服务端任务分页与实时历史。
-- 新 provider adapter、模型驱动组合节点、通用角色注册表、生产审批工作流。有界并发已由 ADR 0099–0101 接受并实现：同一 Boss turn 内并行等待 worker，全局非抢占调度通过纯策略注入 coordinator。抢占式时间片仍需 checkpoint/resume ADR。
+- 新 provider adapter、模型驱动组合节点、通用角色注册表、生产审批工作流。有界并发已由 ADR 0099–0101 接受并实现：同一 Boss turn 内并行等待 worker，全局非抢占调度通过纯策略注入 coordinator。loop 边界 checkpoint/resume 已由 ADR 0103 实现（重启从最后一个已完成迭代续跑）；抢占式时间片仍需单独的抢占 ADR。
 - 从未经单独接受的 schema 生成客户端类型，或在 Pagurus 发明第二套 Runtime schema。
 
 这些方向在 `docs/PROJECT_STATUS.json` 中一律标为 `blockedDirections`，且 `requiresAcceptedAdr` 为 `true`。涉及双仓的契约必须在两个仓库分别接受对应 ADR 后再实现。
