@@ -33,6 +33,15 @@ test('task, event, and model routes use one runtime service', async () => {
     });
     assert.equal(invalid.statusCode, 400);
 
+    // A non-string prompt must not be coerced into a string by AJV.
+    const nonStringPrompt = await app.inject({
+      method: 'POST',
+      url: '/v1/tasks',
+      payload: { prompt: 123 },
+    });
+    assert.equal(nonStringPrompt.statusCode, 400);
+    assert.match(nonStringPrompt.json().error, /prompt must be a string/);
+
     const emptyJsonBody = await app.inject({
       method: 'POST',
       url: '/v1/tasks',
@@ -93,6 +102,42 @@ test('task, event, and model routes use one runtime service', async () => {
 
     const models = await app.inject({ method: 'GET', url: '/v1/models' });
     assert.equal(models.statusCode, 502);
+  } finally {
+    service.close();
+    rmSync(directory, { recursive: true, force: true });
+    await app.close();
+  }
+});
+
+test('an explicitly unavailable model is rejected at submit time', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-model-check-'));
+  const service = new TaskService(new SqliteTaskStore(path.join(directory, 'runtime.sqlite')), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/model',
+    fetch: async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/v1/models')) {
+        return new Response(JSON.stringify({ data: [{ id: 'fixture/model', display_name: 'Fixture' }] }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response('data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n', {
+        status: 200, headers: { 'content-type': 'text/event-stream' },
+      });
+    },
+  });
+  const app = createApp({ logger: false, taskService: service });
+  try {
+    const unknown = await app.inject({
+      method: 'POST', url: '/v1/tasks', payload: { prompt: 'hi', model: 'does/not-exist' },
+    });
+    assert.equal(unknown.statusCode, 400);
+    assert.match(unknown.json().error, /not available/);
+
+    const known = await app.inject({
+      method: 'POST', url: '/v1/tasks', payload: { prompt: 'hi', model: 'fixture/model' },
+    });
+    assert.equal(known.statusCode, 202);
+    await service.waitForTask(known.json().task.id);
   } finally {
     service.close();
     rmSync(directory, { recursive: true, force: true });

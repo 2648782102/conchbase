@@ -106,7 +106,17 @@ export function registerTaskRoutes(
     void reply.code(500).send({ error: 'Internal runtime error.' });
   });
 
-  app.post('/v1/tasks', { schema: { body: createTaskSchema } }, async (request, reply) => {
+  app.post('/v1/tasks', {
+    schema: { body: createTaskSchema },
+    // AJV coerceTypes turns a non-string prompt (e.g. 123) into "123" before
+    // validation. Reject it on the raw body, before coercion.
+    preValidation: async (request, reply) => {
+      const body = request.body as { prompt?: unknown } | null;
+      if (!body || typeof body.prompt !== 'string') {
+        return reply.code(400).send({ error: 'prompt must be a string.' });
+      }
+    },
+  }, async (request, reply) => {
     if (!taskService) return unavailable(reply);
     const body = request.body as { agentId?: unknown; model?: unknown; modelOverride?: unknown };
     if (body.agentId === undefined && body.modelOverride !== undefined) {
@@ -130,6 +140,17 @@ export function registerTaskRoutes(
       taskService.startTask(agentTask.id);
       reply.code(202);
       return { task: toTaskResponse(agentTask) };
+    }
+    // Validate an explicitly requested model before accepting the task, so an
+    // unknown model is a 400 at submit time, not an async failure. If the
+    // catalog itself is unreachable, submit anyway (do not block the user on a
+    // transient gateway outage); the task will report the provider error.
+    const requestedModel = (request.body as { model?: unknown }).model;
+    if (typeof requestedModel === 'string') {
+      const available = await taskService.listModels().catch(() => undefined);
+      if (available && !available.some((entry) => entry.id === requestedModel)) {
+        return reply.code(400).send({ error: `Model '${requestedModel}' is not available.` });
+      }
     }
     const task = taskService.createTask(request.body);
     taskService.startTask(task.id);
