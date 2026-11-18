@@ -118,6 +118,8 @@ export interface BossModeServiceOptions {
    * absent the scheduler's defaults apply.
    */
   readonly schedulerLimits?: SchedulerLimits;
+  /** ADR 0105: worker loop iterations per cooperative slice; 0 disables yielding. */
+  readonly workerSliceIterations?: number;
 }
 
 function actionAt(action: OrganizationAction, expectedSequence: number): OrganizationAction {
@@ -142,7 +144,9 @@ export class BossModeService {
   private readonly workerExecutions = new Map<string, WorkerExecutionRecord>();
   private readonly startedWorkers = new Set<string>();
   private readonly outcomeByTaskId = new Map<string, string>();
+  private readonly reportSeqByTaskId = new Map<string, number>();
   private readonly schedulerLimits: SchedulerLimits | undefined;
+  private readonly workerSliceIterations: number;
   private turnAdmissionHolds: {
     readonly workItemId: string;
     readonly projectId: string;
@@ -167,6 +171,7 @@ export class BossModeService {
       ...(options.memoryReviewer ? { reviewer: options.memoryReviewer } : {}),
     });
     this.schedulerLimits = options.schedulerLimits;
+    this.workerSliceIterations = options.workerSliceIterations ?? 0;
     this.restoreRecords();
     this.coordinator = new OrganizationCoordinator(store, {
       listWorkState: () => this.listWorkState(),
@@ -875,6 +880,9 @@ export class BossModeService {
     } catch {
       return null;
     }
+    // A `paused` WorkItem follows a cooperative slice yield (ADR 0105); its
+    // task is interrupted with a checkpoint and resumes in place, so it keeps
+    // its binding just like a not-yet-started `open` item.
     if (state === 'open' || state === 'paused') return null;
     this.rebindResumedWorker(record.workerId, projectId);
     return this.workerExecutions.get(record.workerId) ?? null;
@@ -1041,9 +1049,15 @@ export class BossModeService {
     if (!worker || !['authorized', 'idle'].includes(worker.state)) return false;
     const platform = this.taskService?.store.platform;
     if (!platform) return false;
-    if (platform.getWorkItemDetail(record.workItemId).workItem.state !== 'open') return false;
+    const workState = platform.getWorkItemDetail(record.workItemId).workItem.state;
     const task = this.taskService?.store.getTask(record.taskId);
-    if (!task || task.state !== 'queued') return false;
+    if (!task) return false;
+    // `open`+`queued` is a capacity-held worker (ADR 0104). `paused`+`interrupted`
+    // is a cooperative slice yield (ADR 0105) whose checkpoint must be carried
+    // onto the fresh task bound by ensureWorkItem.
+    const held = workState === 'open' && task.state === 'queued';
+    const yielded = workState === 'paused' && task.state === 'interrupted';
+    if (!held && !yielded) return false;
     const start = parseOrganizationAction({
       type: 'start_worker',
       expectedSequence: this.store.get().events.length,
@@ -1052,6 +1066,9 @@ export class BossModeService {
     });
     const execution = this.ensureWorkItem(start as Extract<OrganizationAction, { type: 'start_worker' }>);
     if (execution.status !== 'dispatched') return false;
+    // ADR 0105: a resumed slice on the same task id is a new outcome; allow it
+    // to be reported instead of being deduplicated as a repeated submit.
+    this.outcomeByTaskId.delete(record.taskId);
     applyAction(this.store, start);
     this.startedWorkers.add(record.workerId);
     return true;
@@ -1070,7 +1087,9 @@ export class BossModeService {
       for (const record of this.workerExecutions.values()) this.tryStartHeldWorker(record);
       return Object.freeze([]);
     }
-    const maxRounds = this.workerExecutions.size;
+    // Each admitted worker advances at least one loop iteration or finishes.
+    // Bound the rounds by the total possible iterations across all workers.
+    const maxRounds = Math.max(1, this.workerExecutions.size * ((this.taskService?.loopBudget.maxIterations ?? 6) + 1));
     for (let round = 0; round < maxRounds; round += 1) {
       const admittedRecords: WorkerExecutionRecord[] = [];
       for (const record of this.workerExecutions.values()) {
@@ -1117,10 +1136,15 @@ export class BossModeService {
       const rebound = this.rebindIfTerminal(record, action.projectId);
       if (rebound) {
         platform.startWork(rebound.workItemId, 'open');
+        this.taskService?.setTaskSliceBudget(rebound.taskId, this.workerSliceIterations);
         this.taskService?.startTask(rebound.taskId);
         return Object.freeze({ action, status: 'dispatched' as const });
       }
-      platform.startWork(record.workItemId, 'open');
+      // ADR 0105: resume a cooperative slice yield from `paused`, or start a
+      // capacity-held worker from `open`.
+      const currentWorkState = platform.getWorkItemDetail(record.workItemId).workItem.state;
+      platform.startWork(record.workItemId, currentWorkState === 'paused' ? 'paused' : 'open');
+      this.taskService?.setTaskSliceBudget(record.taskId, this.workerSliceIterations);
       this.taskService?.startTask(record.taskId);
       return Object.freeze({ action, status: 'dispatched' as const });
     } catch (cause) {
@@ -1204,20 +1228,39 @@ export class BossModeService {
       const previous = this.outcomeByTaskId.get(record.taskId);
       if (previous) continue;
       const summaryDigest = digest(`${record.taskId}:${task.state}:${output}`);
-      const reportId = `rpt_${reference(`${record.taskId}:report`)}`;
+      // ADR 0105: a task can report once per resumed slice, so report ids carry
+      // a per-task sequence instead of colliding on the same task id.
+      const reportSeq = (this.reportSeqByTaskId.get(record.taskId) ?? 0) + 1;
+      this.reportSeqByTaskId.set(record.taskId, reportSeq);
+      const reportId = `rpt_${reference(`${record.taskId}:report:${reportSeq}`)}`;
       try {
         this.store.recordReportText?.(reportId, output.slice(0, 4_000));
       } catch {
         // Report text is best-effort; the digest remains authoritative for the ledger.
       }
       const needsAttention = /(?:^|\n)\s*ATTENTION:/i.test(output);
+      // ADR 0105: an interrupted task that kept a versioned loop checkpoint is
+      // a cooperative slice yield, not a failure. Report progress and release
+      // the scheduling slot by pausing its WorkItem.
+      const rawCheckpoint = taskService.store.getLoopState(task.id);
+      let isSliceYield = false;
+      if (task.state === 'interrupted' && rawCheckpoint) {
+        try {
+          isSliceYield = (JSON.parse(rawCheckpoint) as { version?: number }).version === 1;
+        } catch {
+          isSliceYield = false;
+        }
+      }
+      if (isSliceYield) {
+        taskService.store.platform.pauseWork(record.workItemId, 'running');
+      }
       applyAction(this.store, {
         type: 'report_worker',
         expectedSequence: this.store.get().events.length,
         projectId: record.projectId,
         workerId: record.workerId,
         reportId,
-        state: needsAttention ? 'attention' : task.state === 'succeeded' ? 'ready' : 'failed',
+        state: isSliceYield ? 'waiting' : needsAttention ? 'attention' : task.state === 'succeeded' ? 'ready' : 'failed',
         summaryDigest,
       });
       if (needsAttention) {
@@ -1231,7 +1274,7 @@ export class BossModeService {
         });
       }
       this.outcomeByTaskId.set(record.taskId, summaryDigest);
-      if (!needsAttention && task.state !== 'succeeded') {
+      if (!isSliceYield && !needsAttention && task.state !== 'succeeded') {
         this.autoRetireFailingWorker(record, output);
       }
       try {
@@ -1266,6 +1309,7 @@ export class BossModeService {
     applyAction(this.store, action);
     if (!record) return Object.freeze({ action, status: 'dispatched' as const });
     const retry = taskService.retryTask(record.taskId);
+    taskService.setTaskSliceBudget(retry.id, this.workerSliceIterations);
     taskService.startTask(retry.id);
     return Object.freeze({ action, status: 'dispatched' as const });
   }
@@ -1340,6 +1384,7 @@ export class BossModeService {
           // The project-resume path starts the work itself; the start_worker
           // path does it after opening the WorkItem.
           this.taskService?.store.platform.startWork(fresh.workItemId, 'open');
+          this.taskService?.setTaskSliceBudget(fresh.taskId, this.workerSliceIterations);
           this.taskService?.startTask(fresh.taskId);
         }
       }

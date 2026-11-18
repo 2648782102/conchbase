@@ -20,6 +20,7 @@ export const TERMINAL_TASK_STATES: readonly TaskState[] = Object.freeze([
 export type TaskEventType =
   | 'task.queued'
   | 'task.started'
+  | 'task.resumed'
   | 'task.output_delta'
   | 'task.approval_requested'
   | 'task.approved'
@@ -75,7 +76,7 @@ const TRANSITIONS: Readonly<Record<TaskState, readonly TaskState[]>> = Object.fr
   succeeded: Object.freeze<TaskState[]>([]),
   failed: Object.freeze<TaskState[]>([]),
   cancelled: Object.freeze<TaskState[]>([]),
-  interrupted: Object.freeze<TaskState[]>([]),
+  interrupted: Object.freeze<TaskState[]>(['running']),
 });
 
 export class InvalidTaskTransitionError extends Error {
@@ -102,6 +103,7 @@ export interface TaskTransition {
 export const TASK_TRANSITIONS: Readonly<Record<TaskEventType, TaskTransition>> = Object.freeze({
   'task.queued': { state: 'queued', eventType: 'task.queued' },
   'task.started': { state: 'running', eventType: 'task.started' },
+  'task.resumed': { state: 'running', eventType: 'task.resumed' },
   'task.output_delta': { state: 'running', eventType: 'task.output_delta' },
   'task.approval_requested': {
     state: 'waiting_approval',
