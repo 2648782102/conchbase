@@ -1,0 +1,5 @@
+{
+  "id": "unified-worker-start-admission",
+  "summary": "ADR 0104 routes every worker start through the global scheduler with the operator's globalActiveWork/perProjectActiveWork limits; over-capacity starts are held and automatically re-admitted when capacity frees, and held workers no longer strand a running organization state.",
+  "evidence": "src/runtime/boss-mode-service.ts"
+}

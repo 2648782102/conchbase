@@ -87,6 +87,10 @@ function createBossModeService(
       ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
     }),
     bossModelReference: { providerId: BOSS_UPSTREAM_PROVIDER_ID, modelId: config.bossModel ?? config.defaultModel },
+    schedulerLimits: {
+      globalActive: config.globalActiveWork,
+      perProjectActive: config.perProjectActiveWork,
+    },
     workerCapabilityGrants: () => defaultWorkerGrants(toolRuntime.tools, toolRuntime.skills.skills, { allowWrites: config.allowToolWrites === true }),
     conversation: { recordIntentText: (intentId, text) => conversation.recordIntentText(intentId, text) },
   });
