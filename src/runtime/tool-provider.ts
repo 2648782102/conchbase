@@ -62,6 +62,8 @@ export function combineToolProviders(providers: readonly ToolProvider[]): ToolPr
 const DEFAULT_MAX_BYTES = 8_192;
 const MAX_ENTRIES = 200;
 const MAX_MATCHES = 40;
+const MAX_SEARCH_DEPTH = 8;
+const SEARCH_TIME_BUDGET_MS = 2_000;
 
 function digest(value: string): string {
   return `sha256:${createHash('sha256').update(value).digest('hex')}`;
@@ -260,13 +262,23 @@ export function createBuiltinReadTools(options: {
     const relative = asString(args, 'path', '.');
     const start = resolveInsideRoot(root, relative);
     const matches: string[] = [];
-    const visit = (directory: string): void => {
-      if (matches.length >= MAX_MATCHES) return;
+    const deadline = Date.now() + SEARCH_TIME_BUDGET_MS;
+    let timedOut = false;
+    let tooDeep = false;
+    const visit = (directory: string, depth: number): void => {
+      if (matches.length >= MAX_MATCHES || Date.now() > deadline) {
+        if (Date.now() > deadline) timedOut = true;
+        return;
+      }
+      if (depth > MAX_SEARCH_DEPTH) { tooDeep = true; return; }
       for (const entry of readdirSync(directory, { withFileTypes: true })) {
-        if (matches.length >= MAX_MATCHES) return;
+        if (matches.length >= MAX_MATCHES || Date.now() > deadline) {
+          if (Date.now() > deadline) timedOut = true;
+          return;
+        }
         const full = path.join(directory, entry.name);
         if (entry.isDirectory()) {
-          visit(full);
+          visit(full, depth + 1);
           continue;
         }
         if (!entry.isFile()) continue;
@@ -276,13 +288,15 @@ export function createBuiltinReadTools(options: {
         matches.push(path.relative(root, full).split(path.sep).join('/'));
       }
     };
-    visit(start);
+    visit(start, 0);
     const raw = matches.join('\n');
     const paged = pageToolResult({ text: raw, maxBytes });
     const capped = matches.length >= MAX_MATCHES;
-    const footer = capped && !paged.truncated
-      ? `\n\n[match cap reached at ${MAX_MATCHES}; narrow the pattern or path to see more.]`
-      : '';
+    const notices: string[] = [];
+    if (capped && !paged.truncated) notices.push(`[match cap reached at ${MAX_MATCHES}; narrow the pattern or path to see more.]`);
+    if (timedOut) notices.push(`[search stopped after ${SEARCH_TIME_BUDGET_MS}ms; narrow the path to finish faster.]`);
+    if (tooDeep) notices.push(`[search stopped at depth ${MAX_SEARCH_DEPTH}; start from a deeper path.]`);
+    const footer = notices.length > 0 ? `\n\n${notices.join('\n')}` : '';
     const summary = `${paged.summary}${footer}`;
     return Object.freeze({ ok: true, summary, digest: digest(summary), bytes: Buffer.byteLength(summary) });
   }
