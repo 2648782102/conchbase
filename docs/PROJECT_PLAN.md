@@ -298,16 +298,23 @@ coding model does not redo finished work.
   Runtime error message. Remaining items (first-run wizard, merged activity
   timeline, small-screen/keyboard polish, copyable support bundle) belong to the
   Pagurus session; the Runtime already exposes what they need.
-- **Phase 6 — local operations, partially done.** `diagnose`, `smoke`, `backup`,
-  `verify-backup`, and `export-project` cover the operator's first needs.
-  Remaining: packaging target choice, start/stop/status/log verbs, automatic
-  backup rotation, upgrade/rollback guidance, and soak tests.
+- **Phase 6 — local operations, mostly done.** `diagnose`, `smoke`, `status`,
+  `backup`, `verify-backup`, timestamped backup naming with rotation, and
+  `export-project` cover the operator's first needs. Remaining: choose a
+  packaging target (`P6.1`) and add start/stop/log verbs on top of it,
+  upgrade/rollback guidance, and long-running soak tests.
 - **Phase 7 — not started.** Each integration needs its own vertical slice with
   ownership, credentials, rate limits, failure recovery, audit evidence, and a
   disable path. Start only after Phase 6.
 
 ## Current next task
 
-Pick the next Phase 6 task that the product needs most. Packaging (`P6.1`) is
-the gate: choose one target (desktop wrapper, background service, or documented
-local web process) before adding start/stop verbs.
+`P6.1` is the remaining gate for Phase 6: choose one packaging target (desktop
+wrapper, background service, or a documented local web process). That choice
+determines how `start`/`stop`/`log` should be implemented, so it must be made
+deliberately rather than guessed. Phase 7 (external integrations) stays blocked
+until Phase 6 closes.
+
+Everything in Phases 0–5 that belongs to the Runtime is implemented and covered
+by `npm test`; `npm run smoke` is the end-to-end check a fresh checkout should
+run first.
