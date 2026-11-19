@@ -15,9 +15,16 @@ Updated: 2026-11-19
   collect reports, surface Attention, and close out idle projects.
 - Agent Chat with persisted messages, streaming projection, resumable SSE, and
   inline approval for the supported tool path.
-- Built-in workspace read/search tools, optional read-only MCP/Skill providers,
-  bounded plugin/subprocess seams, and runtime-wide restricted/unrestricted
-  execution modes.
+- Built-in workspace read/search tools with a depth cap, a search-time budget,
+  UTF-8-safe truncation, and structured evidence on every result.
+- Safe workspace writes: an existing file needs an explicit `overwrite: true`,
+  and each result reports created-vs-replaced and byte sizes.
+- Approval requests name the tool, target path, and risk before anything runs.
+- User-facing capability presets: read-only, workspace-editing, local-commands,
+  external-integrations. There is deliberately no arbitrary-shell tool; the
+  only subprocess tools are fixed read-only git commands.
+- Optional read-only MCP/Skill providers, bounded plugin/subprocess seams, and
+  runtime-wide restricted/unrestricted execution modes.
 - Pagurus-compatible API for Agent editing, tasks, organization views,
   execution views, work controls, capability records, and write-only
   SecretHandles.
@@ -29,8 +36,10 @@ Updated: 2026-11-19
   pairing experience.
 - SQLite has a single runtime owner. Multi-process operation and broad crash
   testing are not complete product features.
-- Magpie is the only fully exercised model gateway. The provider-neutral shape
-  exists, but additional adapters need real contract tests and diagnostics.
+- Magpie is the only fully exercised model gateway. A provider contract
+  (`model-provider.ts`), a provider registry, error classification, capability
+  metadata, and a deterministic fake provider exist; a second real adapter still
+  needs live contract tests.
 - External side effects are intentionally narrow. Do not assume that a
   capability record or approval record means arbitrary host execution is safe.
 - Pagurus is feature-rich but still exposes too many operator-oriented screens
