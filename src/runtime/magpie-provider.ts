@@ -10,6 +10,7 @@ import {
   parseOpenAiChatCompletionsToolCall,
 } from './provider-tool-call.js';
 import type { ToolCallArguments } from './tool-request.js';
+import { classifyProviderFailure } from './model-provider.js';
 
 function parseToolArguments(raw: string): ToolCallArguments {
   if (raw.trim().length === 0) return Object.freeze({});
@@ -75,9 +76,14 @@ export const STREAMING_OUTPUT_LIMITS = Object.freeze({
 });
 
 export class ModelProviderError extends Error {
-  constructor(message: string) {
+  /** Provider-neutral failure class; see model-provider.ts ProviderErrorKind. */
+  readonly kind: import('./model-provider.js').ProviderErrorKind;
+  readonly retryable: boolean;
+  constructor(message: string, kind: import('./model-provider.js').ProviderErrorKind = 'upstream-failure') {
     super(message);
     this.name = 'ModelProviderError';
+    this.kind = kind;
+    this.retryable = kind === 'rate-limit' || kind === 'timeout' || kind === 'unavailable';
   }
 }
 
@@ -201,7 +207,11 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
     }
 
     if (!response.ok) {
-      throw new ModelProviderError(`Model provider returned HTTP ${response.status}.`);
+      const body = await response.text().catch(() => '');
+      throw new ModelProviderError(
+        `Model provider returned HTTP ${response.status}.`,
+        classifyProviderFailure(response.status, body),
+      );
     }
 
     let payload: unknown;
@@ -276,7 +286,11 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
     }
 
     if (!response.ok) {
-      throw new ModelProviderError(`Model provider returned HTTP ${response.status}.`);
+      const body = await response.text().catch(() => '');
+      throw new ModelProviderError(
+        `Model provider returned HTTP ${response.status}.`,
+        classifyProviderFailure(response.status, body),
+      );
     }
     if (!response.body) {
       throw new ModelProviderError('Model provider returned no response stream.');
