@@ -79,3 +79,48 @@ Both blind agents are ordinary coding agents with shell access; the only input
 is the base URL and the task list above. The important discipline is to **not**
 coach them toward the agent-chat surface — if the service index works, they
 find it themselves.
+
+## Deep pass (2026-11-19): reliability + supervisor-loop blind run
+
+The first pass was too shallow. This round applies published agent-evaluation
+practice (Anthropic "building effective agents" eval guidance, 2025–2026
+agent-benchmark methodology):
+
+- **pass^k, not a single pass**: `evals/harness.mjs --repeat N` runs each task
+  N times in a reset workspace and reports `passRate = k/N`. A task is green
+  only when every repetition passes.
+- **trajectory assertions**, not just the final answer: number of tool calls,
+  a failed-then-recovered call, no unbounded repeated-failure loop.
+- **failure-mode coverage**: two new live tasks —
+  `07-tool-error-recovery` (bad tool call then correct recovery) and
+  `08-format-sensitivity` (strict JSON contract) — alongside the original six.
+- **blind supervisor run**: a fresh agent with only the base URL, given eight
+  complex tasks (multi-project, ambiguous instructions, file writes verified on
+  disk, out-of-workspace boundaries, rapid double-send).
+
+### Reliability baseline
+
+`node evals/harness.mjs --repeat 2`: **8/8 tasks, pass^k = 2/2** against a real
+model. Every task produced the correct workspace artefact with the expected
+tool-call trace.
+
+### Findings from the deep blind run
+
+The agent verified real artefacts (`report.md`, `notes.txt`, `count.txt`) on
+disk; multi-turn context, ambiguous-instruction handling, honest refusal of
+out-of-workspace reads and impossible computation all worked. Two real defects:
+
+| Defect | Evidence | Fix | Regression |
+|---|---|---|---|
+| A second message on the same Boss conversation is rejected while the first reply is still in flight | `error="conversation[N] is not a bounded safe message."`, reproducible | Filter empty in-flight assistant placeholders out of the context sent to Boss (`src/runtime/agent-chat.ts`) | `tests/agent-chat-concurrent.test.ts` (fails without fix) |
+| A Boss-dispatched worker's write pauses at `waiting_approval`, but the chat showed no taskId and the in-conversation approval route returned 409 for Boss conversations | chat stuck in `organizing` until an external `GET /v1/tasks` + `POST /v1/tasks/{id}/approval` | publish a task-change notification when approval is requested (`src/runtime/task-service.ts`), surface the pending worker task on the Boss assistant message with `phase: human`, and allow in-conversation approval for Boss (`src/runtime/agent-chat.ts`) | `tests/agent-chat-tools.test.ts` (fails without notify fix); end-to-end: Boss message `waiting_approval` → `/approval {approved}` → worker wrote `note.txt` → reply `replied` |
+
+Not defects (triaged): the Boss choosing one worker for two independent steps
+is a model decision, not a Runtime constraint; differing refusals across two
+out-of-bound requests are model judgement; report line-count/verbosity is
+output quality, not state handling.
+
+After these fixes, a Boss-only user can complete a write task entirely inside
+the conversation: receive `waiting_approval` with a taskId, call
+`POST /v1/agent-chat/conversations/{id}/approval {assistantMessageId, decision}`,
+and get the final result without leaving the chat.

@@ -1081,7 +1081,9 @@ export class TaskService {
         this.recordToolExecuted(task_, iteration_, call.name, call.arguments, result),
       recordFailed: (task_, iteration_, toolId, code) => this.recordToolFailed(task_, iteration_, toolId, code),
     };
-    return drainToolCallsImpl(context, task, calls, iteration, messages, signal);
+    const outcome = await drainToolCallsImpl(context, task, calls, iteration, messages, signal);
+    if (outcome === 'paused') this.notifyChange(task.id);
+    return outcome;
   }
 
   private async executeSingleTurn(task: TaskSnapshot, signal: AbortSignal): Promise<void> {

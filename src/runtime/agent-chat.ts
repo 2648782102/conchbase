@@ -351,7 +351,8 @@ export class AgentChatService {
     }
 
     if (record.isBoss) return this.postBossMessage(record, text, idempotencyKey);
-    const context = record.messages.slice(-8).map((message) =>
+    const context = record.messages.filter((message) =>
+      message.author === 'user' || (message.body ?? '').trim().length > 0).slice(-8).map((message) =>
       `${message.author === 'user' ? 'User' : 'Assistant'}: ${message.body}`).join('\n');
     const prompt = context.length > 0 ? `${context}\n\nUser: ${text}` : text;
     let task: TaskSnapshot;
@@ -467,7 +468,6 @@ export class AgentChatService {
     if (!assistant || assistant.author !== 'assistant' || assistant.taskId === null) {
       throw new AgentChatServiceError('Assistant message has no pending Agent task.', 404);
     }
-    if (record.isBoss) throw new AgentChatServiceError('Boss Agent does not use task approval.', 409);
     try {
       this.taskService.decideApproval(assistant.taskId, input.decision);
     } catch (cause) {
@@ -687,7 +687,11 @@ export class AgentChatService {
   ): Promise<AgentChatMessageResult> {
     const bossMode = this.bossMode;
     if (!bossMode) throw new AgentChatServiceError('Boss Agent is not configured.', 503);
-    const conversation = record.messages.slice(-8).map((message) => ({
+    // In-flight assistant placeholders have an empty body. They are not a
+    // model turn yet and must not be fed back as conversation context (the
+    // Boss submission validator rejects empty bodies).
+    const conversation = record.messages.filter((message) =>
+      message.author === 'user' || (message.body ?? '').trim().length > 0).slice(-8).map((message) => ({
       author: message.author === 'user' ? 'user' as const : 'assistant' as const,
       body: message.body,
     }));
@@ -717,6 +721,27 @@ export class AgentChatService {
     record.messages.push(userMessage, assistantMessage);
     record.idempotency.set(idempotencyKey, userMessage.id);
     this.persist(record);
+    // A Boss turn can dispatch workers whose write tools need approval. Surface
+    // that pending decision inline, on this assistant message, so a chat-only
+    // user can approve without leaving the conversation.
+    const knownTaskIds = new Set(this.taskService.store.listTasks().map((task) => task.id));
+    const unsubscribeApprovalWatch = this.taskService.onChange((changedTaskId) => {
+      if (knownTaskIds.has(changedTaskId)) return;
+      const changed = this.taskService.store.getTask(changedTaskId);
+      if (!changed || changed.state !== 'waiting_approval') return;
+      knownTaskIds.add(changedTaskId);
+      const current = this.getMessage(record, assistantMessage.id);
+      if (!current || current.phase === 'terminal') return;
+      this.replaceMessage(record, assistantMessage.id, {
+        ...current,
+        state: 'waiting_approval',
+        phase: 'human',
+        taskId: changedTaskId,
+        body: current.body || '员工需要执行一个写操作，请批准或拒绝后继续。',
+        updatedAt: this.now(),
+      });
+      this.persist(record);
+    });
     const onAccepted = (submitted: Awaited<ReturnType<BossModeService['submit']>>) => {
       // Acceptance is not completion: worker tasks may still be running. Record
       // the reply text and keep the message pending so a Boss that hired a
@@ -763,6 +788,7 @@ export class AgentChatService {
           this.persist(record);
         },
       }, onAccepted).then((settled) => {
+        unsubscribeApprovalWatch();
         // The submission settled: worker tasks have been awaited, so the reply
         // can now reflect the real outcome instead of the accepted snapshot.
         const waiting = settled.relays.some((relay) => relay.kind === 'attention');
@@ -777,6 +803,7 @@ export class AgentChatService {
         });
         this.persist(record);
       }).catch((cause: unknown) => {
+        unsubscribeApprovalWatch();
         const textError = cause instanceof Error ? cause.message.slice(0, 240) : 'Boss Agent submit failed.';
         this.replaceMessage(record, assistantMessage.id, {
           ...assistantMessage,
