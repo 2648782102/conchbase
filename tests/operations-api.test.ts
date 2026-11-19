@@ -141,3 +141,37 @@ test('the diagnostics route returns check names and remedies, never prompts or s
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('the support bundle route returns redacted metadata only', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-ops-'));
+  const databasePath = path.join(directory, 'runtime.sqlite');
+  const service = createTaskService(databasePath, {
+    magpieBaseUrl: 'http://127.0.0.1:3425', defaultModel: 'fixture/model',
+    fetch: (async () => new Response(sse(), { status: 200, headers: { 'content-type': 'text/event-stream' } })) as typeof globalThis.fetch,
+  });
+  const app = createApp({
+    logger: false, taskService: service,
+    config: {
+      host: '127.0.0.1', port: 4318, databasePath, magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/model', workspaceRoot: directory, executionMode: 'restricted',
+      loopBudget: { maxIterations: 6, maxToolCallsPerTurn: 4, deadlineMs: 120_000 },
+      workerSliceIterations: 0, projectIdleMs: 1_800_000, globalActiveWork: 8,
+      perProjectActiveWork: 2, allowAuthenticatedRemoteBinding: false,
+    },
+  });
+  try {
+    const response = await app.inject({ method: 'GET', url: '/v1/operations/support-bundle' });
+    assert.equal(response.statusCode, 200, response.body);
+    const { bundle } = response.json();
+    assert.equal(bundle.format, 'conchbase-support-bundle');
+    assert.ok(Array.isArray(bundle.checks));
+    const json = JSON.stringify(bundle);
+    for (const forbidden of ['prompt', 'transcript', 'sk-']) {
+      assert.equal(json.includes(forbidden), false, `${forbidden} must not appear`);
+    }
+  } finally {
+    service.close();
+    await app.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

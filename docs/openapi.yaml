@@ -76,6 +76,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/operations/support-bundle:
+    get:
+      operationId: getSupportBundle
+      summary: Redacted, copy-pasteable metadata for a support request.
+      responses:
+        '200':
+          description: Support bundle. Never includes prompts, transcripts, task bodies, or secrets.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [version, bundle]
+                properties:
+                  version:
+                    const: 1
+                  bundle:
+                    $ref: '#/components/schemas/SupportBundle'
   /v1/operations/diagnostics:
     get:
       operationId: getDiagnostics
@@ -2951,6 +2969,66 @@ components:
           type: string
         error:
           type: string
+    SupportBundle:
+      type: object
+      additionalProperties: false
+      required: [format, generatedAt, version, data, runtime, checks, summary]
+      properties:
+        format:
+          const: conchbase-support-bundle
+        generatedAt:
+          type: string
+          format: date-time
+        version:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [databasePath, sizeBytes, schemaVersion]
+          properties:
+            databasePath:
+              type: string
+            sizeBytes:
+              type: integer
+              minimum: 0
+            schemaVersion:
+              type: integer
+              minimum: 1
+        runtime:
+          type: object
+          additionalProperties: false
+          required: [host, port, magpieBaseUrl]
+          properties:
+            host:
+              type: string
+            port:
+              type: integer
+            magpieBaseUrl:
+              type: string
+        checks:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, status, detail]
+            properties:
+              id:
+                type: string
+              status:
+                type: string
+                enum: [ok, warn, fail]
+              detail:
+                type: string
+        summary:
+          type: object
+          additionalProperties: false
+          required: [status, nextStep]
+          properties:
+            status:
+              type: string
+              enum: [ok, warn, fail]
+            nextStep:
+              type: [string, 'null']
     OperationsDiagnostics:
       type: object
       additionalProperties: false

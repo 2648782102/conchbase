@@ -12,6 +12,7 @@ import path from 'node:path';
 import type { TaskService } from '../../../runtime/task-service.js';
 import { backupOpenDatabase, inspectBackup } from '../../../runtime/backup.js';
 import { buildDiagnosticChecks, defaultDiagnosticContext } from '../../../runtime/diagnostics.js';
+import { buildSupportBundle } from '../../../runtime/support-bundle.js';
 import type { RuntimeConfig } from '../../../config/runtime-config.js';
 
 export function registerOperationsRoutes(
@@ -69,6 +70,30 @@ export function registerOperationsRoutes(
       integrity: report.integrity,
       ...(report.error ? { error: report.error } : {}),
     });
+  });
+
+  const runChecks = async () => buildDiagnosticChecks(defaultDiagnosticContext({
+    databasePath: config!.databasePath,
+    workspaceRoot: config!.workspaceRoot,
+    port: config!.port,
+    host: config!.host,
+    magpieBaseUrl: config!.magpieBaseUrl,
+    consolePort: config!.port === 4318 ? 5173 : 5173 + (config!.port - 4318),
+  }));
+
+  app.get('/v1/operations/support-bundle', async (_request, reply) => {
+    if (!config) return unavailable(reply);
+    const checks = await runChecks();
+    const bundle = await buildSupportBundle({
+      version: '1.0.0',
+      databasePath: config.databasePath,
+      workspaceRoot: config.workspaceRoot,
+      host: config.host,
+      port: config.port,
+      magpieBaseUrl: config.magpieBaseUrl,
+      checks,
+    });
+    return reply.send({ version: 1, bundle });
   });
 
   app.get('/v1/operations/diagnostics', async (_request, reply) => {
