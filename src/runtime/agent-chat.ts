@@ -732,12 +732,21 @@ export class AgentChatService {
       knownTaskIds.add(changedTaskId);
       const current = this.getMessage(record, assistantMessage.id);
       if (!current || current.phase === 'terminal') return;
+      const approvalHint = [
+        '【需要你的批准】员工要执行一个写操作。',
+        `请调用 POST /v1/agent-chat/conversations/${record.id}/approval，`,
+        `请求体 {"assistantMessageId":"${assistantMessage.id}","decision":"approved"} 批准，`,
+        '或把 decision 设为 "rejected" 拒绝。批准后任务会自动继续。',
+      ].join(' ');
+      const body = (current.body ?? '').includes('【需要你的批准】')
+        ? current.body
+        : [current.body, approvalHint].filter((part) => (part ?? '').trim().length > 0).join('\n\n');
       this.replaceMessage(record, assistantMessage.id, {
         ...current,
         state: 'waiting_approval',
         phase: 'human',
         taskId: changedTaskId,
-        body: current.body || '员工需要执行一个写操作，请批准或拒绝后继续。',
+        body,
         updatedAt: this.now(),
       });
       this.persist(record);
