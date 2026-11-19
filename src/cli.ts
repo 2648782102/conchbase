@@ -36,6 +36,8 @@ Usage:
   conchbase events [cursor]      Show events after an optional event ID
   conchbase retry <id>           Retry a terminal task directly
   conchbase diagnose             Check Node, paths, port, and provider connectivity
+  conchbase backup <path>        Write a consistent snapshot of the database
+  conchbase verify-backup <path> Check a backup's tables, rows, and integrity
   conchbase config               Show the active configuration revision
   conchbase config-revisions     List configuration revision summaries
 
@@ -106,6 +108,16 @@ async function main(argv: readonly string[]): Promise<void> {
   const config = loadRuntimeConfig();
   if (!command || command === 'help' || command === '--help') {
     process.stdout.write(usage());
+    return;
+  }
+
+  if (command === 'verify-backup') {
+    const { inspectBackup, formatBackupReport } = await import('./runtime/backup.js');
+    const target = args[0];
+    if (!target) throw new Error('Usage: conchbase verify-backup <path>');
+    const report = inspectBackup(target);
+    process.stdout.write(formatBackupReport(report));
+    process.exitCode = report.ok ? 0 : 1;
     return;
   }
 
@@ -243,6 +255,13 @@ async function main(argv: readonly string[]): Promise<void> {
     }
     if (command === 'tasks') {
       process.stdout.write(`${JSON.stringify(service.store.listTasks(), null, 2)}\n`);
+      return;
+    }
+    if (command === 'backup') {
+      const target = args[0];
+      if (!target) throw new Error('Usage: conchbase backup <path>');
+      service.store.backupTo(target);
+      process.stdout.write(`backup written to ${target}\n`);
       return;
     }
     if (command === 'config') {

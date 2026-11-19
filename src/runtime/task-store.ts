@@ -158,6 +158,7 @@ export interface TaskStore {
   getToolRequest(requestId: string): ToolRequestRecord | null;
   decideToolRequest(requestId: string, input: ToolRequestDecisionInput): ToolRequestDecisionResult;
   listEvents(afterEventId: string | null): readonly RuntimeEvent[];
+  backupTo(target: string): void;
   listTaskEvents(taskId: string): readonly RuntimeEvent[];
   getEvent(eventId: string): RuntimeEvent | null;
   getConfigurationState(): ConfigurationState;
@@ -721,6 +722,11 @@ export class SqliteTaskStore implements TaskStore {
       throw cause;
     }
     return this.getTask(taskId)!;
+  }
+
+  /** Writes a consistent snapshot of this store to a new file at `target`. */
+  backupTo(target: string): void {
+    this.database.exec(`VACUUM INTO '${target.replace(/'/g, "''")}'`);
   }
 
   listEvents(afterEventId: string | null): readonly RuntimeEvent[] {

@@ -235,6 +235,10 @@ class CancelOnFirstNodeStore implements TaskStore {
     return this.inner.decideToolRequest(requestId, input);
   }
 
+  backupTo(target: string): void {
+    this.inner.backupTo(target);
+  }
+
   listEvents(afterEventId: string | null): readonly RuntimeEvent[] {
     return this.inner.listEvents(afterEventId);
   }
