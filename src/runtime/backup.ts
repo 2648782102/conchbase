@@ -5,7 +5,7 @@
  * copying a half-written file, which is what a plain `cp` would do. Inspection
  * reopens the copy read-only and reports what it contains.
  */
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, unlinkSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 
 export interface BackupReport {
@@ -79,4 +79,28 @@ export function formatBackupReport(report: BackupReport): string {
     `backup check ok (integrity: ${report.integrity})`,
     ...rows,
   ].join('\n') + '\n';
+}
+
+/**
+ * Keeps the newest `keep` backups in a directory and deletes older ones.
+ * Names are expected to sort chronologically (e.g. `runtime-2026-11-19T…`).
+ */
+export function rotateBackups(directory: string, keep: number): {
+  readonly kept: readonly string[];
+  readonly removed: readonly string[];
+} {
+  if (!Number.isInteger(keep) || keep < 1) throw new Error('keep must be a positive integer.');
+  const files = readdirSync(directory)
+    .filter((name) => name.endsWith('.sqlite'))
+    .sort()
+    .reverse();
+  const kept = files.slice(0, keep);
+  const removed = files.slice(keep);
+  for (const name of removed) unlinkSync(`${directory}/${name}`);
+  return { kept, removed };
+}
+
+/** A timestamped backup filename, safe on every supported platform. */
+export function backupFileName(stamp: string): string {
+  return `runtime-${stamp.replace(/[:.]/g, '-')}.sqlite`;
 }

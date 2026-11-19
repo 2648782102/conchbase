@@ -66,3 +66,28 @@ test('inspecting a non-database file fails with a readable error', () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('rotation keeps the newest N backups and removes the rest', async () => {
+  const { rotateBackups, backupFileName } = await import('../src/runtime/backup.js');
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-rotate-'));
+  try {
+    for (const stamp of ['2026-11-17T00:00:00.000Z', '2026-11-18T00:00:00.000Z', '2026-11-19T00:00:00.000Z']) {
+      writeFileSync(path.join(directory, backupFileName(stamp)), 'x');
+    }
+    const result = rotateBackups(directory, 2);
+    assert.equal(result.kept.length, 2);
+    assert.equal(result.removed.length, 1);
+    assert.match(result.removed[0] ?? '', /2026-11-17/);
+    assert.throws(() => rotateBackups(directory, 0));
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('backup file names are portable and sorted by time', async () => {
+  const { backupFileName } = await import('../src/runtime/backup.js');
+  const a = backupFileName('2026-11-18T10:00:00.000Z');
+  const b = backupFileName('2026-11-19T10:00:00.000Z');
+  assert.equal(a.includes(':'), false, 'no colon for Windows compatibility');
+  assert.ok(a < b);
+});
