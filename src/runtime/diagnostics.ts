@@ -28,6 +28,8 @@ export interface DiagnosticContext {
   readonly checkPort: (host: string, port: number) => Promise<'free' | 'busy'>;
   /** 'reachable' | 'unreachable' */
   readonly checkHttp: (url: string) => Promise<'reachable' | 'unreachable'>;
+  /** Number of models the gateway advertises, or null when unavailable. */
+  readonly modelCount: () => Promise<number | null>;
 }
 
 function probePort(host: string, port: number): Promise<'free' | 'busy'> {
@@ -112,13 +114,16 @@ export async function buildDiagnosticChecks(context: DiagnosticContext): Promise
       : `${context.host}:${context.port} is already in use (another Runtime or process).`,
   });
 
+  const startedAt = Date.now();
   const gateway = await context.checkHttp(`${context.magpieBaseUrl.replace(/\/$/, '')}/v1/models`);
+  const latency = Date.now() - startedAt;
+  const modelCount = await context.modelCount();
   checks.push({
     id: 'gateway',
     status: gateway === 'reachable' ? 'ok' : 'warn',
     detail: gateway === 'reachable'
-      ? `${context.magpieBaseUrl} answered.`
-      : `${context.magpieBaseUrl} is unreachable; real model calls will fail (tests do not need it).`,
+      ? `${context.magpieBaseUrl} answered in ${latency}ms; ${modelCount ?? 0} model(s) available.`
+      : `${context.magpieBaseUrl} is unreachable after ${latency}ms; real model calls will fail (tests do not need it).`,
   });
 
   const consoleUrl = `http://127.0.0.1:${context.consolePort}/`;
@@ -167,6 +172,16 @@ export function defaultDiagnosticContext(config: {
     consolePort: config.consolePort ?? (config.port === 4318 ? 5173 : 5173 + (config.port - 4318)),
     checkPort: probePort,
     checkHttp: probeHttp,
+    modelCount: async () => {
+      try {
+        const response = await fetch(`${config.magpieBaseUrl.replace(/\/$/, '')}/v1/models`, { signal: AbortSignal.timeout(2_000) });
+        if (!response.ok) return null;
+        const payload = await response.json() as { data?: unknown };
+        return Array.isArray(payload.data) ? payload.data.length : null;
+      } catch {
+        return null;
+      }
+    },
   };
 }
 

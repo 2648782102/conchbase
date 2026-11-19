@@ -16,6 +16,7 @@ function baseContext(directory: string): DiagnosticContext {
     consolePort: 5173,
     checkPort: async () => 'free',
     checkHttp: async () => 'reachable',
+    modelCount: async () => 3,
   };
 }
 
