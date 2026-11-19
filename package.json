@@ -28,7 +28,8 @@
     "test:audit": "node scripts/test-audit.mjs",
     "verify": "npm run check && npm run test:audit && npm test && npm run build",
     "eval": "node evals/harness.mjs",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "soak": "node scripts/soak.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

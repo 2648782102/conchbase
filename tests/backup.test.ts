@@ -91,3 +91,26 @@ test('backup file names are portable and sorted by time', async () => {
   assert.equal(a.includes(':'), false, 'no colon for Windows compatibility');
   assert.ok(a < b);
 });
+
+test('a pre-upgrade snapshot opens cleanly with the current store', async () => {
+  const { SqliteTaskStore } = await import('../src/runtime/task-store.js');
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-upgrade-'));
+  const live = path.join(directory, 'runtime.sqlite');
+  const snapshot = path.join(directory, 'before.sqlite');
+  const service = createTaskService(live, { magpieBaseUrl: 'http://127.0.0.1:3425', defaultModel: 'fixture/model', fetch: okFetch() });
+  try {
+    const task = service.createTask({ prompt: 'x' });
+    service.startTask(task.id);
+    await service.waitForTask(task.id);
+    service.store.backupTo(snapshot);
+  } finally {
+    service.close();
+  }
+  const restored = new SqliteTaskStore(snapshot);
+  try {
+    assert.equal(restored.listTasks().length >= 1, true, 'the snapshot is a usable database');
+  } finally {
+    restored.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

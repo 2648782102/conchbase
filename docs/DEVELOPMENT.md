@@ -91,3 +91,29 @@ End each coding task with:
 - failures or environment limits;
 - security/recovery considerations;
 - the next recommended task.
+
+## Upgrading and rolling back
+
+The schema has one supported version per release. An older database is upgraded
+in place on open; a newer one is refused with a clear error rather than being
+half-read.
+
+Before an upgrade, take a snapshot and confirm it:
+
+```sh
+conchbase backup ./runtime-before-upgrade.sqlite
+conchbase verify-backup ./runtime-before-upgrade.sqlite
+```
+
+Then start the new version. It migrates forward automatically. To roll back:
+
+```sh
+conchbase stop
+# restore the snapshot over the live database, then start the OLD version
+cp ./runtime-before-upgrade.sqlite .conchbase/runtime.sqlite
+conchbase start
+```
+
+A backup taken by an older release is readable by that older release; do not
+point a newer binary at a database a newer binary already migrated and then
+expect to downgrade it — restore the pre-upgrade snapshot instead.
