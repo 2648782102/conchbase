@@ -96,3 +96,21 @@ test('dependency baseline stays consistent', () => {
     assert.equal(Object.keys(lock.packages ?? {}).some((key) => key.endsWith(`/node_modules/${name}`)), false);
   }
 });
+
+test('obsolete process documents stay gone', async () => {
+  const { existsSync } = await import('node:fs');
+  for (const gone of [
+    'docs/AI_HANDOFF.md',
+    'docs/PROJECT_STATUS.json',
+    'docs/OBJECTIVE_MODE.zh-CN.md',
+    'docs/ROADMAP.md',
+    'docs/AI_TASK_QUEUE.md',
+  ]) {
+    assert.equal(existsSync(path.join(repositoryRoot, gone)), false, `${gone} should stay removed`);
+  }
+  // The entry documents stay short; the plan may be long, the orientation may not.
+  for (const short of ['docs/START_HERE.md', 'docs/CURRENT_STATE.md', 'docs/DEVELOPMENT.md']) {
+    const lines = readFileSync(path.join(repositoryRoot, short), 'utf8').split('\n').length;
+    assert.ok(lines <= 120, `${short} is ${lines} lines; keep entry docs short`);
+  }
+});
