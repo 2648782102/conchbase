@@ -894,13 +894,24 @@ export class TaskService {
     let turn: Awaited<ReturnType<typeof provider.streamTurn>> = Object.freeze({ kind: 'final', output: '' });
     let completed = false;
 
+    // The deadline must also bound a single in-flight provider call. Checking
+    // only between iterations lets one hung call run forever, which looks like
+    // a frozen task to the user.
+    let timedOut = false;
+
     for (let iteration = startIteration; iteration < maxIterations; iteration += 1) {
       if (signal.aborted) break;
       if (Date.now() > deadline) throw new Error('Agent loop exceeded its time budget.');
+      const remaining = Math.max(1, deadline - Date.now());
+      const turnSignal = AbortSignal.any([signal, AbortSignal.timeout(remaining)]);
+      turnSignal.addEventListener('abort', () => {
+        if (!signal.aborted) timedOut = true;
+      }, { once: true });
       this.recordLoopEvent(task, 'agent_loop.turn_started', 'running', { iteration });
       partialOutput = '';
       let deltaIndex = 0;
-      turn = await provider.streamTurn({
+      try {
+        turn = await provider.streamTurn({
         taskId: task.id,
         prompt: task.prompt,
         turnIndex: iteration,
@@ -917,7 +928,7 @@ export class TaskService {
             })),
           }
           : {}),
-        signal,
+        signal: turnSignal,
         onOutputDelta: (delta) => {
           partialOutput += delta;
           this.store.recordOutputDelta(task.id, {
@@ -927,7 +938,13 @@ export class TaskService {
           deltaIndex += 1;
           this.notifyChange(task.id);
         },
-      });
+        });
+      } catch (cause) {
+        if (timedOut && !signal.aborted) {
+          throw new Error('Agent loop exceeded its time budget while waiting for the model.');
+        }
+        throw cause;
+      }
       if (signal.aborted) break;
       if (turn.kind === 'final') {
         completed = true;
@@ -1098,13 +1115,23 @@ export class TaskService {
     });
     let partialOutput = '';
     let deltaIndex = 0;
-    const turn = await provider.streamTurn({
+    // A single-turn task must honour the loop deadline too; otherwise one hung
+    // provider call leaves the task running forever.
+    const deadlineMs = this.loopBudget.deadlineMs;
+    let timedOut = false;
+    const turnSignal = AbortSignal.any([signal, AbortSignal.timeout(deadlineMs)]);
+    turnSignal.addEventListener('abort', () => {
+      if (!signal.aborted) timedOut = true;
+    }, { once: true });
+    let turn: Awaited<ReturnType<typeof provider.streamTurn>>;
+    try {
+      turn = await provider.streamTurn({
       taskId: task.id,
       prompt: task.agentId
         ? `${this.store.getAgentRevision(task.agentId, task.agentRevisionId!)?.instructions ?? ''}\n\n${task.prompt}`
         : task.prompt,
       turnIndex: 0,
-      signal,
+      signal: turnSignal,
       onOutputDelta: (delta) => {
         partialOutput += delta;
         this.store.recordOutputDelta(task.id, {
@@ -1114,7 +1141,13 @@ export class TaskService {
         deltaIndex += 1;
         this.notifyChange(task.id);
       },
-    });
+      });
+    } catch (cause) {
+      if (timedOut && !signal.aborted) {
+        throw new Error('Task exceeded its time budget while waiting for the model.');
+      }
+      throw cause;
+    }
     if (signal.aborted) {
       if (this.stopping) return;
       this.finishCancelled(task);
