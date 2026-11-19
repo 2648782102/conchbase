@@ -65,10 +65,32 @@ test('a missing workspace and unreachable gateway are reported separately', asyn
 test('an occupied runtime port is a warning with the reason', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-diag-'));
   try {
-    const checks = await buildDiagnosticChecks({ ...baseContext(directory), checkPort: async () => 'busy' });
+    const checks = await buildDiagnosticChecks({
+      ...baseContext(directory),
+      checkPort: async () => 'busy',
+      // The port is held by *another* process: health probes answer nothing.
+      checkHttp: async (url) => (url.includes('/v1/health') ? 'unreachable' : 'reachable'),
+    });
     const port = checks.find((check) => check.id === 'runtime-port');
     assert.equal(port?.status, 'warn');
     assert.match(port?.detail ?? '', /in use|already/i);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('a port held by this very Runtime is reported as ok, not a conflict', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-diag-'));
+  try {
+    const checks = await buildDiagnosticChecks({
+      ...baseContext(directory),
+      checkPort: async () => 'busy',
+      // Health answers on this port, so the listener is us.
+      checkHttp: async () => 'reachable',
+    });
+    const port = checks.find((check) => check.id === 'runtime-port');
+    assert.equal(port?.status, 'ok');
+    assert.match(port?.detail ?? '', /this Runtime|本实例/i);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

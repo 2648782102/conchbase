@@ -106,12 +106,19 @@ export async function buildDiagnosticChecks(context: DiagnosticContext): Promise
   checks.push(checkWorkspace(context.workspaceRoot));
 
   const port = await context.checkPort(context.host, context.port);
+  // When diagnostics run *inside* a live Runtime, that Runtime is the process
+  // holding the port. Reporting it as a conflict is a false alarm the operator
+  // cannot act on, so ask health whether the listener is us.
+  const selfListening = port === 'busy'
+    && await context.checkHttp(`http://${context.host}:${context.port}/v1/health`) === 'reachable';
   checks.push({
     id: 'runtime-port',
-    status: port === 'free' ? 'ok' : 'warn',
+    status: port === 'free' || selfListening ? 'ok' : 'warn',
     detail: port === 'free'
       ? `${context.host}:${context.port} is free.`
-      : `${context.host}:${context.port} is already in use (another Runtime or process).`,
+      : selfListening
+        ? `${context.host}:${context.port} is this Runtime.`
+        : `${context.host}:${context.port} is already in use (another Runtime or process).`,
   });
 
   const startedAt = Date.now();
