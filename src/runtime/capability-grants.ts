@@ -68,3 +68,73 @@ export function defaultWorkerGrants(
     .map((skill) => Object.freeze({ kind: 'skill' as const, name: skill.name }));
   return Object.freeze([...toolGrants, ...skillGrants]);
 }
+
+/**
+ * User-facing capability presets (ADR P3.8).
+ *
+ * The names are what a person sees when choosing what an Agent may do; the
+ * mapping to concrete grants stays here so the UI never invents capability.
+ */
+export type CapabilityPresetId = 'read-only' | 'workspace-editing' | 'local-commands' | 'external-integrations';
+
+export interface CapabilityPreset {
+  readonly id: CapabilityPresetId;
+  readonly label: string;
+  readonly description: string;
+  readonly allowsWrites: boolean;
+  readonly tools: readonly string[];
+}
+
+export const CAPABILITY_PRESETS: readonly CapabilityPreset[] = Object.freeze([
+  Object.freeze({
+    id: 'read-only',
+    label: '只读',
+    description: '查看工作区文件与搜索；不能修改任何内容。',
+    allowsWrites: false,
+    tools: Object.freeze(['workspace_list', 'workspace_read', 'text_search']),
+  }),
+  Object.freeze({
+    id: 'workspace-editing',
+    label: '工作区编辑',
+    description: '在只读基础上，可在工作区内写入文件（每次写入需批准）。',
+    allowsWrites: true,
+    tools: Object.freeze(['workspace_list', 'workspace_read', 'text_search', 'workspace_write']),
+  }),
+  Object.freeze({
+    id: 'local-commands',
+    label: '本地命令',
+    description: '允许受限的本地只读命令（例如 git 状态）；不是任意 shell。',
+    allowsWrites: false,
+    tools: Object.freeze(['workspace_list', 'workspace_read', 'text_search', 'git_status', 'git_log']),
+  }),
+  Object.freeze({
+    id: 'external-integrations',
+    label: '外部集成',
+    description: '连接外部工具（MCP/插件）；默认关闭，需单独审核。',
+    allowsWrites: false,
+    tools: Object.freeze(['workspace_list', 'workspace_read', 'text_search']),
+  }),
+]);
+
+export function findCapabilityPreset(id: string): CapabilityPreset | undefined {
+  return CAPABILITY_PRESETS.find((preset) => preset.id === id);
+}
+
+/** Grants for a preset, narrowed to the tools actually registered. */
+export function grantsForPreset(
+  id: CapabilityPresetId,
+  tools: ToolProvider | undefined,
+  skills: readonly SkillGrantCandidate[] | undefined,
+): readonly CapabilityGrant[] {
+  const preset = findCapabilityPreset(id);
+  if (!preset) return Object.freeze([]);
+  const available = new Set(tools?.list().map((tool) => tool.id) ?? []);
+  const toolGrants = preset.tools
+    .filter((name) => available.has(name))
+    .map((name) => Object.freeze({ kind: 'tool' as const, name }));
+  // External integrations never auto-grant skills; the operator opts in.
+  const skillGrants = id === 'external-integrations'
+    ? []
+    : (skills ?? []).map((skill) => Object.freeze({ kind: 'skill' as const, name: skill.name }));
+  return Object.freeze([...toolGrants, ...skillGrants]);
+}
