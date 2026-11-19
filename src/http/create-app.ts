@@ -41,7 +41,17 @@ export interface CreateAppOptions {
 }
 
 export function createApp(options: CreateAppOptions = {}) {
-  const app = Fastify({ logger: options.logger ?? true });
+  // Never serialize request bodies into logs: they can contain prompts and
+  // tool arguments. The error hook below logs a category and identifiers only.
+  const app = Fastify({
+    logger: options.logger ?? true,
+    disableRequestLogging: true,
+  });
+  app.addHook('onError', async (request, _reply, error) => {
+    const { toErrorRecord, formatErrorLog } = await import('../runtime/error-categories.js');
+    const record = toErrorRecord(error, { requestId: request.id });
+    request.log?.warn?.(formatErrorLog(record));
+  });
   const workStore = options.taskService?.store?.work;
   const platform = options.taskService?.store?.platform;
   const organization = options.bossModeService?.organizationStore
