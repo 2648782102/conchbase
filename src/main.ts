@@ -17,6 +17,9 @@ import { defaultWorkerGrants } from './runtime/capability-grants.js';
 import { createConvergenceRuntime } from './runtime/organization-convergence-runtime.js';
 import { AgentChatService } from './runtime/agent-chat.js';
 import { createOpenAiCompatibleMemoryReviewer } from './runtime/memory-review.js';
+import { assertSupportedNode } from './runtime/node-version.js';
+
+assertSupportedNode();
 
 const config = loadRuntimeConfig();
 mkdirSync(path.dirname(config.databasePath), { recursive: true });

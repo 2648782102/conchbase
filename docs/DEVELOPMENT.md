@@ -10,8 +10,10 @@ node --version
 npm --version
 ```
 
-Use Node.js 24 or newer. Install dependencies with `npm ci` for a clean
-checkout. Start the local Runtime with `npm run dev`; it uses loopback and a
+Use Node.js 24 or newer; `.nvmrc` pins it, so `nvm use` selects the right
+version. Both entry points (`conchbase` and `npm run dev`) refuse to start on
+an older interpreter with one clear message instead of a deep runtime error.
+Install dependencies with `npm ci` for a clean checkout. Start the local Runtime with `npm run dev`; it uses loopback and a
 local SQLite file. Real model calls require a configured local Magpie gateway,
 but tests must use fake local providers.
 
