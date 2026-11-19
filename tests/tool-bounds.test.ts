@@ -67,3 +67,40 @@ test('path escapes are still rejected after the bounds are added', async () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('tool results carry evidence and truncation flags', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'conchbase-evidence-'));
+  try {
+    writeFileSync(path.join(root, 'a.txt'), 'hello world');
+    writeFileSync(path.join(root, 'b.txt'), 'hello again');
+    const tools = createBuiltinReadTools({ root });
+
+    const listResult = await tools.invoke('workspace_list', { path: '.' });
+    assert.equal(listResult.ok, true);
+    assert.equal(typeof listResult.evidence?.facts.totalEntries, 'number');
+    assert.equal(listResult.truncated, false);
+
+    const readResult = await tools.invoke('workspace_read', { path: 'a.txt' });
+    assert.equal(readResult.evidence?.facts.path, 'a.txt');
+    assert.equal(readResult.evidence?.facts.totalBytes, 11);
+
+    const searchResult = await tools.invoke('text_search', { pattern: 'hello' });
+    assert.equal(searchResult.evidence?.facts.matches, 2);
+    assert.equal(searchResult.truncated, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a truncated read sets the truncated flag', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'conchbase-trunc-'));
+  try {
+    writeFileSync(path.join(root, 'big.txt'), 'x'.repeat(5000));
+    const tools = createBuiltinReadTools({ root, maxBytes: 100 });
+    const result = await tools.invoke('workspace_read', { path: 'big.txt' });
+    assert.equal(result.truncated, true);
+    assert.equal(result.evidence?.facts.truncated, true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

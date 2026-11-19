@@ -23,11 +23,19 @@ export interface ToolDefinition {
   readonly parameters?: ToolParameterSchema;
 }
 
+export interface ToolEvidence {
+  /** Human-readable facts the model can cite: counts, paths, sizes. */
+  readonly facts: Readonly<Record<string, string | number | boolean>>;
+}
+
 export interface ToolExecutionResult {
   readonly ok: boolean;
   readonly summary: string;
   readonly digest: string;
   readonly bytes: number;
+  /** True when the summary is a bounded slice of a larger result. */
+  readonly truncated?: boolean;
+  readonly evidence?: ToolEvidence;
   readonly errorCode?: string;
 }
 
@@ -209,7 +217,11 @@ export function createBuiltinReadTools(options: {
       ? `\n\n[more entries available. Continue with offset=${offset + entries.length}.]`
       : '';
     const summary = `${paged.summary}${footer}`;
-    return Object.freeze({ ok: true, summary, digest: digest(summary), bytes: Buffer.byteLength(summary) });
+    return Object.freeze({
+      ok: true, summary, digest: digest(summary), bytes: Buffer.byteLength(summary),
+      truncated: paged.truncated || hasMore,
+      evidence: { facts: { path: relative, totalEntries: all.length, returned: entries.length, hasMore } },
+    });
   }
 
   function read(args: ToolArguments): ToolExecutionResult {
@@ -253,6 +265,8 @@ export function createBuiltinReadTools(options: {
       summary,
       digest: digest(summary),
       bytes: Buffer.byteLength(summary),
+      truncated: paged.truncated,
+      evidence: { facts: { path: relative, totalBytes: buffer.length, offset, truncated: paged.truncated } },
     });
   }
 
@@ -298,7 +312,11 @@ export function createBuiltinReadTools(options: {
     if (tooDeep) notices.push(`[search stopped at depth ${MAX_SEARCH_DEPTH}; start from a deeper path.]`);
     const footer = notices.length > 0 ? `\n\n${notices.join('\n')}` : '';
     const summary = `${paged.summary}${footer}`;
-    return Object.freeze({ ok: true, summary, digest: digest(summary), bytes: Buffer.byteLength(summary) });
+    return Object.freeze({
+      ok: true, summary, digest: digest(summary), bytes: Buffer.byteLength(summary),
+      truncated: paged.truncated || capped || timedOut || tooDeep,
+      evidence: { facts: { path: relative, pattern, matches: matches.length, capped, timedOut, tooDeep } },
+    });
   }
 
   const handlers: Readonly<Record<string, (args: ToolArguments) => ToolExecutionResult>> = Object.freeze({
