@@ -25,18 +25,20 @@ function recorder(reply: (args: readonly string[]) => { code: number; stdout: st
   return { provider, calls };
 }
 
-test('only three read-only tools are exposed', () => {
+test('three read-only tools plus one approval-gated commit are exposed', () => {
   const { provider } = recorder(() => ({ code: 0, stdout: '', stderr: '' }));
   const ids = provider.list().map((tool) => tool.id).sort();
-  assert.deepEqual(ids, ['git_diff', 'git_log', 'git_status']);
-  for (const tool of provider.list()) {
-    assert.equal(tool.sideEffect, 'read', `${tool.id} must be read-only`);
-  }
+  assert.deepEqual(ids, ['git_commit', 'git_diff', 'git_log', 'git_status']);
+  const read = provider.list().filter((tool) => tool.sideEffect === 'read').map((tool) => tool.id).sort();
+  assert.deepEqual(read, ['git_diff', 'git_log', 'git_status'], 'the read tools stay read-only');
+  const write = provider.list().filter((tool) => tool.sideEffect === 'write').map((tool) => tool.id);
+  assert.deepEqual(write, ['git_commit'], 'only commit is a write, and it goes through approval');
 });
 
 test('no write subcommand is reachable through the provider', async () => {
   const { provider, calls } = recorder(() => ({ code: 0, stdout: '', stderr: '' }));
-  for (const id of ['git_commit', 'git_push', 'git_checkout', 'git_reset', 'git_clean', 'git']) {
+  // `git_commit` is the one deliberate write; everything destructive stays absent.
+  for (const id of ['git_push', 'git_checkout', 'git_reset', 'git_clean', 'git', 'git_merge', 'git_rebase']) {
     assert.equal(provider.has(id), false, `${id} must not exist`);
     await assert.rejects(async () => provider.invoke(id, {}), ToolRejectedError);
   }
@@ -170,7 +172,7 @@ test('the git subprocess does not inherit unrelated environment variables', asyn
       const source = readFileSync(new URL('../src/runtime/git-tools.ts', import.meta.url), 'utf8');
       assert.match(source, /for \(const name of \['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL'\]\)/);
       assert.doesNotMatch(source, /env: \{ \.\.\.process\.env/);
-      assert.equal(captured.list().length, 3);
+      assert.equal(captured.list().filter((tool) => tool.sideEffect === 'read').length, 3);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

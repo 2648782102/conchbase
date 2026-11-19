@@ -22,8 +22,13 @@ test('the built-in tool set exposes no arbitrary shell or exec tool', () => {
     // Git tools are fixed read-only commands, not a command runner.
     const gitIds = createGitReadTools({ root }).list().map((tool) => tool.id);
     for (const id of gitIds) {
-      assert.match(id, /^git_(status|diff|log)$/, `unexpected git tool ${id}`);
+      assert.match(id, /^git_(status|diff|log|commit)$/, `unexpected git tool ${id}`);
     }
+    // The one non-read git tool must be approval-gated, not a free runner.
+    const gitTools = createGitReadTools({ root }).list();
+    const commit = gitTools.find((tool) => tool.id === 'git_commit');
+    assert.equal(commit?.sideEffect, 'write', 'commit requires approval');
+    assert.equal(gitTools.some((tool) => tool.id !== 'git_commit' && tool.sideEffect !== 'read'), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
