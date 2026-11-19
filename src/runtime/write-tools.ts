@@ -68,10 +68,21 @@ export function createBuiltinWriteTools(options: {
       throw new ToolRejectedError('content_too_large');
     }
     const target = resolveTarget(root, relative);
+    let previousBytes = 0;
     try {
-      if (statSync(target).isDirectory()) throw new ToolRejectedError('target_is_directory');
+      const existing = statSync(target);
+      if (existing.isDirectory()) throw new ToolRejectedError('target_is_directory');
+      previousBytes = existing.size;
     } catch (cause) {
       if (cause instanceof ToolRejectedError) throw cause;
+    }
+    // Overwriting an existing file is a distinct, riskier action than creating
+    // one. The model must say so explicitly, and the approval prompt names it.
+    if (previousBytes > 0 && args.overwrite !== true) {
+      throw new ToolRejectedError(
+        'overwrite_requires_confirmation',
+        'target already exists; pass overwrite: true to replace it.',
+      );
     }
     try {
       mkdirSync(path.dirname(target), { recursive: true });
@@ -79,11 +90,15 @@ export function createBuiltinWriteTools(options: {
       throw new ToolRejectedError('parent_not_found');
     }
     writeFileSync(target, content, 'utf8');
+    const bytes = Buffer.byteLength(content, 'utf8');
     return Object.freeze({
       ok: true,
-      summary: `wrote ${Buffer.byteLength(content, 'utf8')} bytes`,
+      summary: previousBytes > 0
+        ? `replaced ${relative} (${previousBytes} → ${bytes} bytes)`
+        : `created ${relative} (${bytes} bytes)`,
       digest: digest(content),
-      bytes: Buffer.byteLength(content, 'utf8'),
+      bytes,
+      evidence: { facts: { path: relative, created: previousBytes === 0, previousBytes, bytes } },
     });
   };
 
