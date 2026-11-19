@@ -44,6 +44,8 @@ cd pagurus && npm install && npm run dev
 ```
 
 Health check: `curl -s http://127.0.0.1:4318/v1/health`.
+Preflight: `conchbase diagnose` checks Node, paths, port, gateway, and console
+in one pass.
 
 ## Fake provider instead of Magpie
 

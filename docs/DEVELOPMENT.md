@@ -10,6 +10,10 @@ node --version
 npm --version
 ```
 
+Before starting, run `conchbase diagnose`. It checks the Node version,
+database and workspace paths, the Runtime port, the Magpie gateway, and
+whether the console is up, and prints one line per check.
+
 Use Node.js 24 or newer; `.nvmrc` pins it, so `nvm use` selects the right
 version. Both entry points (`conchbase` and `npm run dev`) refuse to start on
 an older interpreter with one clear message instead of a deep runtime error.

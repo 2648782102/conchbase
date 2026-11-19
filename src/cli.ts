@@ -35,6 +35,7 @@ Usage:
   conchbase task <id>            Show one task
   conchbase events [cursor]      Show events after an optional event ID
   conchbase retry <id>           Retry a terminal task directly
+  conchbase diagnose             Check Node, paths, port, and provider connectivity
   conchbase config               Show the active configuration revision
   conchbase config-revisions     List configuration revision summaries
 
@@ -172,6 +173,12 @@ async function main(argv: readonly string[]): Promise<void> {
         process.exit(0);
       });
     }
+    return;
+  }
+
+  if (command === 'diagnose') {
+    const { runDiagnostics } = await import('./runtime/diagnostics.js');
+    process.exitCode = await runDiagnostics(config);
     return;
   }
 
