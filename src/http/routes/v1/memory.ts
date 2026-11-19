@@ -50,6 +50,7 @@ export function registerMemoryRoutes(app: FastifyInstance, memory?: AgentMemoryS
       version: MEMORY_PUBLIC_CONTRACT_VERSION,
       entries: entries.map((entry) => Object.freeze({
         id: entry.id,
+        type: entry.type,
         scope: entry.scope,
         scopeId: entry.scopeId,
         key: entry.key,

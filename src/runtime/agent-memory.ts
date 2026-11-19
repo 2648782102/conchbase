@@ -15,8 +15,23 @@ export type MemoryScope = 'runtime' | 'project' | 'agent';
 
 export const MEMORY_SCOPES: readonly MemoryScope[] = Object.freeze(['runtime', 'project', 'agent']);
 
+/**
+ * What kind of fact an entry is. The type drives retention and how it is
+ * presented to the user; it does not change trust or permissions.
+ */
+export type MemoryType = 'preference' | 'project-fact' | 'instruction' | 'decision' | 'temporary';
+
+export const MEMORY_TYPES: readonly MemoryType[] = Object.freeze([
+  'preference', 'project-fact', 'instruction', 'decision', 'temporary',
+]);
+
+export function isMemoryType(value: unknown): value is MemoryType {
+  return typeof value === 'string' && (MEMORY_TYPES as readonly string[]).includes(value);
+}
+
 export interface AgentMemoryEntry {
   readonly id: string;
+  readonly type: MemoryType;
   readonly scope: MemoryScope;
   /** Empty for runtime scope; the project or agent id otherwise. */
   readonly scopeId: string;
@@ -39,6 +54,8 @@ export interface AgentMemoryEntry {
 }
 
 export interface AgentMemoryInput {
+  /** Defaults to `preference`; unknown values are rejected by validation. */
+  readonly type?: MemoryType;
   readonly scope: MemoryScope;
   readonly scopeId?: string;
   readonly key: string;
@@ -123,7 +140,7 @@ export function parseAgentMemoryInput(value: unknown): AgentMemoryInput {
     throw new AgentMemoryValidationError('Memory input must be an object.');
   }
   const record = value as Record<string, unknown>;
-  const allowed = new Set(['scope', 'scopeId', 'key', 'title', 'body', 'sourceIntentId', 'reviewedBy', 'origin']);
+  const allowed = new Set(['type', 'scope', 'scopeId', 'key', 'title', 'body', 'sourceIntentId', 'reviewedBy', 'origin']);
   const unknown = Object.keys(record).filter((field) => !allowed.has(field));
   if (unknown.length > 0) throw new AgentMemoryValidationError(`Unknown memory fields: ${unknown.sort().join(', ')}.`);
   const scope = record.scope;
@@ -134,7 +151,11 @@ export function parseAgentMemoryInput(value: unknown): AgentMemoryInput {
   const scopeId = resolvedScope === 'runtime'
     ? ''
     : bounded(record.scopeId, 'memory.scopeId', 200);
+  if (record.type !== undefined && !isMemoryType(record.type)) {
+    throw new AgentMemoryValidationError(`memory.type must be one of: ${MEMORY_TYPES.join(', ')}.`);
+  }
   return Object.freeze({
+    ...(record.type === undefined ? {} : { type: record.type as MemoryType }),
     scope: resolvedScope,
     ...(resolvedScope === 'runtime' ? {} : { scopeId }),
     key: bounded(record.key, 'memory.key', MEMORY_LIMITS.key),
@@ -189,6 +210,7 @@ export class InMemoryAgentMemoryStore implements AgentMemoryStore {
     const entry = Object.freeze({
       version: AGENT_MEMORY_VERSION,
       id,
+      type: parsed.type ?? 'preference',
       scope: parsed.scope,
       scopeId: parsed.scopeId ?? '',
       key: parsed.key,
@@ -238,6 +260,7 @@ export class InMemoryAgentMemoryStore implements AgentMemoryStore {
 interface MemoryRow {
   readonly id: string;
   readonly scope: string;
+  readonly type: string;
   readonly scope_id: string;
   readonly key: string;
   readonly title: string;
@@ -251,6 +274,7 @@ function fromRow(row: MemoryRow): AgentMemoryEntry {
   return Object.freeze({
     version: AGENT_MEMORY_VERSION,
     id: row.id,
+    type: (row.type ?? 'preference') as MemoryType,
     scope: row.scope as MemoryScope,
     scopeId: row.scope_id,
     key: row.key,
@@ -269,6 +293,7 @@ export class SqliteAgentMemoryStore implements AgentMemoryStore {
     this.database.exec(`
       CREATE TABLE IF NOT EXISTS agent_memory (
         id TEXT PRIMARY KEY,
+        type TEXT NOT NULL DEFAULT 'preference' CHECK (type IN ('preference', 'project-fact', 'instruction', 'decision', 'temporary')),
         scope TEXT NOT NULL CHECK (scope IN ('runtime', 'project', 'agent')),
         scope_id TEXT NOT NULL,
         key TEXT NOT NULL,
@@ -288,6 +313,12 @@ export class SqliteAgentMemoryStore implements AgentMemoryStore {
         PRIMARY KEY (scope, scope_id, key)
       ) STRICT;
     `);
+    // Older databases predate the `type` column. CREATE TABLE IF NOT EXISTS does
+    // not add columns, so upgrade them in place before any read or write.
+    const columns = this.database.prepare('PRAGMA table_info(agent_memory)').all() as unknown as { name: string }[];
+    if (!columns.some((column) => column.name === 'type')) {
+      this.database.exec("ALTER TABLE agent_memory ADD COLUMN type TEXT NOT NULL DEFAULT 'preference'");
+    }
   }
 
   write(input: AgentMemoryInput, now = new Date().toISOString()): AgentMemoryEntry {
@@ -307,21 +338,23 @@ export class SqliteAgentMemoryStore implements AgentMemoryStore {
     }
     this.database.prepare(`
       INSERT INTO agent_memory (
-        id, scope, scope_id, key, title, body, source_intent_id, reviewed_by, created_at
+        id, type, scope, scope_id, key, title, body, source_intent_id, reviewed_by, created_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(scope, scope_id, key) DO UPDATE SET
+        type = excluded.type,
         title = excluded.title,
         body = excluded.body,
         source_intent_id = excluded.source_intent_id,
         reviewed_by = excluded.reviewed_by,
         created_at = excluded.created_at
-    `).run(id, parsed.scope, scopeId, parsed.key, parsed.title, parsed.body,
+    `).run(id, parsed.type ?? 'preference', parsed.scope, scopeId, parsed.key, parsed.title, parsed.body,
       parsed.sourceIntentId ?? '', parsed.reviewedBy ?? 'unreviewed', now);
     this.prune(parsed.scope, scopeId);
     return Object.freeze({
       version: AGENT_MEMORY_VERSION,
       id,
+      type: parsed.type ?? 'preference',
       scope: parsed.scope,
       scopeId,
       key: parsed.key,
@@ -349,7 +382,7 @@ export class SqliteAgentMemoryStore implements AgentMemoryStore {
       ? -1
       : Math.max(1, Math.min(Math.trunc(options.limit), 500));
     const rows = this.database.prepare(`
-      SELECT id, scope, scope_id, key, title, body, source_intent_id, reviewed_by, created_at
+      SELECT id, type, scope, scope_id, key, title, body, source_intent_id, reviewed_by, created_at
       FROM agent_memory
       ${where}
       ORDER BY created_at DESC, id DESC
@@ -360,7 +393,7 @@ export class SqliteAgentMemoryStore implements AgentMemoryStore {
 
   get(id: string): AgentMemoryEntry | null {
     const row = this.database.prepare(`
-      SELECT id, scope, scope_id, key, title, body, source_intent_id, reviewed_by, created_at
+      SELECT id, type, scope, scope_id, key, title, body, source_intent_id, reviewed_by, created_at
       FROM agent_memory WHERE id = ?
     `).get(id) as MemoryRow | undefined;
     return row ? fromRow(row) : null;
