@@ -1,6 +1,17 @@
 export interface ModelCatalogEntry {
   readonly id: string;
   readonly displayName: string;
+  /** Total context window in tokens, when the provider reports it. */
+  readonly contextTokens?: number;
+  readonly supportsStreaming?: boolean;
+  readonly supportsTools?: boolean;
+  readonly supportsReasoning?: boolean;
+  /** Whether this model is a reasonable default for Boss planning. */
+  readonly suitableForBoss?: boolean;
+}
+
+function positiveInt(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
 export interface ModelCatalogClient {
@@ -45,11 +56,23 @@ export class MagpieModelCatalog implements ModelCatalogClient {
         if (typeof entry !== 'object' || entry === null) return [];
         const record = entry as Record<string, unknown>;
         if (typeof record.id !== 'string' || record.id.length === 0) return [];
+        const contextTokens = positiveInt(record.context_length) ?? positiveInt(record.context_window)
+          ?? positiveInt(record.max_input_tokens);
+        const textOnly = Array.isArray(record.modalities)
+          ? (record.modalities as { input?: readonly string[] }).input?.includes('text') ?? true
+          : true;
+        // Magpie's gateway is OpenAI-compatible for chat, streaming, and tools.
+        // A model that cannot take text is not a chat model at all.
         return [{
           id: record.id,
           displayName: typeof record.display_name === 'string'
             ? record.display_name
             : record.id,
+          ...(contextTokens ? { contextTokens } : {}),
+          supportsStreaming: textOnly,
+          supportsTools: textOnly,
+          supportsReasoning: /reason|think|thinking/i.test(record.id),
+          suitableForBoss: textOnly && (contextTokens ?? 0) >= 32_000,
         }];
       }));
     } catch {

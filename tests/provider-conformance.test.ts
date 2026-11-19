@@ -123,7 +123,7 @@ test('the provider compatibility fixture covers catalog, non-streaming, and stre
       appKey: 'magpie-conchbase-fixture',
     });
     const models: readonly ModelCatalogEntry[] = await catalog.listModels();
-    assert.deepEqual(models, [
+    assert.deepEqual(models.map((m) => ({ id: m.id, displayName: m.displayName })), [
       { id: 'fixture/model', displayName: 'Fixture Model' },
       { id: 'fixture/other', displayName: 'fixture/other' },
     ]);
