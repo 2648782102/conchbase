@@ -22,6 +22,7 @@ import { registerOrganizationRoutes } from './routes/v1/organization.js';
 import { registerPlatformRoutes } from './routes/v1/platform.js';
 import { registerProviderObservationRoutes } from './routes/v1/provider-observations.js';
 import { registerRuntimeRoute } from './routes/v1/runtime.js';
+import { registerOperationsRoutes } from './routes/v1/operations.js';
 import { registerTaskRoutes } from './routes/v1/tasks.js';
 import { registerToolRequestRoutes } from './routes/v1/tool-requests.js';
 import { registerAgentRoutes } from './routes/v1/agents.js';
@@ -139,6 +140,7 @@ export function createApp(options: CreateAppOptions = {}) {
     : undefined);
   registerAgentChatRoutes(app, agentChat);
   registerMemoryRoutes(app, options.taskService?.store?.memory);
+  registerOperationsRoutes(app, options.taskService, options.config);
   registerExecutionRoutes(app, execution);
   registerExecutionRunRoutes(app, executionRuns);
 

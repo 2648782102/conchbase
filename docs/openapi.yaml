@@ -29,6 +29,64 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RuntimeStatus'
+  /v1/operations/data:
+    get:
+      operationId: getDataLocation
+      summary: Report where the database lives, its size, and its schema version.
+      responses:
+        '200':
+          description: Data location summary. Never includes contents.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationsData'
+        '503':
+          description: Runtime data is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/operations/backup:
+    post:
+      operationId: createBackup
+      summary: Write one consistent snapshot to a caller-named absolute path.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [target]
+              properties:
+                target:
+                  type: string
+                  minLength: 1
+                  description: Absolute path that must not already exist.
+      responses:
+        '201':
+          description: Snapshot written and verified.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationsBackup'
+        '400':
+          description: Target is relative, is the live database, or already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/operations/diagnostics:
+    get:
+      operationId: getDiagnostics
+      summary: Bounded, redacted environment checks with one-line details.
+      responses:
+        '200':
+          description: Diagnostic checks. Never includes prompts, secrets, or file contents.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationsDiagnostics'
   /v1/models:
     get:
       operationId: listModels
@@ -2850,6 +2908,70 @@ components:
           type: integer
           minimum: 1000
           maximum: 1800000
+    OperationsData:
+      type: object
+      additionalProperties: false
+      required: [version, databasePath, sizeBytes, schemaVersion, exists]
+      properties:
+        version:
+          const: 1
+        databasePath:
+          type: string
+        sizeBytes:
+          type: integer
+          minimum: 0
+        schemaVersion:
+          type: integer
+          minimum: 1
+        exists:
+          type: boolean
+    OperationsBackup:
+      type: object
+      additionalProperties: false
+      required: [version, ok, target, sizeBytes, tables, counts, integrity]
+      properties:
+        version:
+          const: 1
+        ok:
+          type: boolean
+        target:
+          type: string
+        sizeBytes:
+          type: integer
+          minimum: 0
+        tables:
+          type: array
+          items:
+            type: string
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+        integrity:
+          type: string
+        error:
+          type: string
+    OperationsDiagnostics:
+      type: object
+      additionalProperties: false
+      required: [version, checks]
+      properties:
+        version:
+          const: 1
+        checks:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, status, detail]
+            properties:
+              id:
+                type: string
+              status:
+                type: string
+                enum: [ok, warn, fail]
+              detail:
+                type: string
     RuntimeStatus:
       type: object
       additionalProperties: false

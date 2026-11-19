@@ -62,6 +62,9 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
     [
       '/v1/health',
       '/v1/runtime',
+      '/v1/operations/data',
+      '/v1/operations/backup',
+      '/v1/operations/diagnostics',
       '/v1/models',
       '/v1/model-catalog',
       '/v1/agents',
