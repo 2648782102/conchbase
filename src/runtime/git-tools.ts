@@ -119,6 +119,39 @@ export function createGitReadTools(options: GitToolsOptions): ToolProvider {
   const maxBytes = options.maxBytes ?? MAX_OUTPUT_BYTES;
   const run = options.run ?? ((args, cwd) => runGit(args, cwd, timeoutMs, maxBytes));
 
+  const commit = async (args: ToolArguments): Promise<ToolExecutionResult> => {
+    const message = requireString(args, 'message', 'message');
+    if (message.length > 200) throw new ToolRejectedError('invalid_arguments', 'message must be at most 200 characters.');
+    // Preview first: show what would be committed, so approval is informed.
+    // An empty repository has no HEAD, so `diff --cached` can fail; treat that
+    // the same as "nothing staged" rather than a hard error.
+    const staged = await invoke(['diff', '--cached', '--name-only']).catch(() => null);
+    const files = (staged?.summary ?? '')
+      .split('\n')
+      .map((line) => line.trim())
+      // `invoke` renders empty output as '(no output)'; that is not a file.
+      .filter((line) => line.length > 0 && line !== '(no output)' && !line.startsWith('['));
+    if (files.length === 0) {
+      return Object.freeze({
+        ok: false,
+        summary: 'nothing staged: stage files (git add) before committing.',
+        digest: digest('git', 'nothing-staged'),
+        bytes: 0,
+        errorCode: 'nothing_staged',
+      });
+    }
+    const result = await run(['commit', '-m', message], root).catch(() => { throw new ToolRejectedError('git_failed'); });
+    if (result.code !== 0) throw new ToolRejectedError('git_failed');
+    const summary = bounded(result.stdout, maxBytes).trim();
+    return Object.freeze({
+      ok: true,
+      summary: summary.length > 0 ? summary : `committed ${files.length} file(s)`,
+      digest: digest('git', summary),
+      bytes: Buffer.byteLength(summary, 'utf8'),
+      evidence: { facts: { message, files: files.join(','), fileCount: files.length } },
+    });
+  };
+
   const invoke = async (args: readonly string[]): Promise<ToolExecutionResult> => {
     let result: { code: number; stdout: string; stderr: string };
     try {
@@ -164,6 +197,18 @@ export function createGitReadTools(options: GitToolsOptions): ToolProvider {
         },
       },
       {
+        id: 'git_commit',
+        version: 1 as const,
+        description: 'Commit the currently staged changes with a message. A write: it requires approval.',
+        sideEffect: 'write' as const,
+        parameters: {
+          type: 'object',
+          properties: { message: { type: 'string', description: 'Commit message, at most 200 characters.' } },
+          required: ['message'],
+          additionalProperties: false,
+        },
+      },
+      {
         id: 'git_log',
         version: 1 as const,
         description: 'Show recent commit subjects and authors.',
@@ -175,7 +220,7 @@ export function createGitReadTools(options: GitToolsOptions): ToolProvider {
         },
       },
     ]),
-    has: (toolId: string) => toolId === 'git_status' || toolId === 'git_diff' || toolId === 'git_log',
+    has: (toolId: string) => ['git_status', 'git_diff', 'git_log', 'git_commit'].includes(toolId),
     invoke: async (toolId: string, args: ToolArguments) => {
       switch (toolId) {
         case 'git_status':
@@ -189,6 +234,8 @@ export function createGitReadTools(options: GitToolsOptions): ToolProvider {
           }
           return invoke(relative === undefined ? ['diff'] : ['diff', '--', relative]);
         }
+        case 'git_commit':
+          return commit(args);
         case 'git_log': {
           const requested = args.maxCount;
           const maxCount = typeof requested === 'number' && Number.isInteger(requested)
