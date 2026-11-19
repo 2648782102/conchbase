@@ -180,15 +180,46 @@ export function agentMemoryId(input: AgentMemoryInput): string {
  * Bodies stay out of the prompt: they are retrievable detail, and inlining them
  * is how a "small memory" quietly becomes the largest part of the context.
  */
-export function renderMemoryIndex(entries: readonly AgentMemoryEntry[], limit = MEMORY_LIMITS.injected): string {
+/** Character budget for the whole injected index, not just a count. */
+export const MEMORY_PROMPT_BUDGET = 800;
+
+const TYPE_RANK: Record<MemoryType, number> = {
+  preference: 0,
+  instruction: 1,
+  'project-fact': 2,
+  decision: 3,
+  temporary: 4,
+};
+
+/**
+ * Renders the compact index injected into a prompt.
+ *
+ * Ranked by type (durable preferences before temporary context), newest first
+ * within a type, capped by both entry count and a total character budget so a
+ * handful of long titles cannot crowd out the conversation itself.
+ */
+export function renderMemoryIndex(
+  entries: readonly AgentMemoryEntry[],
+  limit = MEMORY_LIMITS.injected,
+  budget = MEMORY_PROMPT_BUDGET,
+): string {
   if (entries.length === 0) return '';
-  const bounded = entries.slice(0, Math.max(0, Math.min(limit, MEMORY_LIMITS.injected)));
-  return bounded
-    .map((entry) => {
-      const scope = entry.scope === 'runtime' ? '全局' : entry.scope === 'project' ? `项目 ${entry.scopeId}` : `员工 ${entry.scopeId}`;
-      return `- [${scope}] ${entry.title}`;
-    })
-    .join('\n');
+  const ranked = [...entries].sort((a, b) => {
+    const byType = (TYPE_RANK[a.type] ?? 9) - (TYPE_RANK[b.type] ?? 9);
+    if (byType !== 0) return byType;
+    return b.createdAt.localeCompare(a.createdAt);
+  });
+  const bounded = ranked.slice(0, Math.max(0, Math.min(limit, MEMORY_LIMITS.injected)));
+  const lines: string[] = [];
+  let used = 0;
+  for (const entry of bounded) {
+    const scope = entry.scope === 'runtime' ? '全局' : entry.scope === 'project' ? `项目 ${entry.scopeId}` : `员工 ${entry.scopeId}`;
+    const line = `- [${scope}] ${entry.title}`;
+    if (used + line.length + 1 > budget) break;
+    lines.push(line);
+    used += line.length + 1;
+  }
+  return lines.join('\n');
 }
 
 export class InMemoryAgentMemoryStore implements AgentMemoryStore {

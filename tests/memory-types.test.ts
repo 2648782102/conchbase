@@ -65,3 +65,25 @@ test('a database created before the type column is upgraded in place', () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('the injected index respects a total character budget', async () => {
+  const { MEMORY_PROMPT_BUDGET, renderMemoryIndex } = await import('../src/runtime/agent-memory.js');
+  const many = Array.from({ length: 12 }, (_, i) => ({
+    id: `m${i}`, type: 'preference' as const, scope: 'runtime' as const, scopeId: '',
+    key: `k${i}`, title: 'x'.repeat(100), body: '', sourceIntentId: '', reviewedBy: 'accepted' as const,
+    createdAt: `2026-01-${String(i + 1).padStart(2, '0')}T00:00:00.000Z`,
+  }));
+  const rendered = renderMemoryIndex(many);
+  assert.ok(rendered.length <= MEMORY_PROMPT_BUDGET, `index ${rendered.length} exceeds budget`);
+  assert.ok(rendered.split('\n').length < 12, 'not every entry fits');
+});
+
+test('durable preferences are ranked ahead of temporary context', async () => {
+  const { renderMemoryIndex } = await import('../src/runtime/agent-memory.js');
+  const entries = [
+    { id: 'a', type: 'temporary' as const, scope: 'runtime' as const, scopeId: '', key: 'k', title: 'TEMP', body: '', sourceIntentId: '', reviewedBy: 'accepted' as const, createdAt: '2026-02-01T00:00:00.000Z' },
+    { id: 'b', type: 'preference' as const, scope: 'runtime' as const, scopeId: '', key: 'k', title: 'PREF', body: '', sourceIntentId: '', reviewedBy: 'accepted' as const, createdAt: '2026-01-01T00:00:00.000Z' },
+  ];
+  const lines = renderMemoryIndex(entries).trim().split('\n');
+  assert.match(lines[0] ?? '', /PREF/, 'the durable preference comes first');
+});

@@ -38,6 +38,7 @@ Usage:
   conchbase diagnose             Check Node, paths, port, and provider connectivity
   conchbase backup <path>        Write a consistent snapshot of the database
   conchbase verify-backup <path> Check a backup's tables, rows, and integrity
+  conchbase export-project <id> <path>  Export one project to a JSON file
   conchbase config               Show the active configuration revision
   conchbase config-revisions     List configuration revision summaries
 
@@ -255,6 +256,14 @@ async function main(argv: readonly string[]): Promise<void> {
     }
     if (command === 'tasks') {
       process.stdout.write(`${JSON.stringify(service.store.listTasks(), null, 2)}\n`);
+      return;
+    }
+    if (command === 'export-project') {
+      const [projectId, target] = args;
+      if (!projectId || !target) throw new Error('Usage: conchbase export-project <id> <path>');
+      const { exportProjectToFile } = await import('./runtime/project-export.js');
+      exportProjectToFile(service.store.organization.get(), projectId, target);
+      process.stdout.write(`exported ${projectId} to ${target}\n`);
       return;
     }
     if (command === 'backup') {
