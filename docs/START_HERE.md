@@ -13,7 +13,10 @@ did.
 3. [`PROJECT_PLAN.md`](PROJECT_PLAN.md) — the ordered product plan and the
    next executable tasks.
 
-Read [`DEVELOPMENT.md`](DEVELOPMENT.md) before changing code. Read
+Read [`DEVELOPMENT.md`](DEVELOPMENT.md) before changing code. When a task
+touches both repositories, also read
+[`PAIRED_DEVELOPMENT.md`](PAIRED_DEVELOPMENT.md) for ports, startup order, and
+shared failures. Read
 [`ARCHITECTURE.md`](ARCHITECTURE.md) only for the subsystem you touch. Read
 `docs/openapi.yaml` when changing an HTTP contract. Do not search for
 additional process documents before starting work.

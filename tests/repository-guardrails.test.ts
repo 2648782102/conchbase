@@ -36,6 +36,8 @@ test('development entry points describe the personal Agent product', () => {
   assert.match(read('docs/PROJECT_PLAN.md'), /P1\.1/);
   assert.match(read('docs/PROJECT_PLAN.md'), /P3\.7/);
   assert.match(read('docs/DEVELOPMENT.md'), /failing focused test/);
+  assert.match(read('docs/PAIRED_DEVELOPMENT.md'), /Runtime port/);
+  assert.match(read('docs/PAIRED_DEVELOPMENT.md'), /Common failures/);
   assert.match(read('docs/VALIDATION_PLAN.md'), /secret-like values absent/);
 
   for (const file of [

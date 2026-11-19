@@ -22,6 +22,7 @@ but tests must use fake local providers.
 Use one task from [`PROJECT_PLAN.md`](PROJECT_PLAN.md). Do not combine
 unrelated tasks. If a task touches both repositories, implement and validate
 the Runtime contract first, then the Pagurus client in the paired checkout.
+See [`PAIRED_DEVELOPMENT.md`](PAIRED_DEVELOPMENT.md) for cross-repo mechanics.
 
 Each task should name the user-visible result, owning modules, focused test,
 failure/restart/security behavior, and validation command.
