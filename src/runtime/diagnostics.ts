@@ -56,6 +56,9 @@ async function probeHttp(url: string): Promise<'reachable' | 'unreachable'> {
 }
 
 function checkDatabase(file: string): DiagnosticCheck {
+  // An existing, non-empty file is fine to report on; the lock itself is only
+  // observable by trying to open it, which diagnose deliberately does not do.
+
   const directory = path.dirname(file);
   try {
     mkdirSync(directory, { recursive: true });

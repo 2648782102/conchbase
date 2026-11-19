@@ -227,3 +227,10 @@ test('the additive migration preserves legacy rows under one database owner', ()
     reopened.close();
   });
 });
+
+test('the single-owner error explains how to proceed', () => {
+  const error = new DatabaseInstanceError();
+  assert.match(error.message, /already owned/i);
+  assert.match(error.message, /single-process/i);
+  assert.match(error.message, /stop the running Runtime|different CONCHBASE_DB/);
+});

@@ -101,3 +101,22 @@ pending task id; it returns to the model phase after a decision.
 
 A client never invents a transition. If a UI needs a new state, it is a Runtime
 contract change with tests, not a client-side flag.
+
+## Operating model: one process per database
+
+Conchbase is a local, single-process runtime. One process owns one SQLite file
+exclusively; a second process opening the same file fails fast with a clear
+message instead of corrupting state or silently interleaving writes.
+
+What this means day to day:
+
+- run one `conchbase serve` per database file (or per worktree, which gets its
+  own port and database);
+- CLI commands that open the database (`tasks`, `task`, `events`, `backup`)
+  cannot run concurrently with a live `serve` on the same file — use the HTTP
+  API, or a different `CONCHBASE_DB`;
+- `conchbase diagnose` reports the port state so a second start is obvious.
+
+Multi-process operation is intentionally not a supported feature yet. It would
+need a real lease, cross-process event bus, and conflict policy — a separate
+design, not a toggle.

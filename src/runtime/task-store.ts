@@ -191,7 +191,11 @@ export class TaskConflictError extends Error {
 
 export class DatabaseInstanceError extends Error {
   constructor() {
-    super('Runtime database is already owned by another Conchbase process or handle.');
+    super(
+      'Runtime database is already owned by another Conchbase process or handle. '
+      + 'Conchbase is single-process per database file: stop the running Runtime, '
+      + 'or point this process at a different CONCHBASE_DB.',
+    );
     this.name = 'DatabaseInstanceError';
   }
 }
