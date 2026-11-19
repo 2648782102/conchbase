@@ -114,3 +114,27 @@ test('obsolete process documents stay gone', async () => {
     assert.ok(lines <= 120, `${short} is ${lines} lines; keep entry docs short`);
   }
 });
+
+/**
+ * A test file that no command runs is documentation, not a check.
+ *
+ * `npm test` enumerates files by hand and `test-suites.mjs` groups them by
+ * layer. Both lists can silently drift when a test is added: the suite script
+ * already refuses unassigned files, but nothing caught a file that never made
+ * it into `npm test`. This closes that loop so CI cannot claim coverage it
+ * does not have.
+ */
+test('every test file runs in CI and belongs to a suite', () => {
+  const manifest = JSON.parse(read('package.json')) as { scripts: Record<string, string> };
+  const inCi = new Set([...manifest.scripts.test!.matchAll(/tests\/([\w.-]+\.test\.ts)/g)].map((match) => match[1]!));
+  const present = readdirSync(path.join(repositoryRoot, 'tests'))
+    .filter((name) => name.endsWith('.test.ts'));
+
+  assert.deepEqual(present.filter((name) => !inCi.has(name)), [], 'test files missing from `npm test`');
+  assert.deepEqual([...inCi].filter((name) => !present.includes(name)), [], '`npm test` names a missing file');
+
+  const suites = read('scripts/test-suites.mjs');
+  for (const file of present) {
+    assert.ok(suites.includes(`'${file}'`), `${file} is not referenced by scripts/test-suites.mjs`);
+  }
+});

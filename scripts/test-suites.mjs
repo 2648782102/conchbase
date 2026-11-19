@@ -31,18 +31,26 @@ const SUITES = Object.freeze({
     'configuration-document.test.ts', 'configuration-revision.test.ts',
     'composition-execution.test.ts', 'work-contract.test.ts', 'platform-contract.test.ts',
     'tool-request.test.ts', 'tool-capability.test.ts', 'agent-memory.test.ts', 'secret-filter.test.ts',
+    'memory-types.test.ts', 'memory-promotion.test.ts', 'tool-request-preview.test.ts',
+    'task-state-machine.test.ts',
   ],
   'agent-loop': [
     'agent-loop.test.ts', 'agent-loop-tools.test.ts', 'agent-multi-tool.test.ts', 'agent-approval.test.ts',
     'read-reuse.test.ts', 'read-result-cache.test.ts', 'task-capabilities.test.ts', 'tool-result-paging.test.ts', 'execution-mode.test.ts', 'agent-scenario.test.ts',
     'policy-gate.test.ts', 'tool-gate.test.ts', 'task-runner.test.ts', 'task-lifecycle.test.ts', 'task-service.test.ts',
-    'memory-review.test.ts', 'project-summary.test.ts',
+    'memory-review.test.ts', 'project-summary.test.ts', 'project-lifecycle.test.ts', 'project-export.test.ts',
+    'task-race.test.ts', 'event-replay.test.ts', 'approval-preview-chat.test.ts',
+    'tool-bounds.test.ts', 'tool-untrusted-output.test.ts', 'write-safety.test.ts',
+    'no-arbitrary-shell.test.ts', 'capability-presets.test.ts',
+    'worker-start-admission.test.ts', 'worker-slice-yield.test.ts',
   ],
   providers: [
     'magpie-provider.test.ts', 'streaming-provider.test.ts', 'model-catalog.test.ts',
     'provider-conformance.test.ts', 'provider-tool-call.test.ts',
     'provider-message-wire-format.test.ts', 'wire-conformance.test.ts',
     'provider-observation-api.test.ts',
+    'model-provider.test.ts', 'provider-registry.test.ts', 'fake-provider.test.ts',
+    'error-categories.test.ts',
   ],
   boss: [
     'organization-intent-parser.test.ts', 'boss-mode-service.test.ts',
@@ -54,20 +62,24 @@ const SUITES = Object.freeze({
   'agent-chat': [
     'agent-chat.test.ts', 'agent-chat-output.test.ts', 'boss-reply-formatting.test.ts', 'agent-chat-state.test.ts', 'agent-chat-projection.test.ts', 'agent-chat-history.test.ts', 'agent-chat-store.test.ts',
     'agent-chat-stream.test.ts', 'agent-chat-tools.test.ts', 'agent-done-idle.test.ts', 'primary-conversation.test.ts',
+    'agent-chat-concurrent.test.ts',
   ],
   capabilities: [
     'mcp-provider.test.ts', 'skill-provider.test.ts', 'tool-runtime.test.ts', 'git-tools.test.ts', 'plugin-loader.test.ts', 'subprocess-plugin.test.ts', 'isolated-execution.test.ts',
     'controlled-execution.test.ts',
     'agent-capability-grants.test.ts',
+    'git-commit.test.ts',
   ],
   api: [
     'http-api.test.ts', 'openapi-contract.test.ts', 'task-api.test.ts',
     'agent-api.test.ts', 'capability-audit.test.ts', 'configuration-api.test.ts', 'organization-api.test.ts',
     'platform-api.test.ts', 'tool-request-api.test.ts', 'memory-api.test.ts',
+    'operations-api.test.ts', 'support-bundle.test.ts',
   ],
   persistence: [
     'persistence-conformance.test.ts', 'organization-persistence.test.ts',
     'agent-migration.test.ts', 'configuration-store.test.ts',
+    'backup.test.ts',
   ],
   integration: [
     'worker-execution-restore.test.ts', 'organization-e2e.test.ts', 'agent-paired-runtime.test.ts',
@@ -77,6 +89,8 @@ const SUITES = Object.freeze({
     'repository-guardrails.test.ts', 'runtime-config.test.ts', 'global-work-scheduler.test.ts',
     'event-log.test.ts', 'ag-ui-events.test.ts', 'otel-genai.test.ts',
     'agent-name.test.ts', 'cli.test.ts', 'cli-serve.test.ts',
+    'cli-status.test.ts', 'runtime-process.test.ts', 'diagnostics.test.ts',
+    'node-version.test.ts',
   ],
 });
 

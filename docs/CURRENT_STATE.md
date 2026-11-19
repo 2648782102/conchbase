@@ -14,7 +14,9 @@ Updated: 2026-11-19
 - Boss Mode: one primary conversation can plan projects, delegate bounded work,
   collect reports, surface Attention, and close out idle projects.
 - Agent Chat with persisted messages, streaming projection, resumable SSE, and
-  inline approval for the supported tool path.
+  inline approval for the supported tool path. A waiting approval carries the
+  Runtime-computed summary, risk, and bounded preview, so the client can show
+  the change without a second lookup.
 - Built-in workspace read/search tools with a depth cap, a search-time budget,
   UTF-8-safe truncation, and structured evidence on every result.
 - Safe workspace writes: an existing file needs an explicit `overwrite: true`,
