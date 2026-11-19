@@ -31,6 +31,19 @@ See [`PAIRED_DEVELOPMENT.md`](PAIRED_DEVELOPMENT.md) for cross-repo mechanics.
 Each task should name the user-visible result, owning modules, focused test,
 failure/restart/security behavior, and validation command.
 
+## Focused tests and the smoke check
+
+`npm test` runs everything. For one layer, list the suites and run one:
+
+```sh
+npm run test:suite -- --list
+npm run test:suite -- --suite domain
+```
+
+`npm run smoke` starts the real Runtime on a free port with a temp database,
+checks health/runtime/discovery, creates one task (skipped with a clear note
+when no Magpie gateway is running), and confirms a clean SIGTERM shutdown.
+
 ## Change loop
 
 1. Read the task and its dependencies.
