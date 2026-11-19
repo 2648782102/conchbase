@@ -16,6 +16,9 @@ export interface ProviderDescriptor {
 /** Adapters compiled into this Runtime. Add one here when you add its code. */
 const PROVIDERS: readonly ProviderDescriptor[] = Object.freeze([
   Object.freeze({ id: 'magpie', displayName: 'Magpie (OpenAI-compatible)', isDefault: true }),
+  // A plain OpenAI-compatible endpoint configured by the operator. It shares
+  // the adapter implementation with Magpie; only its base URL differs.
+  Object.freeze({ id: 'openai-compatible', displayName: 'OpenAI-compatible endpoint', isDefault: false }),
 ]);
 
 export function listProviders(): readonly ProviderDescriptor[] {
@@ -34,4 +37,15 @@ export function isSupportedProvider(id: string): boolean {
 export function unsupportedProviderMessage(id: string): string {
   const known = PROVIDERS.map((provider) => provider.id).join(', ');
   return `Provider '${id}' is not available in this runtime. Supported providers: ${known}.`;
+}
+
+/** Loopback-only rule shared by every OpenAI-compatible adapter. */
+export function isLoopbackBaseUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.replace(/^\[|\]$/g, '');
+    return ['127.0.0.1', '::1', 'localhost'].includes(host);
+  } catch {
+    return false;
+  }
 }

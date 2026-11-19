@@ -24,3 +24,20 @@ test('provider ids are unique', () => {
   const ids = listProviders().map((p) => p.id);
   assert.equal(new Set(ids).size, ids.length);
 });
+
+test('a second OpenAI-compatible provider is registered and is not the default', () => {
+  const providers = listProviders();
+  const second = providers.find((p) => p.id === 'openai-compatible');
+  assert.ok(second, 'openai-compatible provider must be registered');
+  assert.equal(second?.isDefault, false);
+  assert.equal(defaultProviderId(), 'magpie');
+});
+
+test('the loopback rule accepts local endpoints and rejects remote ones', async () => {
+  const { isLoopbackBaseUrl } = await import('../src/runtime/provider-registry.js');
+  assert.equal(isLoopbackBaseUrl('http://127.0.0.1:8080'), true);
+  assert.equal(isLoopbackBaseUrl('http://localhost:8080'), true);
+  assert.equal(isLoopbackBaseUrl('http://[::1]:8080'), true);
+  assert.equal(isLoopbackBaseUrl('https://api.example.com'), false);
+  assert.equal(isLoopbackBaseUrl('not a url'), false);
+});
