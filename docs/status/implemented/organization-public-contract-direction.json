@@ -1,5 +1,0 @@
-{
-  "id": "organization-public-contract-direction",
-  "summary": "ADR 0038 fixes the additive 1.1.0 organization API shape and ADR 0041 corrects the published session, optional discovery, intent identity, errors, and execution semantics; Pagurus consumes these through its paired typed client.",
-  "evidence": "docs/decisions/0038-organization-public-contract.md"
-}

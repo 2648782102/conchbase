@@ -1,6 +1,0 @@
-{
-  "id": "structured-project-close-out-fixture",
-  "summary": "Executable fixtures cover accepted model output, rejection of unknown fields/empty headlines/secret-like text, deterministic counts, generator HTTP and JSON failures, project-local fact scoping, using and persisting a model summary during convergence, and proving a throwing summarizer still archives the project.",
-  "evidence": "tests/project-summary.test.ts",
-  "executableFixture": true
-}

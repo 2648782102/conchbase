@@ -1,6 +1,0 @@
-{
-  "id": "boss-service-decomposition-fixture",
-  "summary": "Executable fixtures assert intent admission rules (unknown fields, bounds, secret screening, conversation limits, identity stability, diagnostic preservation), memory precedence (shown vs written, reviewer can only narrow, failing reviewer writes nothing, runtime scope needs confirmation), and outcome rendering (states, empty bodies, secret withholding, length bound). The full suite passes unchanged after extraction.",
-  "evidence": "tests/organization-intent-input.test.ts",
-  "executableFixture": true
-}

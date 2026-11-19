@@ -129,7 +129,7 @@ export interface AgentChatStreamFrame {
   readonly kind: 'snapshot' | 'message' | 'health';
   /**
    * Additive AG-UI mapping. `kind` remains the Conchbase vocabulary under
-   * ADR 0060; this field lets an AG-UI client map the same frame without a
+   * the implementation; this field lets an AG-UI client map the same frame without a
    * private adapter. `null` means the frame has no faithful AG-UI equivalent.
    */
   readonly agUiType: string | null;
@@ -909,7 +909,7 @@ export class AgentChatService {
           if (byTool.get(toolId)?.length === 0) byTool.delete(toolId);
         }
       } else if (event.type === 'agent_loop.tool_reused') {
-        // ADR 0071: the read was served from an earlier identical result. It is
+        // the implementation: the read was served from an earlier identical result. It is
         // still a successful tool activity, but the label says so instead of
         // pretending a new execution happened.
         const toolId = boundedString(event.data.toolId, 'unknown');

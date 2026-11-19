@@ -1,5 +1,0 @@
-{
-  "id": "git-read-tools",
-  "summary": "ADR 0095 adds git_status, git_diff, and git_log as read-only tools behind CONCHBASE_ENABLE_GIT_TOOLS. The provider maps to fixed argument vectors, runs with shell:false and cwd confinement, rejects absolute or escaping diff paths before spawning, caps output and timeout, and reports absent-binary or non-repository directories as bounded error codes. No write subcommand is reachable.",
-  "evidence": "src/runtime/git-tools.ts"
-}

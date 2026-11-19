@@ -3,8 +3,8 @@
  *
  * Conchbase keeps its own event vocabulary; these names are attached as
  * *additional* data so an operator can forward events to any OTel-aware backend
- * without a translation layer. Renaming our own fields would break every
- * accepted ADR and client, so we add rather than convert.
+ * without a translation layer. Renaming our own fields would break existing
+ * clients, so we add rather than convert.
  *
  * Reference: https://opentelemetry.io/docs/specs/semconv/gen-ai/
  * The conventions are still marked development; treat these as a stable

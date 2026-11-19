@@ -1,5 +1,0 @@
-{
-  "id": "live-agent-evals",
-  "summary": "ADR 0088 adds an evaluation harness outside CI that drives a real model through the real HTTP Runtime on isolated runtime/workspace/database per run, with budgets sized for long tasks, six behavioural tasks asserting on artefacts and boundaries rather than wording, and git-ignored machine-readable reports.",
-  "evidence": "evals/harness.mjs"
-}

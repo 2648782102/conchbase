@@ -1,6 +1,0 @@
-{
-  "id": "agent-chat-history-fixture",
-  "summary": "Executable fixtures cover conversation listing, default model selection, reasoning-effort pinning and validation, and history survival across restart.",
-  "evidence": "tests/agent-chat-history.test.ts",
-  "executableFixture": true
-}

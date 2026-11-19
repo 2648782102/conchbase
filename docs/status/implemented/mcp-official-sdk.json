@@ -1,5 +1,0 @@
-{
-  "id": "mcp-official-sdk",
-  "summary": "ADR 0067 replaces the hand-written MCP JSON-RPC layer with the official @modelcontextprotocol/sdk stdio transport. Bounded configuration, sanitized environment, namespaced tool ids, per-call timeout, result caps, and Agent-scoped grants are unchanged.",
-  "evidence": "src/runtime/mcp-provider.ts"
-}

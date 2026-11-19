@@ -6,7 +6,7 @@
  *
  *   1. the TCP port, because the second process would simply fail to bind;
  *   2. the SQLite database, because one Runtime must own exactly one file
- *      (ADR 0011) and two sessions must not fight over the same rows.
+ *      and two sessions must not fight over the same rows.
  *
  * Both are derived deterministically from the checkout, so a session never has
  * to remember an assigned number. The main checkout keeps the historical

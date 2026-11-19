@@ -1,6 +1,0 @@
-{
-  "id": "isolated-execution-v2-fixture",
-  "summary": "An executable fixture covers approved-request/active-grant run creation, isolated child-process execution, stale versions, idempotency conflicts, cancel/recover, restart interruption, public run discovery, adapters, and no plaintext/private-path leakage.",
-  "evidence": "tests/isolated-execution.test.ts",
-  "executableFixture": true
-}

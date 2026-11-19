@@ -140,6 +140,10 @@ test('enabling writes requires an explicit workspace root', () => {
     () => loadRuntimeConfig({ CONCHBASE_WORKSPACE_ROOT: 'relative/path' }),
     /must be an absolute path/,
   );
+  assert.equal(
+    loadRuntimeConfig({ CONCHBASE_WORKSPACE_ROOT: 'C:\\agent-workspace' }).workspaceRoot,
+    'C:\\agent-workspace',
+  );
 });
 
 test('startup creates the configured workspace root before tools use it', () => {
@@ -160,7 +164,7 @@ test('startup creates the configured workspace root before tools use it', () => 
 });
 
 test('project idle policy is operator configuration with a bounded range', () => {
-  // ADR 0081: convergence is a retention decision, so a model, task, or client
+  // the implementation: convergence is a retention decision, so a model, task, or client
   // must never be able to shorten it into an immediate archive.
   assert.equal(loadRuntimeConfig({}).projectIdleMs, 30 * 60 * 1000);
   assert.equal(loadRuntimeConfig({ CONCHBASE_PROJECT_IDLE_MS: '60000' }).projectIdleMs, 60_000);
@@ -176,7 +180,7 @@ test('project idle policy is operator configuration with a bounded range', () =>
 });
 
 test('git tools are off unless explicitly enabled', () => {
-  // ADR 0095: these execute a subprocess, so the default surface must not
+  // the implementation: these execute a subprocess, so the default surface must not
   // include them. The flag mirrors CONCHBASE_ALLOW_TOOL_WRITES.
   assert.equal(loadRuntimeConfig({}).enableGitTools, undefined);
   assert.equal(loadRuntimeConfig({ CONCHBASE_ENABLE_GIT_TOOLS: '1' }).enableGitTools, true);

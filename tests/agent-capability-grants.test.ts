@@ -276,7 +276,7 @@ test('a user_version 7 database migrates to the current schema with empty grants
   seeded.close();
 
   // Rewind the file to the pre-grant shape: drop the additive column and the
-  // version marker that ADR 0066 advances.
+  // version marker that the implementation advances.
   const legacy = new DatabaseSync(filename);
   legacy.exec(`
     ALTER TABLE agent_revisions DROP COLUMN granted_capabilities;

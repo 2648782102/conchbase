@@ -1,6 +1,0 @@
-{
-  "id": "agent-chat-tool-projection-fixture",
-  "summary": "Executable fixtures cover projected tool/approval activity, waiting_approval, in-conversation approval, the resulting write, terminal reply, and duplicate-decision 409.",
-  "evidence": "tests/agent-chat-tools.test.ts",
-  "executableFixture": true
-}

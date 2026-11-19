@@ -1,5 +1,0 @@
-{
-  "id": "primary-conversation-projection",
-  "summary": "ADR 0045 implements an additive 1.4.0 primary-conversation read model over Runtime-owned organization facts, with bounded user messages, Boss acknowledgements, worker activity, reports, Attention, system status, cursors, and no raw transcripts or private state.",
-  "evidence": "src/runtime/primary-conversation.ts"
-}

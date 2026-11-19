@@ -1,5 +1,0 @@
-{
-  "id": "boss-outcome-reply",
-  "summary": "ADR 0080 replaces the pre-execution Boss relay with a deterministic reply composed from awaited worker terminal state and output, applies the secret-like filter to worker text, marks duplicate implicit authorize/start steps as skipped rather than failed, and never fabricates an outcome for a vanished task.",
-  "evidence": "src/runtime/boss-mode-service.ts"
-}

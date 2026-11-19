@@ -1,5 +1,0 @@
-{
-  "id": "agent-chat-tool-projection",
-  "summary": "ADR 0059 projects bounded tool/approval activity into Agent Chat messages, maps waiting_approval to the human phase, and adds POST /v1/agent-chat/conversations/{conversationId}/approval. The Agent Chat contract is 1.7.0 with five paths.",
-  "evidence": "src/runtime/agent-chat.ts"
-}

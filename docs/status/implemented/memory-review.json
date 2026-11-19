@@ -1,5 +1,0 @@
-{
-  "id": "memory-review",
-  "summary": "ADR 0084 adds an independent, disposable reviewer for memory the Boss proposes. It judges intent only — durable preference versus one-turn instruction — and returns a recommendation; Runtime checks on shape, scope, secrets, and target existence still run first and remain authoritative. Every entry records sourceIntentId and reviewedBy. A configured-but-unavailable reviewer drops the proposal rather than writing unreviewed.",
-  "evidence": "src/runtime/memory-review.ts"
-}

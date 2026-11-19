@@ -1,6 +1,0 @@
-{
-  "id": "agent-scenario-fixture",
-  "summary": "Executable scenarios drive the real agent loop with a scripted model. Removing the lexical path-escape guard fails the traversal scenario and disabling the per-turn tool cap fails the cap scenario, proving the suite detects boundary erosion.",
-  "evidence": "tests/agent-scenario.test.ts",
-  "executableFixture": true
-}

@@ -1,5 +1,0 @@
-{
-  "id": "identical-read-reuse",
-  "summary": "ADR 0071 reuses a read-tool result already produced in the same task attempt instead of executing the identical call again. The model still receives the content with a reuse note, an agent_loop.tool_reused event records the reuse, Agent Chat shows it as 复用, and the cache is cleared when the attempt ends. Writes and external calls keep their approval and idempotency behaviour.",
-  "evidence": "src/runtime/task-service.ts"
-}

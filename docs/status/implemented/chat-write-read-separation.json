@@ -1,5 +1,0 @@
-{
-  "id": "chat-write-read-separation",
-  "summary": "ADR 0094 extracts a pure projectMessage used by both the write path (which persists) and the read path (which does not). Reads no longer mutate durable conversation state, projection rules live in one testable function, and the per-instance task subscription that leaked a listener was removed in favour of a bounded lazy settle.",
-  "evidence": "src/runtime/agent-chat-projection.ts"
-}

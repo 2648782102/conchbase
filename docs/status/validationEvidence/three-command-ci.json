@@ -1,9 +1,0 @@
-{
-  "id": "three-command-ci",
-  "summary": "Both repositories run npm run check, npm test, and npm run build in CI.",
-  "commands": [
-    "npm run check",
-    "npm test",
-    "npm run build"
-  ]
-}

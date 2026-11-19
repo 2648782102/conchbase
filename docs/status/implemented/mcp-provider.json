@@ -1,5 +1,0 @@
-{
-  "id": "mcp-provider",
-  "summary": "ADR 0054 implements an administrator-configured MCP stdio provider without the MCP SDK: JSON-RPC handshake, tool allowlist, read-only enforcement, sanitized environment, timeouts, bounded results, and namespaced tool ids.",
-  "evidence": "src/runtime/mcp-provider.ts"
-}

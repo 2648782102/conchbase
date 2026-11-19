@@ -1,5 +1,0 @@
-{
-  "id": "agent-chat-module",
-  "summary": "ADR 0046 implements an additive 1.5.0 Agent Chat module that reuses configured Agent revisions and Agent-backed tasks over the user-configured Magpie OpenAI-compatible protocol endpoint.",
-  "evidence": "src/runtime/agent-chat.ts"
-}

@@ -1,6 +1,0 @@
-{
-  "id": "organization-intent-parser-fixture",
-  "summary": "An executable fixture covers deterministic parsing, an OpenAI-compatible structured adapter, out-of-schema action rejection, and secret-like relay rejection.",
-  "evidence": "tests/organization-intent-parser.test.ts",
-  "executableFixture": true
-}

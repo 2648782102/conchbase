@@ -1,6 +1,0 @@
-{
-  "id": "boss-agent-adapter-fixture",
-  "summary": "An executable fixture covers virtual Boss Agent listing, conversation routing through BossModeService, bounded Runtime reply, organization session projection, and no normal Agent task creation.",
-  "evidence": "tests/agent-chat.test.ts",
-  "executableFixture": true
-}

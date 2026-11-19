@@ -1,5 +1,0 @@
-{
-  "id": "status-slice-merge",
-  "summary": "ADR 0079 sources the append-only implemented and validationEvidence arrays from one file per record under docs/status/, regenerates PROJECT_STATUS.json from them, and fails npm test when the two disagree. ADR numbers are reserved with an exclusive create.",
-  "evidence": "scripts/status-slices.mjs"
-}

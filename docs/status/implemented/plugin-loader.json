@@ -1,5 +1,0 @@
-{
-  "id": "plugin-loader",
-  "summary": "ADR 0096 adds a manifest-declared plugin loader. Plugins supply bounded tool declarations and a ToolProvider implementation at composition time; the Runtime owns ids, Agent grants, approval gating, and invocation. v1 never imports arbitrary plugin paths or exposes SecretHandles to plugin code.",
-  "evidence": "src/runtime/plugin-registry.ts"
-}

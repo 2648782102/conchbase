@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -76,8 +76,15 @@ test('organization and tasks read the persisted state', () => {
 });
 
 test('an invalid database path fails visibly instead of silently succeeding', () => {
-  const result = cli(['tasks'], { CONCHBASE_DB: '/dev/null/nope.sqlite' });
-  assert.notEqual(result.status, 0, 'a broken path must be an error, not an empty list');
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-cli-invalid-'));
+  const fileParent = path.join(directory, 'not-a-directory');
+  writeFileSync(fileParent, 'not a directory');
+  try {
+    const result = cli(['tasks'], { CONCHBASE_DB: path.join(fileParent, 'runtime.sqlite') });
+    assert.notEqual(result.status, 0, 'a broken path must be an error, not an empty list');
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('run requires a model and says so', () => {

@@ -1,5 +1,0 @@
-{
-  "id": "done-versus-replied",
-  "summary": "ADR 0089 splits the single terminal success state into `done` (finished, unread) and `replied` (finished, read). Reading a conversation promotes done messages and persists last_read_at durably; the conversation list exposes unread and lastState so a client can surface work needing attention without opening each conversation.",
-  "evidence": "src/runtime/agent-chat.ts"
-}

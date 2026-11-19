@@ -1,5 +1,0 @@
-{
-  "id": "organization-public-api",
-  "summary": "An additive 1.1.0 organization API exposes 18 published-state paths with intent idempotency, attention answer/withdraw versions, bounded event cursors, and no drafts, transcripts, plaintext, private files, or locally computed authority.",
-  "evidence": "src/http/routes/v1/organization.ts"
-}

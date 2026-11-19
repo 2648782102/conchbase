@@ -1,5 +1,0 @@
-{
-  "id": "boss-memory-proposals",
-  "summary": "ADR 0083 adds a conversational memory proposal channel: the Boss may return an optional memory array of at most four project- or agent-scoped entries. The Runtime validates each entry with the same parser as any write, refuses runtime scope and secret-like values, rejects malformed proposals wholesale, and drops entries whose project or agent target does not exist. The model proposes; the Runtime decides.",
-  "evidence": "src/runtime/organization-intent-parser.ts"
-}

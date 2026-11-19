@@ -1,5 +1,0 @@
-{
-  "id": "scheduler-execution-admission",
-  "summary": "ADR 0101 injects the non-preemptive global scheduler into OrganizationCoordinator. Planned start_work commands are admitted by capacity/priority/fairness policy; excess starts become visible hold decisions on the coordinator result and BossModeSubmitResult while the WorkItem remains open. No new action, endpoint, or queue table was introduced.",
-  "evidence": "src/runtime/organization-coordinator.ts"
-}

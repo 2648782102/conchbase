@@ -1,5 +1,0 @@
-{
-  "id": "organization-domain-kernel",
-  "summary": "A pure internal organization kernel validates structured actions, state transitions, bounded delegation, structured reports, attention decisions, and archive/offboard/resume events without public API or persistence changes.",
-  "evidence": "src/runtime/organization-contract.ts"
-}

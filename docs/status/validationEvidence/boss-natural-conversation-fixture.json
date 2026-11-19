@@ -1,6 +1,0 @@
-{
-  "id": "boss-natural-conversation-fixture",
-  "summary": "An executable fixture covers natural Boss replies, optional organization action proposals, strict output rejection, unavailable classification, no fixed fallback phrase, and no normal Agent task creation.",
-  "evidence": "tests/agent-chat.test.ts",
-  "executableFixture": true
-}

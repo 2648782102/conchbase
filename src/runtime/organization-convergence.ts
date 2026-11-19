@@ -15,7 +15,7 @@ export const ORGANIZATION_CONVERGENCE_VERSION = 1;
 /**
  * Policy for turning a quiet project into an archived one.
  *
- * ADR 0033 accepts the direction (idle -> report -> archive -> offboard) but
+ * the implementation accepts the direction (idle -> report -> archive -> offboard) but
  * deliberately left the numbers open. They live here, in one place, so the
  * rule is inspectable and testable instead of being scattered through the
  * service that happens to run first.
@@ -231,7 +231,7 @@ export interface ConvergenceSweepResult {
 }
 
 /**
- * Runs the idle -> report -> archive -> offboard loop that ADR 0033 accepted
+ * Runs the idle -> report -> archive -> offboard loop that the implementation accepted
  * as a direction.
  *
  * Activity is observed from the durable snapshot itself: a change in a

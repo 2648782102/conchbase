@@ -1,6 +1,0 @@
-{
-  "id": "mcp-provider-fixture",
-  "summary": "Executable fixtures cover MCP discovery, namespacing, calls, non-read rejection, timeouts, malformed responses, bounded output, config validation, and Agent loop integration.",
-  "evidence": "tests/mcp-provider.test.ts",
-  "executableFixture": true
-}

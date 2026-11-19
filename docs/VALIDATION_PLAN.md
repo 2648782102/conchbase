@@ -1,73 +1,62 @@
 # Validation plan
 
-This document records current automated coverage and the next validation layers needed as runtime capabilities arrive.
+Validation should answer one question: can this personal Agent do useful work
+without losing state, hiding side effects, or exposing secrets?
 
-## Current automated coverage
+## Every code change
 
-- Startup configuration accepts only documented loopback hosts/ports and Magpie gateway URLs. A malformed app key is rejected before any request.
-- Provider tests use a fake `fetch` to check the Chat Completions request shape, a final answer, one transient tool-call observation, unsupported tool-call rejection, empty content, HTTP errors, non-loopback URLs, and later-turn rejection.
-- Streaming provider tests use fake SSE responses to check answer-text deltas, ignored reasoning text, one whole message-shaped tool-call observation, streaming tool-call delta rejection, mixed-response rejection, malformed/truncated frames, chunk/output limits, HTTP errors, and cancellation.
-- Task-service tests use temporary SQLite databases and fake `fetch` to cover durable v1 completion, pinned configuration revision, event IDs/cursors, restart interruption, and explicit retry with a new attempt.
-- Agent task/API tests cover two independent profiles, provider-neutral model-catalog identities, model override, task and queued-event pinning, asynchronous catalog/edit races, stale writes, archive/default behavior, retry after profile edits, and rejection of mixed legacy/Agent request shapes.
-- Migration tests start from the pre-Agent SQLite schema and assert that task/event/tool-request/configuration rows and the active pointer survive the transactional nullable-column/table addition; re-opening verifies migration idempotence.
-- Streaming task-service tests cover `partialOutput` while active, ordered `task.output_delta` events, cleared partial output on terminal states and retry, and cancellation history.
-- Model-catalog tests use fake `fetch` to check request shape, valid entries, malformed payloads, and upstream errors without opening a database. Task-store tests assert that a second simultaneous owner fails with `DatabaseInstanceError` and that the database reopens after the first owner closes.
-- Fastify injection tests cover read-only status responses, task creation validation, task reads, event replay and unknown cursors, retry, and model-catalog error mapping.
-- Internal deterministic tests cover task transitions, cancellation, configuration revisions, event replay, policy denial/approval, and provider-independent fake-model terminal paths.
-- Internal tool-capability tests cover registry validation, execute-once replay, exact versioned approvals, rejection and invalid-request audit events without secrets or raw arguments, distinct keys per attempt, and normalized executor failures that never invoke a fixture twice.
-- Internal composition identity tests cover a single node, a chain, a fan-out/fan-in graph, multiple entry nodes, stable canonical `cmp_` identity, duplicate IDs, duplicate links, unknown endpoints, wrong entry sets, disconnected components, cycles, unknown fields, and credential-like values. No fixture asserts canonical roles, layers, or coordination names.
-- Versioned configuration tests cover v1 stability, v1/v2 canonicalization, v2 composition validation, required sections, unaccepted sources, absolute URL labels, secret-like/unknown/duplicate-value rejection, durable mixed-version bootstrap/history/no-op/rollback across restarts, the five HTTP routes, exact error codes, task revision pinning after apply, and the unavailable-service state.
-- Composition execution tests cover a single node, a chain, a fan-out/fan-in graph, and multiple entry nodes; event order, node identity, pinned `cmp_` id, deterministic output, no model-provider call, retry from the original pinned v2 revision, and cancellation propagation without later node completion.
-- Public tool ledger tests cover normalized tool-call validation, digest stability, v2-only task context, exact eligible task states, declared composition nodes, durable request and decision events, exact idempotent replay without extra events, conflicting decisions, digest-only reasons, and no execution events or provider calls. HTTP tests cover the three `0.6.0` ledger routes, status codes, validation errors, and unavailable-service behavior.
-- Pure provider tool-call parser tests cover one valid non-streaming function call, stable `arg_` identity, final-answer non-observation, multiple choices, mixed answer text, multiple or unsupported calls, malformed/oversized/secret-like/nested arguments, unknown fields, invalid tool names, and streaming delta shapes. They assert that the observation has no provider envelope, task/ledger identity, or execution vocabulary.
-- Provider observation route tests cover a valid transient response, no-observation response, bounded validation errors, no durable event, no tool request row, no task-state change, and no execution vocabulary. Task-service tests cover a v1 observation becoming `failed` without ledger creation or execution.
-- Deterministic work-contract tests cover bounded validation, duplicate Trigger replay, conflicting Trigger reuse, context-only Thread subscriptions, rejected Mandate widening, distinct WorkItem/Assignment/Outbox/DeliveryReceipt states, restart persistence, exact replay after reopen, four historical HTTP routes, unavailable/404/400 behavior, raw-JSON top-level unknown fields and malformed JSON returning `400`, and guardrails against canonical topology vocabulary, secret-like fields, and external execution. Platform tests additionally cover migration, exact platform parsers, pairing/token revocation, non-loopback authentication, Source allow/deny, capability upsert, work controls and recovery, delivery decisions, SecretHandle create/rotate/disable/use, restart-invalidated sealed values, a sentinel no-leak assertion over HTTP responses/events/database bytes, 404/409/503, raw malformed JSON, and unknown fields. They use temporary SQLite databases and no real model, tool, credential, or network call.
-- Dependency-free repository guardrails check AI-first entry documents, accepted ADR statuses, ADR 0024's accepted status, the exact `1.0.0` 47-path OpenAPI path set, `durable-work-contract`, loopback-only configuration, source boundaries, and dependency boundaries. Synthetic violation fixtures prove the checks reject representative boundary breaks.
-- Repository guardrails also check the public event type enum, ADR 0017–0020 statuses, transactional migration wiring, parser wiring boundaries, no auto-ledger assertions, and that the public ledger never imports the internal kernel or exposes execution vocabulary.
-- ADR 0021's opt-in paired-runtime acceptance uses deterministic live loopback HTTP, a fake Magpie-compatible gateway, the real Fastify Runtime, a temporary SQLite database, and dynamically imported Pagurus clients. It verifies two Agents, independent revisions and provider-neutral model pins, stale writes, override/archive/default behavior, configuration apply/rollback, cancellation, process interruption, explicit retry, event replay, legacy `/v1/tasks`, `conchbase run`, v1/v2 dispatch, deterministic composition, streaming, invalid payloads, and unsupported-provider failure without fallback. It skips only when the optional nested Pagurus checkout is absent.
-- Pagurus ADR 0007 is a client-only inspection slice over the existing `GET /v1/tasks` and Agent detail contracts. Conchbase has no new route or source dependency for it. A manual/visual validation pass against a real local Runtime with the user's configured Magpie gateway and a temporary database verified mixed legacy/Agent task display, server-pinned revision fields, success and provider-error output, state/Agent filters, explicit refresh, offline refresh error and recovery, read-only revision comparison, and a 320px viewport. One selected model returned HTTP 429 during the run, which provided a visible failed-task fixture. This is not automated real-provider conformance, accessibility validation, or production-scale history testing.
-- The paired harness exposed and fixed two client/runtime boundary defects: bodyless cancel/retry POSTs no longer declare a JSON `Content-Type`, and empty JSON request bodies map to the documented `400` instead of `500`. `TaskService.stop()` now distinguishes runtime shutdown from explicit cancellation so restart recovery produces `interrupted` without racing an in-flight task.
-- A completed final local-first `1.0.0` E2E walkthrough used the real Conchbase development server, the real Pagurus Vite `/v1` proxy, and a temporary SQLite database. Its 54 deterministic HTTP requests covered health/runtime capabilities, Trigger creation and exact replay, pairing approval/token revocation, local Source allow/deny, capability upsert, work start/stop/complete, delivery decisions, work events, SecretHandle create/rotate/status/use, mismatched identity, disabled use, and digest-only receipts. A restart denied the previously sealed value, rotation restored fixed-adapter injection, and a separate running-work restart produced one `work.recovered` event, `paused`/`interrupted` state, explicit resume, completion, and accepted delivery evidence. Sentinel fixtures were absent from all HTTP responses, durable events, logs, and database bytes. This is a live loopback API walkthrough, not automated accessibility, visual/UI, real-provider conformance, production remote UX, or production-storage recovery validation.
-- GitHub Actions runs `npm run check`, `npm test`, and `npm run build`.
-- `tests/provider-conformance.test.ts` is an executable credential-free provider-compatibility fixture. A temporary loopback HTTP server records catalog, non-streaming, and streaming requests; injected responses cover answer text, tool-call observation, HTTP errors, oversized/truncated streams, cancellation, and non-loopback rejection. It does not call a real provider or use real credentials; see [ADR 0028](decisions/0028-interface-validation-boundary.md).
-- `tests/persistence-conformance.test.ts` is an executable credential-free persistence fixture. A one-shot child process commits a task and queued event and exits without closing the store; the parent reopens the WAL database, asserts recovery and monotonic event ids, then verifies additive migration preservation, single-owner rejection, and reopen after close using portable temporary paths; see [ADR 0029](decisions/0029-persistence-test-boundary.md).
-- `tests/organization-e2e.test.ts` is the executable dual-repository Boss-mode product-loop fixture. It uses a credential-free fake provider, the real Fastify Runtime, a temporary SQLite database, and dynamically imported Pagurus typed organization clients over live loopback HTTP. It covers two projects, two concurrent dynamic workers, structured reports, one Attention answer, one archive/resume path, and the required organization event types; see [ADR 0041](decisions/0041-boss-mode-product-loop.md).
-- `scripts/validate-boss-mode-local.mjs` is an optional local live acceptance script. It checks a running Conchbase Runtime's model catalog, submits one bounded primary-conversation intent, reads published session/events, and prints a bounded JSON report. It is not part of CI and never writes credentials or model output to the repository.
-- The optional local script passed against a real development Runtime in deterministic offline-parser mode: it observed `organizationContract: 1.1.0`, `organizationPaths: 18`, one accepted intent, one published project, one worker, one report, eight organization events, and no raw events in the session view. A separate live Magpie structured-parser probe returned an out-of-schema action type (`startProjectReleaseValidation`), which the Runtime rejected before committing any organization state; this confirms the untrusted-output guardrail and records live structured-output conformance as a separate validation layer.
-- The organization event cursor now replays strictly after a known opaque event id; `tests/organization-api.test.ts` covers both `limit=2` paging and a full replay from the published cursor. Pagurus `tests/organization-api.test.ts` covers detail reads for project threads, Attention, reports, work items, and Delegations; `tests/organization-console.test.tsx` covers the primary timeline, project/thread inspector, auto-refresh, and published-state-only rendering.
-- A real-browser / real-dev-server acceptance pass is recorded in [`VALIDATION_BROWSER_1.1.0.zh-CN.md`](VALIDATION_BROWSER_1.1.0.zh-CN.md). It covers desktop and `375 × 812` layouts, published organization state, Attention answer, project thread switching, archive/resume, event-cursor timeline updates, visible keyboard focus, and console logs with a credential-free local fake provider.
-- `tests/controlled-execution.test.ts` is the executable controlled-execution v1 fixture. It covers the additive OpenAPI set, optional `1.2.0` discovery, explicit grants, stale expected versions, idempotency conflicts, approved digest-only fake execution, rejected requests, revocation, bounded audit events, and no plaintext/private-path leakage. Pagurus `tests/execution-api.test.ts` and `tests/execution-console.test.tsx` cover the paired typed client and published-state-only console.
-- `tests/isolated-execution.test.ts` is the executable isolated-execution v2 fixture. It covers approved-request/active-grant run creation, fixed child-process execution, stale versions, idempotency conflicts, cancel/recover, restart interruption, `1.3.0` discovery, adapters, and no plaintext/private-path leakage. Pagurus `tests/execution-run-api.test.ts` and `tests/execution-console.test.tsx` cover typed run client, run state vocabulary, and run audit rendering.
-- `tests/primary-conversation.test.ts` is the executable primary-conversation projection fixture. It covers ordered published messages, bounded cursors, duplicate suppression, no private-state leakage, `1.4.0` discovery, and HTTP error paths. Pagurus `tests/conversation-api.test.ts` and `tests/conversation-panel.test.tsx` cover the typed client, complete composer, published message kinds, Attention actions, and unsupported Runtime fallback.
-- `tests/agent-chat.test.ts` is the executable Agent Chat fixture. It uses a credential-free fake provider through the existing Agent-backed task path and covers configured Agent discovery, conversation creation, real model reply publication, idempotent replay, bounded errors, `1.5.0` discovery, and no private-state leakage. Pagurus Agent Chat fixtures cover the separate typed client and workspace.
+Run the narrowest relevant test first, then:
 
-CI makes no public-network call and uses no real credential or user data. The executable provider fixture uses a temporary local HTTP server. Manual live validation uses the user's already configured Magpie gateway and a selected model id; deterministic composition and paired acceptance tests use fake provider fixtures. Live real-provider conformance, real-browser accessibility validation, remote access, and production-storage recovery remain separate layers.
+```sh
+npm run check
+npm test
+npm run build
+```
 
-## Validation layers still required
+Use fake local providers and temporary workspaces in automated tests. Never use
+real credentials, private user data, or public-network calls in CI.
 
-1. **Provider conformance:** live streaming across future provider transports including tool-call deltas, cancellation at transport level, token/context limits, and error classification. The current executable fixture covers the existing compatibility adapter only.
-2. **Persistence hardening:** production supported OS, CPU architecture, and Node-version matrix; crash recovery across arbitrary failure points; an accepted multi-process writer protocol; retention; and normalized driver errors. ADR 0029 closes the deterministic default-baseline fixture for committed WAL state and additive migration preservation, not the production matrix.
-3. **Model-driven composition:** per-node provider calls, context passing, and cancellation across active nodes after accepted contracts. Organization delegation and concurrent work are covered by the ADR 0041 product-loop fixture.
-4. **Tools and security:** streaming tool-call accumulation, public execution contract, durable execution results, crash-safe side effects, real executor isolation, fake MCP server, external fixed-adapter secret custody, install/enable/grant isolation, secrets absent from events/logs, untrusted tool output, and explicit grants.
-5. **Client/resilience:** SSE or polling reconnection with cursor semantics, malformed payloads, live loopback/non-loopback authentication fixtures, real-browser accessibility validation, and a separately accepted history query contract if complete-list history becomes insufficient.
-6. **Production secret custody:** OS-managed key sources, replayable encrypted-at-rest values, stable cross-process keys, revocation of in-flight injections, and per-use destination isolation after a separate accepted contract.
-7. **External work:** real Sources, real Outbox delivery, external side effects, crash-safe reconciliation, and executable tools with isolation and grants after separate accepted contracts.
-8. **Extended no-leak:** sentinel fixtures across future external adapters, provider payloads, multi-process state, and real destinations; the current `1.0.0` fixtures already serialize prompts, task rows, events, database bytes, client responses, log/error boundaries, tool arguments, and fixed-adapter results.
+## Runtime test layers
 
-## Critical scenarios
+1. **Pure domain tests:** parsers, validators, state transitions, digests,
+   budgets, and redaction.
+2. **Provider contract tests:** catalog, streaming, cancellation, tool calls,
+   error categories, malformed responses, and size limits through fake HTTP.
+3. **Persistence tests:** migrations, restart, interrupted work, retry,
+   idempotency, event cursors, backup, and restore.
+4. **HTTP tests:** request validation, response envelopes, capability discovery,
+   authentication, error mapping, and no private-file access.
+5. **Scenario tests:** real Runtime with fake provider plus temporary workspace;
+   assert filesystem effects, provider trace, durable events, and final reply.
+6. **Paired tests:** real Conchbase HTTP plus dynamically loaded Pagurus API
+   clients for important end-to-end workflows.
+7. **Manual/live checks:** real browser, configured local provider, narrow and
+   wide layouts, keyboard navigation, disconnect/reconnect, and upgrade/restore.
+8. **Soak checks:** long conversations, repeated restart, event growth, memory
+   retention, concurrent bounded work, and provider flakiness.
 
-- A v1 task completes with a real model and its output is persisted with ordered events.
-- A v2 task completes a bounded deterministic composition with ordered node events and no model or tool call.
-- A denied or model-requested tool never executes in either current task mode.
-- A restart leaves no task stuck in `running`; events remain replayable.
-- Retry starts a new attempt and never silently repeats a lost provider call.
-- A task keeps its pinned configuration revision across attempts.
-- Two Agents with different profile revisions and model references produce tasks whose Agent id/revision, runtime configuration revision, and effective model remain stable through later edits, archive, and retry.
-- Legacy tasks retain the old `/v1/tasks` model request and global v1/v2 dispatch while Agent tasks follow their pinned provider/model regardless of global v2 configuration.
-- Applying or rolling back a revision, including a v1/v2 change, changes only subsequently created tasks and preserves immutable history.
-- Event replay does not duplicate or silently skip events.
-- Cancellation stops later composition nodes and records explicit node/composition cancellation.
-- Invalid request bodies fail before task creation.
-- Non-loopback bind requires explicit `CONCHBASE_ALLOW_AUTHENTICATED_REMOTE_BINDING=1` and an approved bearer-token digest; loopback remains the default.
+## Required cases for Agent features
 
-> Final local-first target: Conchbase `1.0.0` and ADR 0025 close the exact 47-path platform contract. Write-only SecretHandle values are sealed at rest with a process-scoped AES-256-GCM key, exposed only to one runtime-owned fixed adapter, and never returned, logged, or sent to a model, client, event, or UI. Restart invalidates previously sealed values; cross-process key sources, real external adapters, executors, Sources, external writes, and tools require separate ADRs.
+- ordinary successful answer;
+- provider unavailable, authentication error, rate limit, timeout, malformed
+  output, and context-limit error;
+- cancellation before provider call, during streaming, and during a tool;
+- duplicate request/idempotency replay;
+- restart before, during, and after a durable checkpoint;
+- tool timeout, tool failure, oversized output, path escape, and prompt
+  injection in tool output;
+- denied approval, approved action, stale approval, and repeated approval;
+- secret-like values absent from prompts, events, logs, errors, database bytes,
+  and client responses;
+- Agent edit after task creation does not change the task's pinned revision;
+- memory deletion remains effective after restart.
+
+## Definition of done
+
+A feature is done when its user-visible path works, its failure path is
+understandable, its state survives the required restart boundary, its focused
+tests pass, the normal suite passes, and `CURRENT_STATE.md`/`PROJECT_PLAN.md`
+still describe reality.
+
+Do not inflate the status document with every test case. Test names and source
+files are the detailed evidence; this document defines the required layers.

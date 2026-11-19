@@ -1,6 +1,0 @@
-{
-  "id": "contract-and-chat-decomposition-fixture",
-  "summary": "Executable fixtures assert field-level validation rules (bounds, opaque grammars, scope and capability restrictions, secret screening, canonical identity) and Agent Chat state derivation (done-vs-replied mapping, terminal sets, phase grouping, provider failure classification, effort parsing).",
-  "evidence": "tests/organization-validators.test.ts",
-  "executableFixture": true
-}

@@ -1,6 +1,0 @@
-{
-  "id": "done-versus-replied-fixture",
-  "summary": "Executable fixtures assert a completed reply is stored as done before any view, that viewing promotes it to replied and records lastReadAt, and that the conversation list reports the post-read shape.",
-  "evidence": "tests/agent-done-idle.test.ts",
-  "executableFixture": true
-}

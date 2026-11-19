@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 const LOOPBACK_URL_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 
@@ -45,7 +47,7 @@ export interface RuntimeConfig {
   skillsDirectory?: string;
   allowToolWrites?: boolean;
   /**
-   * ADR 0095. Read-only git tools. Opt-in because they execute a subprocess;
+   * the implementation. Read-only git tools. Opt-in because they execute a subprocess;
    * every other built-in tool is a filesystem call.
    */
   enableGitTools?: boolean;
@@ -58,15 +60,15 @@ export interface RuntimeConfig {
   workspaceRoot: string;
   executionMode: ExecutionMode;
   loopBudget: LoopBudget;
-  /** ADR 0105: worker loop iterations per cooperative slice. 0 disables yielding. */
+  /** the implementation: worker loop iterations per cooperative slice. 0 disables yielding. */
   workerSliceIterations: number;
   /**
-   * ADR 0081. How long a project may receive no observable activity before the
+   * the implementation. How long a project may receive no observable activity before the
    * Runtime closes it. Operator configuration only: a model, task, or client
    * can never change the retention policy.
    */
   projectIdleMs: number;
-  /** ADR 0100: non-preemptive global work capacity. */
+  /** the implementation: non-preemptive global work capacity. */
   globalActiveWork: number;
   perProjectActiveWork: number;
   allowAuthenticatedRemoteBinding: boolean;
@@ -120,7 +122,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
   }
   const executionMode = executionModeValue as ExecutionMode;
   const workspaceRoot = env.CONCHBASE_WORKSPACE_ROOT ?? process.cwd();
-  if (!workspaceRoot.startsWith('/')) {
+  if (!path.isAbsolute(workspaceRoot) && !path.posix.isAbsolute(workspaceRoot) && !path.win32.isAbsolute(workspaceRoot)) {
     throw new Error('CONCHBASE_WORKSPACE_ROOT must be an absolute path.');
   }
   const allowToolWrites = env.CONCHBASE_ALLOW_TOOL_WRITES === '1';

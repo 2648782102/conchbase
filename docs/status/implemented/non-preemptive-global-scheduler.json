@@ -1,5 +1,0 @@
-{
-  "id": "non-preemptive-global-scheduler",
-  "summary": "ADR 0100 adds a pure global work scheduler with global/per-project capacity limits, interactive priority, project fairness, stable enqueue ordering, and visible hold reasons. It never preempts running work and owns no state; capacity is operator-configured and published on GET /v1/runtime.",
-  "evidence": "src/runtime/global-work-scheduler.ts"
-}

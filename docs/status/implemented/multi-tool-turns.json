@@ -1,5 +1,0 @@
-{
-  "id": "multi-tool-turns",
-  "summary": "ADR 0058 allows up to maxToolCallsPerTurn tool calls per model turn (default 4, cap 8), executes them in order, requires one approval per write, and rejects turns above the cap.",
-  "evidence": "src/runtime/task-service.ts"
-}

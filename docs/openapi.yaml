@@ -2876,7 +2876,7 @@ components:
           required: [version, globalActiveWork, perProjectActiveWork]
           description: >-
             Non-preemptive global capacity policy. Running tasks are never stopped; queued work is admitted only when
-            capacity is available. See ADR 0100.
+            capacity is available. See the scheduler implementation.
           properties:
             version:
               type: integer
@@ -3338,10 +3338,10 @@ components:
           description: >-
             Bounded scalar event data. Composition events carry compositionDocumentId,
             compositionNodeId, nodeIndex, nodeCount, completedNodeCount, and terminalNodeIds
-            as documented by ADR 0016. Public tool ledger events carry toolRequestId,
+            as documented by the published contract. Public tool ledger events carry toolRequestId,
             configurationRevisionId, attempt, compositionDocumentId, compositionNodeId,
             toolName, argumentsDigest, idempotencyKey, status, and decision-only decision,
-            approvalId, and reasonDigest fields as documented by ADR 0017. Execution,
+            approvalId, and reasonDigest fields as documented by the published contract. Execution,
             replay, denial, and failure vocabulary is not part of the public event contract.
           additionalProperties:
             type: [string, number, boolean, 'null']

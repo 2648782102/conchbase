@@ -1,5 +1,0 @@
-{
-  "id": "structured-reporting",
-  "summary": "Structured reports, attention requests, blocked/failed facts, and completion events are validated organization facts and enter primary relays in deterministic order.",
-  "evidence": "src/runtime/organization-execution.ts"
-}

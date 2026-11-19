@@ -1,5 +1,0 @@
-{
-  "id": "boss-natural-conversation",
-  "summary": "ADR 0049 implements natural Boss Agent conversation through the user-configured OpenAI-compatible protocol endpoint, with bounded context, optional Runtime-adjudicated actions, and no new public path or schema.",
-  "evidence": "src/runtime/organization-intent-parser.ts"
-}

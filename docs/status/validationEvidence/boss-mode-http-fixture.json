@@ -1,6 +1,0 @@
-{
-  "id": "boss-mode-http-fixture",
-  "summary": "An executable HTTP fixture proves a primary-conversation intent creates published project/worker state and replays idempotently through the additive 1.1.0 API.",
-  "evidence": "tests/boss-mode-http.test.ts",
-  "executableFixture": true
-}

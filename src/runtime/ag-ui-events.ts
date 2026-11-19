@@ -3,7 +3,7 @@
  *
  * AG-UI (https://github.com/ag-ui-protocol/ag-ui) defines an event vocabulary
  * for agent-to-frontend streaming. Conchbase already publishes its own frame
- * vocabulary under ADR 0060; renaming those frames would break every accepted
+ * vocabulary under the implementation; renaming those frames would break every accepted
  * client. Instead each frame *also* carries an `agUiType`, so a third-party
  * AG-UI client can map frames without Conchbase maintaining a private adapter.
  *

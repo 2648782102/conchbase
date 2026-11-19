@@ -1,5 +1,0 @@
-{
-  "id": "paired-runtime-acceptance",
-  "summary": "An executable opt-in live loopback test covers two Agents, pinned revisions, configuration history, legacy tasks, cancellation, interruption, retry, and event replay.",
-  "evidence": "tests/agent-paired-runtime.test.ts"
-}

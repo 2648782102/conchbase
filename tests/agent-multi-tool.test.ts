@@ -99,7 +99,7 @@ test('multiple read tools execute in one turn', async () => {
   mkdirSync(path.join(directory, 'sub'));
   const service = createService(directory, scripted([
     // Two distinct reads in one turn must both execute. Identical reads are
-    // deduplicated per ADR 0071 and covered by tests/read-reuse.test.ts.
+    // deduplicated per the implementation and covered by tests/read-reuse.test.ts.
     () => calls([
       { name: 'workspace_list', args: { path: '.' } },
       { name: 'workspace_list', args: { path: 'sub' } },

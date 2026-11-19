@@ -100,7 +100,7 @@ export function parseStructuredOrganizationResult(
       && (candidate as Record<string, unknown>).type === 'open_project'
       ? { ...(candidate as Record<string, unknown>), originTriggerId: input.intentId }
       : candidate;
-    // ADR 0074: the Runtime owns `expectedSequence`, so fill it before
+    // the implementation: the Runtime owns `expectedSequence`, so fill it before
     // validation. Validating first would reject a plan for omitting a value the
     // model cannot compute.
     const withSequence = isRecord(normalized)

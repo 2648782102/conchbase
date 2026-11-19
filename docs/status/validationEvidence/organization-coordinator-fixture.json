@@ -1,6 +1,0 @@
-{
-  "id": "organization-coordinator-fixture",
-  "summary": "An executable fixture covers action commit, stale rejection, injected work-control dispatch, callback failure recovery, and absence of HTTP/Agent/model/tool/public-route dependencies.",
-  "evidence": "tests/organization-coordinator.test.ts",
-  "executableFixture": true
-}

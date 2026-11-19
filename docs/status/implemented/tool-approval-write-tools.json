@@ -1,5 +1,0 @@
-{
-  "id": "tool-approval-write-tools",
-  "summary": "ADR 0057 implements Runtime-owned write-tool approval: waiting_approval checkpoints persist across restart, POST /v1/tasks/{taskId}/approval resumes the loop after approved execution, rejection fails without writing, and CONCHBASE_ALLOW_TOOL_WRITES gates the bounded workspace_write tool.",
-  "evidence": "src/runtime/task-service.ts"
-}

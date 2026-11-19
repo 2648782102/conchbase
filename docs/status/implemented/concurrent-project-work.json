@@ -1,5 +1,0 @@
-{
-  "id": "concurrent-project-work",
-  "summary": "Authorized organization workers bind to accepted durable WorkItems and bounded work controls through the existing execution substrate.",
-  "evidence": "src/runtime/organization-coordinator.ts"
-}

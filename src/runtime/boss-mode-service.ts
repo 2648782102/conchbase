@@ -118,7 +118,7 @@ export interface BossModeServiceOptions {
    * absent the scheduler's defaults apply.
    */
   readonly schedulerLimits?: SchedulerLimits;
-  /** ADR 0105: worker loop iterations per cooperative slice; 0 disables yielding. */
+  /** the implementation: worker loop iterations per cooperative slice; 0 disables yielding. */
   readonly workerSliceIterations?: number;
 }
 
@@ -880,7 +880,7 @@ export class BossModeService {
     } catch {
       return null;
     }
-    // A `paused` WorkItem follows a cooperative slice yield (ADR 0105); its
+    // A `paused` WorkItem follows a cooperative slice yield (the implementation); its
     // task is interrupted with a checkpoint and resumes in place, so it keeps
     // its binding just like a not-yet-started `open` item.
     if (state === 'open' || state === 'paused') return null;
@@ -1052,8 +1052,8 @@ export class BossModeService {
     const workState = platform.getWorkItemDetail(record.workItemId).workItem.state;
     const task = this.taskService?.store.getTask(record.taskId);
     if (!task) return false;
-    // `open`+`queued` is a capacity-held worker (ADR 0104). `paused`+`interrupted`
-    // is a cooperative slice yield (ADR 0105) whose checkpoint must be carried
+    // `open`+`queued` is a capacity-held worker (the implementation). `paused`+`interrupted`
+    // is a cooperative slice yield (the implementation) whose checkpoint must be carried
     // onto the fresh task bound by ensureWorkItem.
     const held = workState === 'open' && task.state === 'queued';
     const yielded = workState === 'paused' && task.state === 'interrupted';
@@ -1066,7 +1066,7 @@ export class BossModeService {
     });
     const execution = this.ensureWorkItem(start as Extract<OrganizationAction, { type: 'start_worker' }>);
     if (execution.status !== 'dispatched') return false;
-    // ADR 0105: a resumed slice on the same task id is a new outcome; allow it
+    // the implementation: a resumed slice on the same task id is a new outcome; allow it
     // to be reported instead of being deduplicated as a repeated submit.
     this.outcomeByTaskId.delete(record.taskId);
     applyAction(this.store, start);
@@ -1140,7 +1140,7 @@ export class BossModeService {
         this.taskService?.startTask(rebound.taskId);
         return Object.freeze({ action, status: 'dispatched' as const });
       }
-      // ADR 0105: resume a cooperative slice yield from `paused`, or start a
+      // the implementation: resume a cooperative slice yield from `paused`, or start a
       // capacity-held worker from `open`.
       const currentWorkState = platform.getWorkItemDetail(record.workItemId).workItem.state;
       platform.startWork(record.workItemId, currentWorkState === 'paused' ? 'paused' : 'open');
@@ -1228,7 +1228,7 @@ export class BossModeService {
       const previous = this.outcomeByTaskId.get(record.taskId);
       if (previous) continue;
       const summaryDigest = digest(`${record.taskId}:${task.state}:${output}`);
-      // ADR 0105: a task can report once per resumed slice, so report ids carry
+      // the implementation: a task can report once per resumed slice, so report ids carry
       // a per-task sequence instead of colliding on the same task id.
       const reportSeq = (this.reportSeqByTaskId.get(record.taskId) ?? 0) + 1;
       this.reportSeqByTaskId.set(record.taskId, reportSeq);
@@ -1239,7 +1239,7 @@ export class BossModeService {
         // Report text is best-effort; the digest remains authoritative for the ledger.
       }
       const needsAttention = /(?:^|\n)\s*ATTENTION:/i.test(output);
-      // ADR 0105: an interrupted task that kept a versioned loop checkpoint is
+      // the implementation: an interrupted task that kept a versioned loop checkpoint is
       // a cooperative slice yield, not a failure. Report progress and release
       // the scheduling slot by pausing its WorkItem.
       const rawCheckpoint = taskService.store.getLoopState(task.id);

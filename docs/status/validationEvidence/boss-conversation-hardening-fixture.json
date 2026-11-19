@@ -1,6 +1,0 @@
-{
-  "id": "boss-conversation-hardening-fixture",
-  "summary": "Executable fixtures cover pure-chat no organization writes, readable organization facts, SSE progress, identity/capability normalization, durable Agent Chat reopen, and in-flight restart recovery.",
-  "evidence": "tests/agent-chat-store.test.ts",
-  "executableFixture": true
-}

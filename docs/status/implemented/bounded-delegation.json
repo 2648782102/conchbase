@@ -1,5 +1,0 @@
-{
-  "id": "bounded-delegation",
-  "summary": "Parent/child Delegation actions remain topology-neutral and are enforced by scope/capability subset, recursion depth, TTL, and revival/revalidation rules.",
-  "evidence": "src/runtime/organization-contract.ts"
-}

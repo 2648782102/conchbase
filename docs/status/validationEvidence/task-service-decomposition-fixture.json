@@ -1,6 +1,0 @@
-{
-  "id": "task-service-decomposition-fixture",
-  "summary": "Executable fixtures assert argument digests are order-independent, read reuse is keyed by attempt and never collides across tools or arguments, capability resolution pins to the task revision and yields no grants for a missing revision, approval policy distinguishes restricted from unrestricted without widening scope, and tool draining rejects ungranted tools, pauses consequential tools, refuses repeated applied writes, reuses only same-attempt reads, and emits one message per outcome.",
-  "evidence": "tests/agent-loop-tools.test.ts",
-  "executableFixture": true
-}

@@ -1,5 +1,0 @@
-{
-  "id": "dynamic-agent-revisions",
-  "summary": "Dynamic worker proposals are bridged through the existing Agent profile boundary into immutable, model-validated Agent revisions; digests never become instructions and proposals never grant authority.",
-  "evidence": "src/runtime/boss-mode-service.ts"
-}

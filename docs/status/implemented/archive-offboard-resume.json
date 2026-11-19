@@ -1,5 +1,0 @@
-{
-  "id": "archive-offboard-resume",
-  "summary": "Project quiet/archive/offboard/resume transitions preserve events, revoke active authority, and require revalidation before resumed projects accept new work.",
-  "evidence": "src/runtime/organization-contract.ts"
-}

@@ -1,5 +1,0 @@
-{
-  "id": "runtime-owned-sequence",
-  "summary": "ADR 0074 fills expectedSequence and Runtime-owned ids (reportId, attentionId) before validation, so a model that omits a value only the Runtime can know no longer fails a valid plan.",
-  "evidence": "src/runtime/organization-intent-parser.ts"
-}

@@ -1,6 +1,0 @@
-{
-  "id": "organization-api-fixture",
-  "summary": "An executable fixture covers exact 65 OpenAPI paths, runtime discovery, 202 intents, idempotent replay/conflict, attention answer/withdraw and stale versions, event cursors and bounds, and no plaintext/private-state leakage.",
-  "evidence": "tests/organization-api.test.ts",
-  "executableFixture": true
-}

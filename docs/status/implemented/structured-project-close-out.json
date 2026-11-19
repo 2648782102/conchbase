@@ -1,5 +1,0 @@
-{
-  "id": "structured-project-close-out",
-  "summary": "ADR 0082 gives convergence a structured close-out report instead of concatenated worker bodies: one bounded model call over project-local facts produces headline/outcomes/openIssues/nextSteps, the Runtime rejects unknown fields, oversize text, empty headlines and secret-like values, persists the accepted document under organization_project_summaries, and renders the published text from it. A deterministic summary with real counts is the floor, so a provider outage never blocks convergence.",
-  "evidence": "src/runtime/project-summary.ts"
-}

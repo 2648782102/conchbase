@@ -5,14 +5,14 @@ import { resolveWorktreeEnv } from './worktree-env.mjs';
 
 // Parallel sessions: the main checkout keeps 4318, every linked worktree gets a
 // stable port and its own database derived from its branch. See
-// docs/PARALLEL_DEVELOPMENT.md. An explicit CONCHBASE_PORT / PORT still wins.
+// An explicit CONCHBASE_PORT / PORT still wins.
 const session = resolveWorktreeEnv(process.cwd(), process.env);
 const port = Number(session.port);
 const host = session.host;
 const unrestricted = process.argv.includes('--unrestricted');
 
 /**
- * ADR 0068/0069. `--unrestricted` is a deliberate, visible opt-in: it turns off
+ * `--unrestricted` is a deliberate, visible opt-in: it turns off
  * the approval gate and raises the loop budget. Everything else still applies —
  * Agent capability grants, bounded configuration, sanitized child environments,
  * result caps, and the deadline.

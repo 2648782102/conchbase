@@ -1,6 +1,0 @@
-{
-  "id": "provider-conformance-fixture",
-  "summary": "An executable credential-free local HTTP fixture covers catalog, non-streaming, streaming, observation, error, limit, and cancellation compatibility for the current adapter.",
-  "evidence": "tests/provider-conformance.test.ts",
-  "executableFixture": true
-}

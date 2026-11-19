@@ -1,5 +1,0 @@
-{
-  "id": "local-first-v1-platform",
-  "summary": "The exact 47-path local-first 1.0.0 platform is implemented, including authentication metadata, work control, recovery, one local Source, capability records, and process-scoped write-only SecretHandles.",
-  "evidence": "docs/decisions/0025-local-first-v1-platform.md"
-}

@@ -1,6 +1,0 @@
-{
-  "id": "subprocess-plugin-fixture",
-  "summary": "Executable fixtures cover the JSON invoke protocol, minimal environment, invalid JSON responses, child crashes, timeouts, oversized replies, and manifest validation for bounded process declarations.",
-  "evidence": "tests/subprocess-plugin.test.ts",
-  "executableFixture": true
-}

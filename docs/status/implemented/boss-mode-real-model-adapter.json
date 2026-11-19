@@ -1,5 +1,0 @@
-{
-  "id": "boss-mode-real-model-adapter",
-  "summary": "CONCHBASE_ORGANIZATION_INTENT_MODEL enables an optional OpenAI-compatible structured parser for the primary conversation while preserving authoritative action validation and offline deterministic fallback.",
-  "evidence": "src/runtime/organization-intent-parser.ts"
-}

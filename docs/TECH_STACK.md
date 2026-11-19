@@ -1,45 +1,19 @@
 # Technology baseline
 
-| Area | Baseline | State |
-|---|---|---|
-| Runtime and CLI | TypeScript on Node.js 24+ | In use |
-| HTTP server | Fastify | In use |
-| API contract | Versioned HTTP/JSON, JSON Schema, OpenAPI | In use for status, Agent, provider-neutral catalog, task, event, configuration, composition, and tool ledger routes |
-| Model provider | Direct OpenAI Chat Completions-compatible streaming HTTP to local Magpie | In use for phase 1; no provider SDK |
-| Task, Agent, and event state | `node:sqlite` `DatabaseSync` behind `TaskStore`, with one exclusive owner and transactional additive schema migration | In use for local runtime; production platform matrix, WAL crash recovery, and multi-process protocol pending |
-| Model discovery | Provider-neutral `{ providerId, modelId }` catalog surface, currently translated by `MagpieModelCatalog` | In use; database-free; Magpie remains one compatibility adapter |
-| Runtime events | Global monotonic event IDs, durable `task.output_delta` progress, polling cursor, and an additive Agent Chat SSE projection | In use; retention and multi-process fan-out pending |
-| Configuration revisions | Versioned `schemaVersion: 1` and `schemaVersion: 2` documents, SHA-256 identity, SQLite history, active pointer, validation, apply, and rollback | In use as data only; portable files, secret resolution, installers, and grants deferred |
-| Composition identity and execution | Public topology-neutral graph section, internal canonical DAG validation, SHA-256 `cmp_` identity, deterministic topological node order, and node events | In use for bounded deterministic execution; model-driven node work, scheduling, and tool audits deferred |
-| Execution modes | Runtime-wide `CONCHBASE_EXECUTION_MODE`: `restricted` (default) pauses `write` and `external` tools for approval, `unrestricted` executes every granted tool immediately | In use under ADR 0068; published as `executionMode` on `GET /v1/runtime` |
-| Tool capability kernel | Internal fixture-only registry, exact approvals, per-attempt idempotency, and deterministic audit events | In use as an internal acceptance boundary; never imported by the public ledger |
-| Public tool request/approval ledger | Versioned provider-neutral request records, composition-scoped idempotency, digest-only approvals, and durable SQLite audit events | In use as a `0.6.0` ledger kept by `0.7.0`; no tool execution or real host tool |
-| Provider tool-call observation | Pure OpenAI Chat Completions-compatible non-streaming function-call parser, provider adapter normalization, and one transient HTTP observation route | In use as an ADR 0019 `0.7.0` boundary; no auto-ledger, streaming accumulation, or execution |
-| Tool protocol | Official `@modelcontextprotocol/sdk` for the stdio transport, wrapped by Conchbase's bounded MCP provider | In use under ADR 0067; write-capable and remote MCP transports remain gated |
-| Agent orchestration | Conchbase-owned task state machine with a narrow provider adapter and a deterministic composition executor | In use for one bounded text turn or bounded graph traversal; tool loops and model-driven composition pending |
-| Configuration and Skills | Content-addressed revision id, v1/v2 documents, and future portable profile files | Revision id and configuration write API in use; profile files and Skills lifecycle deferred |
-| Agent profiles | Runtime-local identities, immutable opaque revisions, optimistic updates, default/archive, and task pinning | In use under ADR 0020; portable profile files and more provider adapters deferred |
-| Durable work | Version-2 `Source / Trigger / Thread / Mandate / WorkItem / Assignment / Outbox / DeliveryReceipt` contract, work-control paths, `work_*` and `platform_*` SQLite tables | Implemented by ADR 0025 in `1.0.0`; topology-neutral, idempotent, recoverable, and execution-free |
-| SecretHandles | Process-scoped AES-256-GCM sealed values, one-way digests, one runtime-owned fixed adapter, and digest-only receipts | Implemented by ADR 0025; restart invalidates old sealed values and the paired Pagurus editor is live |
+- Runtime: TypeScript on Node.js 24+.
+- HTTP: Fastify with versioned JSON routes.
+- Persistence: Node's built-in SQLite driver behind Runtime-owned stores.
+- Model transport: narrow provider adapters; current compatibility path is a
+  local OpenAI-compatible Magpie gateway.
+- Client: Pagurus uses React, TypeScript, and Vite in its own repository.
+- Streaming: durable event IDs plus Agent Chat SSE projection; polling remains
+  a fallback where appropriate.
+- Validation: Node test runner, Vitest in Pagurus, temporary local fixtures,
+  fake providers, and paired loopback HTTP tests.
 
-The runtime is primarily I/O orchestration. Model inference belongs to a local gateway or external provider, so a separate inference language is not part of the baseline. The public API stays language-neutral for non-TypeScript clients.
+## Deliberate future work
 
-`node:sqlite` is experimental in Node 24. It avoids a native npm dependency for this local slice, but production choice, supported OS/CPU/Node combinations, WAL crash recovery, migrations, and multi-process ownership remain open. [ADR 0008](decisions/archive/0008-sqlite-driver-compatibility-proposal.md) records dated single-machine evidence; [ADR 0010](decisions/0010-first-real-model-slice.md) accepts only the phase-1 internal schema; [ADR 0011](decisions/0011-phase-one-database-instance-ownership.md) accepts a fail-fast single-owner boundary; [ADR 0012](decisions/0012-streaming-output-progress.md) accepts bounded progress events.
-
-[ADR 0013](decisions/0013-bounded-tool-capability-kernel.md) accepts an internal tool capability kernel without adding an MCP SDK, provider SDK, real executor, approval route, or durable audit table. Its audit log is in-memory and its idempotency coordinator is process-local. [ADR 0014](decisions/0014-versioned-configuration-api.md) accepts public configuration documents and durable revisions without adding a file loader, secret store, capability installer, or composition schema. [ADR 0015](decisions/0015-composition-identity-kernel.md) accepts an internal topology-neutral identity kernel. [ADR 0016](decisions/0016-composition-execution-and-public-schema.md) accepts the public composition section and deterministic execution, and requires composition node identity in future public tool approvals and audits.
-
-[ADR 0017](decisions/0017-public-tool-request-approval-ledger.md) accepts a public provider-neutral request/approval ledger, durable SQLite request and decision records, composition-scoped idempotency, and durable audit events. It does not connect `ToolCapabilityKernel` to the Runtime API, parse provider tool calls, execute tools, or store raw arguments/reasons/tool outputs.
-
-[ADR 0018](decisions/0018-provider-tool-call-parsing-boundary.md) accepts an internal pure parser for one OpenAI Chat Completions-compatible non-streaming function tool call. [ADR 0019](decisions/0019-explicit-provider-tool-call-observation-boundary.md) wires that parser into the provider and one transient observation route. It does not accept streaming deltas, auto-create ledger requests, persist observations, or execute tools.
-
-Repository guardrails use Node's built-in test runner and local-file assertions; they are development checks, not runtime technology.
-
-## Deferred choices
-
-- Provider capability discovery, streaming tool-call accumulation, multi-turn context, error classification, direct vendor adapters, public tool execution routes, durable execution results, crash-safe side effects, model-driven composition scheduling, portable configuration files, secret resolution, and install/enable/grant operations.
-- Stable cross-process SecretHandle keys, OS keychain custody, replayable encrypted-at-rest values, real external Sources, real Outbox writes, arbitrary fixed injectors, executable tools, multi-process ownership, and cloud deployment.
-- Production SQLite driver, schema migrations, SSE event retention, multi-process fan-out, and non-loopback stream authentication.
-- Plugin isolation and capability grants.
-- Remote authentication, pairing, and desktop packaging.
-
-> Final local-first target: Conchbase `1.0.0` and ADR 0025 close the exact 47-path platform contract. Write-only SecretHandle values are sealed at rest with a process-scoped AES-256-GCM key, exposed only to one runtime-owned fixed adapter, and never returned, logged, or sent to a model, client, event, or UI. Restart invalidates previously sealed values; cross-process key sources, real external adapters, executors, Sources, external writes, and tools require separate ADRs.
+Provider portability, storage hardening, backup/restore, packaging, remote
+pairing, external integrations, and stronger tool isolation are planned in
+[`PROJECT_PLAN.md`](PROJECT_PLAN.md). Do not add a dependency merely because an
+enterprise deployment might eventually need it.

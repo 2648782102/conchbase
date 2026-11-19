@@ -1,5 +1,0 @@
-{
-  "id": "contract-and-chat-decomposition",
-  "summary": "ADR 0093 splits organization field validation into organization-validators and Agent Chat state derivation into agent-chat-state plus a type-only agent-chat-types module. Both source files fall below 1000 lines, and the state mapping that caused the done/replied regression is now asserted directly.",
-  "evidence": "src/runtime/organization-validators.ts"
-}

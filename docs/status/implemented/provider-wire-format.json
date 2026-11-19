@@ -1,5 +1,0 @@
-{
-  "id": "provider-wire-format",
-  "summary": "ADR 0072 translates Runtime provider messages into the OpenAI Chat Completions wire format: tool results send tool_call_id and assistant tool calls send snake_case tool_calls with JSON-string arguments. Before this fix the internal camelCase shape reached the model, so a model could not correlate a tool result with its call and looped on tools that had already succeeded.",
-  "evidence": "src/runtime/magpie-provider.ts"
-}

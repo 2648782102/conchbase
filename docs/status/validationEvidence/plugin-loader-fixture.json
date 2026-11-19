@@ -1,6 +1,0 @@
-{
-  "id": "plugin-loader-fixture",
-  "summary": "Executable fixtures cover manifest validation, undeclared-tool rejection, grant enforcement before plugin code runs, approval enforcement for write tools, missing implementation failures, and duplicate plugin ids.",
-  "evidence": "tests/plugin-loader.test.ts",
-  "executableFixture": true
-}

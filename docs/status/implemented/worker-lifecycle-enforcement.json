@@ -1,5 +1,0 @@
-{
-  "id": "worker-lifecycle-enforcement",
-  "summary": "ADR 0065 enforces delegation lifetime and active state on authorize_worker, start_worker and report_worker, retires a worker after two non-billing failures, and archives the Agent when a worker is offboarded.",
-  "evidence": "src/runtime/organization-contract.ts"
-}

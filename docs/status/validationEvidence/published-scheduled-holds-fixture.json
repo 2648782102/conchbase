@@ -1,6 +1,0 @@
-{
-  "id": "published-scheduled-holds-fixture",
-  "summary": "Executable fixtures cover project-capacity holds, running capacity consumption, custom limits, deterministic read-only projection, and the published work-item heldBy field over HTTP.",
-  "evidence": "tests/work-hold-projection.test.ts",
-  "executableFixture": true
-}

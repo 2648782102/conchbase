@@ -1,5 +1,0 @@
-{
-  "id": "wire-conformance-fixture",
-  "summary": "A real-socket OpenAI Chat Completions fixture rejects any request body that is not wire-valid, closing the gap where fake fetch stubs let an internal message shape reach the wire.",
-  "evidence": "tests/wire-conformance.test.ts"
-}

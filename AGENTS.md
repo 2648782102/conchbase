@@ -1,31 +1,58 @@
-# Instructions for coding agents
+# Conchbase coding notes
 
-This project is built primarily by AI coding agents. Optimize architecture, documentation, and validation for agents to understand, change, and verify bounded tasks quickly. Human handoff is not a product requirement. Keep code explicit and legible; this principle is not permission for opaque code or speculative abstraction.
+Conchbase is the runtime for a personal Agent product. It owns model calls,
+Agent identity and revisions, task state, conversations, tools, permissions,
+durable events, and local persistence. Pagurus and the CLI are clients.
 
-Read `docs/AI_HANDOFF.md` first, then `docs/PROJECT_STATUS.json`, `docs/OBJECTIVE_MODE.zh-CN.md`, `docs/AI_DEVELOPMENT.md`, and the linked architecture, API, and technology documents. Treat the Git repository as the source of truth; do not rely on context from another chat.
+## Start here
 
-## Product invariants
+Read `docs/START_HERE.md`. It is the short, current guide for coding models.
+Then read `docs/PROJECT_PLAN.md` and the task-specific files named by that
+plan. Do not search for additional process documents before starting work.
 
-- Conchbase is the agent execution authority. CLI, Pagurus, IDEs, and other interfaces are clients.
-- The paired product direction is user-managed, independently customizable Agents through clients such as Pagurus. Conchbase owns stable Agent identities and versioned Agent definitions; Agent revisions must remain distinct from runtime-wide policy/capability configuration unless an ADR explicitly chooses otherwise. Each Agent-backed task must pin both applicable revisions. Clients must not create competing schemas.
-- Provider integrations are replaceable adapters. Magpie is one currently supported compatibility path, not the product's required provider or an Agent configuration dependency. Keep Agent model references and Runtime API contracts provider-neutral; provider credentials and provider-specific settings stay behind their adapter boundary.
-- This project is meant to own the agent loop. It is not only a memory/context overlay for another agent.
-- ADR 0022 accepts the product direction of durable, event-driven, topology-neutral work. ADR 0024 accepts the historical first durable-work slice. ADR 0025 accepts and implements the final local-first `1.0.0` platform: 47 paths, work contract version 2, `user_version = 3`, authenticated pairing, asynchronous work control, recovery, local Source policy, capability directory, and write-only SecretHandles. Sessions and single-turn Tasks remain implementation details; the existing `Task` resource is unchanged.
-- ADR 0025 implements write-only SecretHandles; ADR 0023 remains a historical proposal. Plaintext must never enter model context, prompts, task state, durable events, logs, errors, client responses, Agent revisions, or configuration documents. Only a runtime-owned, authorized adapter may inject a value into a fixed destination; never give a model or tool a generic value resolver.
-- Never execute a tool outside the runtime policy and approval path.
-- A Skill supplies instructions; it does not grant tool permissions.
-- Default loopback-only binding remains; non-loopback binding requires explicit approved pairing/authentication.
-- Do not let a UI read or write Conchbase's private files or database.
+## Product shape
 
-## Change discipline
+- Build for one person using a local runtime first.
+- Prefer a complete, understandable personal assistant over a generic
+  enterprise platform.
+- Keep the runtime authoritative. Clients must not read the private database
+  or implement a competing task, conversation, Agent, or permission model.
+- Keep provider details behind adapters. Magpie is the current compatibility
+  path, not the product identity.
+- Every model- or tool-supplied value is untrusted input. Validate, bound, and
+  normalize it before it changes durable state or reaches another boundary.
 
-- Distinguish implemented behavior from roadmap items. Do not describe planned features as present.
-- Keep API, configuration, and event contracts versioned; update `docs/openapi.yaml` when a current endpoint changes.
-- Record meaningful architectural choices in `docs/decisions/` and mark undecided choices as proposals.
-- Do not introduce real credentials, user data, external service calls, or machine-specific paths.
-- Before changing an unresolved decision in `docs/AI_HANDOFF.md`, surface the trade-off and record the decision.
-- Keep `tests/repository-guardrails.test.ts` passing; update it only alongside an accepted ADR or a documented development-boundary change.
-- Read `docs/PROJECT_STATUS.json` before selecting a task; `blockedDirections` are not implemented behavior and require an accepted ADR.
-- Read `src/runtime/work-contract.ts` and `src/runtime/work-store.ts` before changing durable-work state; do not add a canonical topology, secret resolver, external write, or second SQLite owner.
-- Run `npm run check`, `npm test`, and `npm run build` after code changes. CI runs all three commands.
+## Security essentials
 
+- Never put plaintext credentials in prompts, model messages, durable events,
+  logs, errors, client responses, browser state, or Agent definitions.
+- Never execute a tool without an explicit Runtime-owned capability decision.
+- Keep filesystem, subprocess, network, and external-write tools narrow,
+  bounded, observable, and disabled by default until their safety behavior is
+  covered by tests.
+- Bind local development to loopback by default. Treat remote access as a
+  separate product feature, not a quick configuration toggle.
+
+## Implementation habits
+
+- Make small vertical slices: contract, runtime, client, tests, docs.
+- Put validation at boundaries and keep domain logic independent of Fastify.
+- Preserve existing behavior unless the task explicitly changes it.
+- Prefer the smallest dependency that solves the problem.
+- Before editing, inspect `git status` and the owning modules. Do not erase
+  unrelated user work.
+- Update `docs/CURRENT_STATE.md` or `docs/PROJECT_PLAN.md` when behavior changes.
+
+## Verification
+
+Use Node.js 24 or newer. For runtime changes, normally run:
+
+```sh
+npm run check
+npm test
+npm run build
+```
+
+For documentation-only changes, run the focused documentation/guardrail test
+if dependencies are installed, then report that the full suite was not run.
+Never claim a check passed without running it.
