@@ -1046,7 +1046,7 @@ export class TaskService {
     iteration: number,
     toolId: string,
     args: Readonly<Record<string, string | number | boolean | null>>,
-    result: { readonly digest: string; readonly bytes: number },
+    result: { readonly digest: string; readonly bytes: number; readonly truncated?: boolean; readonly evidence?: { readonly facts: Readonly<Record<string, string | number | boolean>> } },
   ): void {
     this.recordLoopEvent(task, 'agent_loop.tool_executed', 'running', {
       iteration,
@@ -1055,6 +1055,10 @@ export class TaskService {
       argumentsDigest: digestArguments(args),
       resultDigest: result.digest,
       bytes: result.bytes,
+      // A model and a human can both use this: it says whether the tool
+      // returned a full result or a bounded slice, without dumping the body.
+      truncated: result.truncated ?? false,
+      evidenceFacts: result.evidence ? Object.keys(result.evidence.facts).length : 0,
     });
   }
 
