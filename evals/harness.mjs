@@ -34,6 +34,7 @@ const only = flag('task', '');
 const maxIterations = Number(flag('max-iterations', '40'));
 const deadlineMs = Number(flag('deadline-ms', '900000'));
 const taskTimeoutMs = Number(flag('task-timeout-ms', '900000'));
+const repeat = Math.max(1, Number(flag('repeat', '1')));
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -197,28 +198,45 @@ async function main() {
       if (!task?.id || typeof task.setup !== 'function' || typeof task.prompt !== 'string') {
         throw new Error(`${file} must export { id, prompt, setup(workspace), assert({ run, read }) }`);
       }
-      for (const relative of Object.keys(task.setup())) {
-        const target = path.join(workspace, relative);
-        mkdirSync(path.dirname(target), { recursive: true });
-        writeFileSync(target, task.setup()[relative]);
+      // pass^k: run the same task in an isolated workspace per repetition and
+      // report both the per-run outcomes and the aggregate reliability.
+      const repetitions = [];
+      const setupFiles = task.setup();
+      for (let rep = 0; rep < repeat; rep += 1) {
+        // The Runtime's workspace root is fixed at `workspace`; each repetition
+        // resets it to the fixture state so runs are independent.
+        for (const entry of readdirSync(workspace)) rmSync(path.join(workspace, entry), { recursive: true, force: true });
+        for (const relative of Object.keys(setupFiles)) {
+          const target = path.join(workspace, relative);
+          mkdirSync(path.dirname(target), { recursive: true });
+          writeFileSync(target, setupFiles[relative]);
+        }
+        const before = snapshotWorkspace(workspace);
+        const run = await runTask({ base: runtime.base, workspace, task });
+        const read = (relative) => {
+          const target = path.join(workspace, relative);
+          return existsSync(target) ? readFileSync(target, 'utf8') : null;
+        };
+        let verdict;
+        try {
+          const assertion = await task.assert({ run, read, before });
+          verdict = assertion === undefined ? { passed: true } : assertion;
+        } catch (cause) {
+          verdict = { passed: false, reason: cause instanceof Error ? cause.message : String(cause) };
+        }
+        repetitions.push({ rep, ...verdict, run });
       }
-      const before = snapshotWorkspace(workspace);
-      const run = await runTask({ base: runtime.base, workspace, task });
-      const read = (relative) => {
-        const target = path.join(workspace, relative);
-        return existsSync(target) ? readFileSync(target, 'utf8') : null;
+      const passedReps = repetitions.filter((item) => item.passed).length;
+      const verdict = {
+        passed: passedReps === repetitions.length,
+        passRate: `${passedReps}/${repetitions.length}`,
+        failures: repetitions.filter((item) => !item.passed).map((item) => `rep-${item.rep}: ${item.reason}`),
       };
-      let verdict;
-      try {
-        const assertion = await task.assert({ run, read, before });
-        verdict = assertion === undefined ? { passed: true } : assertion;
-      } catch (cause) {
-        verdict = { passed: false, reason: cause instanceof Error ? cause.message : String(cause) };
-      }
-      results.push({ task: task.id, model, ...verdict, run });
+      const lastRun = repetitions.at(-1)?.run;
+      results.push({ task: task.id, model, ...verdict, run: lastRun, repetitions });
       const status = verdict.passed ? 'PASS' : 'FAIL';
-      process.stdout.write(`${status}  ${task.id}  ${Math.round(run.elapsedMs / 1000)}s  turns=${run.turns} tools=${run.toolCalls}\n`);
-      if (!verdict.passed) process.stdout.write(`      ${verdict.reason}\n`);
+      process.stdout.write(`${status}  ${task.id}  pass^k=${verdict.passRate}  turns=${lastRun?.turns} tools=${lastRun?.toolCalls}\n`);
+      if (!verdict.passed) verdict.failures.forEach((failure) => process.stdout.write(`      ${failure}\n`));
     }
   } finally {
     runtime.child.kill('SIGTERM');

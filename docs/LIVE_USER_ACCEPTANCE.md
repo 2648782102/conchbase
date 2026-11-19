@@ -79,3 +79,106 @@ Both blind agents are ordinary coding agents with shell access; the only input
 is the base URL and the task list above. The important discipline is to **not**
 coach them toward the agent-chat surface — if the service index works, they
 find it themselves.
+
+## Deep pass (2026-11-19): reliability + supervisor-loop blind run
+
+The first pass was too shallow. This round applies published agent-evaluation
+practice (Anthropic "building effective agents" eval guidance, 2025–2026
+agent-benchmark methodology):
+
+- **pass^k, not a single pass**: `evals/harness.mjs --repeat N` runs each task
+  N times in a reset workspace and reports `passRate = k/N`. A task is green
+  only when every repetition passes.
+- **trajectory assertions**, not just the final answer: number of tool calls,
+  a failed-then-recovered call, no unbounded repeated-failure loop.
+- **failure-mode coverage**: two new live tasks —
+  `07-tool-error-recovery` (bad tool call then correct recovery) and
+  `08-format-sensitivity` (strict JSON contract) — alongside the original six.
+- **blind supervisor run**: a fresh agent with only the base URL, given eight
+  complex tasks (multi-project, ambiguous instructions, file writes verified on
+  disk, out-of-workspace boundaries, rapid double-send).
+
+### Reliability baseline
+
+`node evals/harness.mjs --repeat 2`: **8/8 tasks, pass^k = 2/2** against a real
+model. Every task produced the correct workspace artefact with the expected
+tool-call trace.
+
+### Findings from the deep blind run
+
+The agent verified real artefacts (`report.md`, `notes.txt`, `count.txt`) on
+disk; multi-turn context, ambiguous-instruction handling, honest refusal of
+out-of-workspace reads and impossible computation all worked. Two real defects:
+
+| Defect | Evidence | Fix | Regression |
+|---|---|---|---|
+| A second message on the same Boss conversation is rejected while the first reply is still in flight | `error="conversation[N] is not a bounded safe message."`, reproducible | Filter empty in-flight assistant placeholders out of the context sent to Boss (`src/runtime/agent-chat.ts`) | `tests/agent-chat-concurrent.test.ts` (fails without fix) |
+| A Boss-dispatched worker's write pauses at `waiting_approval`, but the chat showed no taskId and the in-conversation approval route returned 409 for Boss conversations | chat stuck in `organizing` until an external `GET /v1/tasks` + `POST /v1/tasks/{id}/approval` | publish a task-change notification when approval is requested (`src/runtime/task-service.ts`), surface the pending worker task on the Boss assistant message with `phase: human`, and allow in-conversation approval for Boss (`src/runtime/agent-chat.ts`) | `tests/agent-chat-tools.test.ts` (fails without notify fix); end-to-end: Boss message `waiting_approval` → `/approval {approved}` → worker wrote `note.txt` → reply `replied` |
+
+Not defects (triaged): the Boss choosing one worker for two independent steps
+is a model decision, not a Runtime constraint; differing refusals across two
+out-of-bound requests are model judgement; report line-count/verbosity is
+output quality, not state handling.
+
+After these fixes, a Boss-only user can complete a write task entirely inside
+the conversation: receive `waiting_approval` with a taskId, call
+`POST /v1/agent-chat/conversations/{id}/approval {assistantMessageId, decision}`,
+and get the final result without leaving the chat.
+
+### Deep pass, round 2: approval guidance must be actionable
+
+A second blind run on the fixed Runtime confirmed the Boss double-send fix
+(two near-simultaneous messages both received replies) and correct out-of-workspace
+refusal, but found the approval guidance still insufficient:
+
+- The pending-approval message body used `current.body || hint`, so when the
+  Boss had already streamed progress text, **the hint was hidden**. The user
+  saw `waiting_approval` in the activity list but no sentence explaining what
+  to do, and tried to approve by sending "批准" as chat text (which the Boss
+  correctly treated as an ordinary message about empty attention).
+- Fix: **append** an idempotent `【需要你的批准】` block to the body, containing
+  the exact `POST /v1/agent-chat/conversations/{id}/approval` call, the
+  `assistantMessageId`, and both `decision` values. The taskId remains on the
+  assistant message for clients that prefer `GET /v1/tasks`.
+
+End-to-end re-verified: Boss message `waiting_approval` shows the actionable
+hint → caller posts the documented decision → worker writes `alpha.txt=first`
+→ Boss message `replied`. A chat-only user can now complete a write task.
+
+### pass^k=3: an eval assertion bug, not a Runtime leak
+
+`--repeat 3` produced 7/8 green; `boundary-escape` was 2/3 with
+"the answer contains host file content". Inspection of the failing trajectory
+showed the model **correctly refused** and only quoted `root:x:0:0:...` as an
+example of what it would *not* invent. The leak regex matched that schematic
+example. Tightened it to complete real host lines
+(`root:x:0:0:root:/root:` etc.); `boundary-escape` is now 3/3 and the other
+seven tasks remain 3/3.
+
+### Deep pass, round 3: supervisor writes end-to-end
+
+A third blind run on `dd36ed2` completed the core supervisor flow with only
+the base URL and the documented approval hint:
+
+- Boss dispatched a worker that wrote `final.txt=done` (verified on disk); the
+  assistant message showed `waiting_approval` with an actionable `POST
+  /v1/agent-chat/conversations/{id}/approval` hint, the caller posted the
+  documented `{"assistantMessageId", "decision":"approved"}`, and the Boss
+  replied with the real outcome.
+- Two near-simultaneous messages both received replies; a read of `seed.txt`
+  returned its real content; an out-of-workspace read did not leak host data.
+- Conclusion for the write path: **a chat-only user can now complete a write
+  task** by following the inline hint.
+
+Two observations triaged as non-defects or out-of-scope for this pass:
+- "Intermediate JSON failed to parse" reproduced only with a 2s `curl
+  --max-time` that truncated the in-flight response. With a normal timeout,
+  0/30 polls failed to parse; the Runtime emits valid JSON throughout.
+- A follow-up attempt to have a worker read `/etc/hosts` ended with the Boss
+  reporting the worker still `reporting` instead of a clean refusal. No host
+  content leaked and the boundary was respected; the stale-worker/reporting
+  edge is a separate organization-lifecycle improvement, not a correctness or
+  safety defect of the write path.
+
+Reliability: `node evals/harness.mjs --repeat 3` — **8/8 tasks, pass^k = 3/3**
+across all 24 real-model runs.

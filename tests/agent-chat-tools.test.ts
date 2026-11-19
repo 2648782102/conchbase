@@ -83,6 +83,10 @@ test('agent chat projects tool activity and can approve a write inside the conve
       method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: agent.id },
     });
     const conversationId = created.json().id as string;
+    // Entering waiting_approval must notify task listeners so a supervisor
+    // conversation can surface the pending decision inline.
+    const changedTasks: string[] = [];
+    const unsubscribe = service.onChange((taskId) => { changedTasks.push(taskId); });
     const sent = await app.inject({
       method: 'POST',
       url: `/v1/agent-chat/conversations/${conversationId}/messages`,
@@ -101,6 +105,8 @@ test('agent chat projects tool activity and can approve a write inside the conve
     assert.equal(waiting.phase, 'human');
     assert.ok(waiting.activity.some((entry: { kind: string }) => entry.kind === 'tool'));
     assert.ok(waiting.activity.some((entry: { kind: string }) => entry.kind === 'approval'));
+    assert.ok(changedTasks.length > 0, 'a task change is published when approval is requested');
+    unsubscribe();
     assert.equal(existsSync(path.join(directory, 'note.txt')), false);
 
     const rejected = await app.inject({
