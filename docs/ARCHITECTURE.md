@@ -120,3 +120,25 @@ What this means day to day:
 Multi-process operation is intentionally not a supported feature yet. It would
 need a real lease, cross-process event bus, and conflict policy — a separate
 design, not a toggle.
+
+## Packaging choice (P6.1)
+
+The supported distribution target is the **documented local web process**: one
+`conchbase` binary/CLI plus `npm run dev` for the Pagurus console. A desktop
+wrapper (Electron/Tauri) is deliberately not built: it would add a second
+runtime, a large dependency, and a duplicate of the web console without making
+the assistant more reliable.
+
+Lifecycle verbs on top of that choice:
+
+| Command | Meaning |
+|---|---|
+| `conchbase serve` | foreground Runtime, the default |
+| `conchbase start` | detached Runtime with `runtime.pid` + `runtime.log` beside the database |
+| `conchbase status` | is something healthy answering on the configured port |
+| `conchbase logs [n]` | last n lines of the background log |
+| `conchbase stop` | SIGTERM, then SIGKILL after the timeout; clears the pid file |
+
+One pid file per database. Because the database is single-owner, `start` refuses
+when a live pid already holds that database — the same rule as a foreground
+`serve`.

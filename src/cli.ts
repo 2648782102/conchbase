@@ -37,6 +37,9 @@ Usage:
   conchbase retry <id>           Retry a terminal task directly
   conchbase diagnose             Check Node, paths, port, and provider connectivity
   conchbase status               Report whether a Runtime is up on the configured port
+  conchbase start                Start the Runtime in the background
+  conchbase stop                 Stop the background Runtime
+  conchbase logs [lines]         Show the background Runtime's recent log
   conchbase backup <path>        Write a consistent snapshot of the database
   conchbase verify-backup <path> Check a backup's tables, rows, and integrity
   conchbase export-project <id> <path>  Export one project to a JSON file
@@ -110,6 +113,31 @@ async function main(argv: readonly string[]): Promise<void> {
   const config = loadRuntimeConfig();
   if (!command || command === 'help' || command === '--help') {
     process.stdout.write(usage());
+    return;
+  }
+
+  if (command === 'start' || command === 'stop' || command === 'logs') {
+    const proc = await import('./runtime/runtime-process.js');
+    const paths = proc.runtimeProcessPaths(config.databasePath);
+    if (command === 'start') {
+      const started = proc.startBackground({
+        executable: process.execPath,
+        args: proc.buildServeArgs(process.argv[1] ?? 'dist/cli.js'),
+        cwd: process.cwd(),
+        env: process.env,
+        paths,
+      });
+      process.stdout.write(`started Runtime pid ${started.pid}\nlog: ${started.logFile}\n`);
+      return;
+    }
+    if (command === 'stop') {
+      const result = await proc.stopBackground({ paths });
+      process.stdout.write(`${result.detail}\n`);
+      process.exitCode = result.stopped ? 0 : 1;
+      return;
+    }
+    const lines = Number(args[0] ?? '50');
+    process.stdout.write(proc.tailLog(paths.logFile, Number.isInteger(lines) ? lines : 50));
     return;
   }
 

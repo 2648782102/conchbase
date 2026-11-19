@@ -31,9 +31,10 @@ Updated: 2026-11-19
 
 ## Important limitations
 
-- This is still a local personal product. It has no polished installer,
-  background service lifecycle, backup/restore workflow, or production remote
-  pairing experience.
+- This is still a local personal product. It has no polished installer or
+  production remote pairing experience. Background lifecycle is script-level
+  (`start`/`stop`/`status`/`logs`), not an OS service; backup/verify/rotation and
+  project export exist but there is no scheduled automatic backup.
 - SQLite has a single runtime owner. Multi-process operation and broad crash
   testing are not complete product features.
 - Magpie is the only fully exercised model gateway. A provider contract
