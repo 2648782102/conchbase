@@ -33,6 +33,61 @@ export function isSupportedProvider(id: string): boolean {
   return PROVIDERS.some((provider) => provider.id === id);
 }
 
+/** A resolved endpoint for one registered provider. */
+export interface ProviderEndpoint {
+  readonly id: string;
+  readonly baseUrl: string;
+  readonly appKey?: string;
+}
+
+export interface ProviderEndpointsConfig {
+  readonly magpieBaseUrl: string;
+  readonly magpieAppKey?: string;
+  /**
+   * Overrides for the non-default adapters. Only registered ids are accepted.
+   *
+   * Kept optional so a checkout with only Magpie configured behaves exactly as
+   * before: a provider with no endpoint is simply not reachable, and the
+   * registry says so instead of quietly borrowing Magpie's URL.
+   */
+  readonly providers?: Readonly<Record<string, { readonly baseUrl: string; readonly appKey?: string }>>;
+}
+
+/**
+ * The base URL and credential a provider id actually resolves to.
+ *
+ * This is the only place that maps a provider identity to a network endpoint.
+ * Returning `undefined` for an unconfigured provider is deliberate: callers
+ * must fail with a clear message rather than fall back to another gateway.
+ */
+export function resolveProviderEndpoint(
+  id: string,
+  config: ProviderEndpointsConfig,
+): ProviderEndpoint | undefined {
+  if (!isSupportedProvider(id)) return undefined;
+  if (id === defaultProviderId()) {
+    return Object.freeze({
+      id,
+      baseUrl: config.magpieBaseUrl,
+      ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
+    });
+  }
+  const override = config.providers?.[id];
+  if (!override) return undefined;
+  return Object.freeze({
+    id,
+    baseUrl: override.baseUrl,
+    ...(override.appKey ? { appKey: override.appKey } : {}),
+  });
+}
+
+/** One line a caller can show when a provider was registered but never configured. */
+export function unconfiguredProviderMessage(id: string): string {
+  const defaultId = defaultProviderId();
+  return `Provider '${id}' is registered but has no endpoint configured. `
+    + `Set its base URL, or use '${defaultId}'.`;
+}
+
 /** Message used by callers that reject an unknown provider. */
 export function unsupportedProviderMessage(id: string): string {
   const known = PROVIDERS.map((provider) => provider.id).join(', ');

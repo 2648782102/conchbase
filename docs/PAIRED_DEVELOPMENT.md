@@ -19,6 +19,20 @@ both, land and validate the Runtime contract first, then update Pagurus.
 - A local Magpie gateway for real model calls (`CONCHBASE_MAGPIE_URL`,
   default `http://127.0.0.1:3425`). Tests and paired fixtures never need it.
 
+### A second model provider
+
+`openai-compatible` is registered but deliberately not configured by default.
+Point it at its own loopback gateway with:
+
+```sh
+CONCHBASE_PROVIDER_ENDPOINTS='{"openai-compatible":{"baseUrl":"http://127.0.0.1:8123","appKey":"..."}}'
+```
+
+Each provider then publishes its own models as `<providerId>:<modelId>` and its
+requests carry that provider's own credential; nothing falls back to Magpie.
+Naming a provider with no endpoint fails with a clear error instead of quietly
+using another gateway. Ids must be registered and URLs must be loopback.
+
 ## Ports and databases
 
 Ports and SQLite paths are derived from the checkout, so parallel worktrees do

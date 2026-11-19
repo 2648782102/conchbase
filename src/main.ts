@@ -36,6 +36,7 @@ const toolRuntime = await createToolRuntime({
 const taskService = createTaskService(config.databasePath, {
   magpieBaseUrl: config.magpieBaseUrl,
   ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
+  ...(config.providerEndpoints ? { providers: config.providerEndpoints } : {}),
   defaultModel: config.defaultModel,
   executionMode: config.executionMode,
   loopBudget: config.loopBudget,

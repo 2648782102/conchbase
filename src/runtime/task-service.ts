@@ -21,7 +21,15 @@ import { OpenAiChatCompletionsProvider } from './magpie-provider.js';
 import { ReadResultCache } from './read-result-cache.js';
 import { resolveTaskCapabilities, type TaskCapabilities } from './task-capabilities.js';
 import { requiresApproval } from './tool-gate.js';
-import { isSupportedProvider, unsupportedProviderMessage } from './provider-registry.js';
+import {
+  defaultProviderId,
+  isSupportedProvider,
+  listProviders,
+  resolveProviderEndpoint,
+  unconfiguredProviderMessage,
+  unsupportedProviderMessage,
+  type ProviderEndpoint,
+} from './provider-registry.js';
 import { drainToolCalls as drainToolCallsImpl, type AgentLoopToolContext } from './agent-loop-tools.js';
 import { digestArguments } from './tool-arguments.js';
 import { buildToolRequestPreview } from './tool-request-preview.js';
@@ -74,6 +82,11 @@ import type { ProviderToolCall } from './model-adapter.js';
 export interface TaskServiceConfig {
   readonly magpieBaseUrl: string;
   readonly magpieAppKey?: string;
+  /**
+   * Endpoints for the non-default providers. A provider listed in the registry
+   * without an entry here is not reachable; it must not silently reuse Magpie.
+   */
+  readonly providers?: Readonly<Record<string, { readonly baseUrl: string; readonly appKey?: string }>>;
   readonly defaultModel: string;
   readonly fetch?: typeof globalThis.fetch;
   /**
@@ -698,15 +711,81 @@ export class TaskService {
     return this.catalog.listModels(fetchImpl);
   }
 
+  /** The endpoint configuration this Runtime was started with. */
+  private get endpointConfig() {
+    return {
+      magpieBaseUrl: this.config.magpieBaseUrl,
+      ...(this.config.magpieAppKey ? { magpieAppKey: this.config.magpieAppKey } : {}),
+      ...(this.config.providers ? { providers: this.config.providers } : {}),
+    };
+  }
+
+  /** The resolved endpoint for a provider id, or `undefined` when unconfigured. */
+  private endpointFor(providerId: string): ProviderEndpoint | undefined {
+    return resolveProviderEndpoint(providerId, this.endpointConfig);
+  }
+
+  /**
+   * The endpoint a provider id resolves to, or a clear failure.
+   *
+   * A provider may be registered before an operator configures it. Returning
+   * Magpie's URL in that case would look like the provider worked while every
+   * call went somewhere else, so an unconfigured provider is an error.
+   */
+  private providerEndpoint(providerId: string | undefined): ProviderEndpoint {
+    const id = providerId ?? defaultProviderId();
+    if (!isSupportedProvider(id)) throw new Error(unsupportedProviderMessage(id));
+    const endpoint = this.endpointFor(id);
+    if (!endpoint) throw new Error(unconfiguredProviderMessage(id));
+    return endpoint;
+  }
+
+  private providerCatalog(providerId: string | undefined, fetchImpl?: typeof globalThis.fetch): MagpieModelCatalog {
+    const endpoint = this.providerEndpoint(providerId);
+    const fetch = fetchImpl ?? this.config.fetch;
+    return new MagpieModelCatalog({
+      baseUrl: endpoint.baseUrl,
+      ...(endpoint.appKey ? { appKey: endpoint.appKey } : {}),
+      ...(fetch ? { fetch } : {}),
+    });
+  }
+
+  /** The chat adapter bound to the task's pinned provider, never a fallback. */
+  private taskProvider(task: TaskSnapshot): OpenAiChatCompletionsProvider {
+    const endpoint = this.providerEndpoint(task.providerId);
+    return new OpenAiChatCompletionsProvider({
+      baseUrl: endpoint.baseUrl,
+      model: task.modelId ?? task.model,
+      ...(endpoint.appKey ? { appKey: endpoint.appKey } : {}),
+      // Only the Magpie adapter owns Magpie's key format. A generic
+      // OpenAI-compatible endpoint must accept its own credential.
+      appKeyFormat: endpoint.id === defaultProviderId() ? 'magpie' : 'opaque',
+      ...(this.config.fetch ? { fetch: this.config.fetch } : {}),
+    });
+  }
+
   async listProviderModels(fetchImpl?: typeof globalThis.fetch): Promise<readonly ProviderModelCatalogEntry[]> {
-    const models = await this.catalog.listModels(fetchImpl);
-    return Object.freeze(models.map((model) => Object.freeze({
-      providerId: 'magpie',
-      modelId: model.id,
-      reference: `magpie:${model.id}`,
-      displayName: model.displayName,
-      capabilities: Object.freeze(['chat', 'streaming-output']),
-    })));
+    // Every provider with an endpoint publishes its own catalog. An
+    // unconfigured provider contributes nothing rather than a copy of another
+    // gateway's models.
+    const configured = listProviders()
+      .map((provider) => provider.id)
+      .filter((id) => this.endpointFor(id) !== undefined);
+    const perProvider = await Promise.all(configured.map(async (providerId) => {
+      // An injected catalog is the default provider's catalog: tests and
+      // embedded callers depend on it. Other providers resolve their own.
+      const models = providerId === defaultProviderId() && this.catalog !== undefined
+        ? await this.catalog.listModels(fetchImpl)
+        : await this.providerCatalog(providerId, fetchImpl).listModels(fetchImpl);
+      return models.map((model) => Object.freeze({
+        providerId,
+        modelId: model.id,
+        reference: `${providerId}:${model.id}`,
+        displayName: model.displayName,
+        capabilities: Object.freeze(['chat', 'streaming-output']),
+      }));
+    }));
+    return Object.freeze(perProvider.flat());
   }
 
   async validateAgentProfile(input: unknown): Promise<AgentProfileInput> {
@@ -719,9 +798,14 @@ export class TaskService {
     if (!isSupportedProvider(reference.providerId)) {
       throw new AgentValidationError(unsupportedProviderMessage(reference.providerId));
     }
+    if (!this.endpointFor(reference.providerId)) {
+      throw new AgentValidationError(unconfiguredProviderMessage(reference.providerId));
+    }
     let models: readonly ModelCatalogEntry[];
     try {
-      models = await this.listModels();
+      models = reference.providerId === defaultProviderId()
+        ? await this.listModels()
+        : await this.providerCatalog(reference.providerId).listModels();
     } catch {
       throw new AgentValidationError('Model catalog is unavailable.');
     }
@@ -854,12 +938,7 @@ export class TaskService {
       );
       return;
     }
-    const provider = new OpenAiChatCompletionsProvider({
-      baseUrl: this.config.magpieBaseUrl,
-      model: task.modelId ?? task.model,
-      ...(this.config.magpieAppKey ? { appKey: this.config.magpieAppKey } : {}),
-      ...(this.config.fetch ? { fetch: this.config.fetch } : {}),
-    });
+    const provider = this.taskProvider(task);
 
     const instructions = task.agentId
       ? this.store.getAgentRevision(task.agentId, task.agentRevisionId!)?.instructions ?? ''
@@ -903,12 +982,7 @@ export class TaskService {
     signal: AbortSignal,
     capabilities: TaskCapabilities = this.taskCapabilities(task),
   ): Promise<void> {
-    const provider = new OpenAiChatCompletionsProvider({
-      baseUrl: this.config.magpieBaseUrl,
-      model: task.modelId ?? task.model,
-      ...(this.config.magpieAppKey ? { appKey: this.config.magpieAppKey } : {}),
-      ...(this.config.fetch ? { fetch: this.config.fetch } : {}),
-    });
+    const provider = this.taskProvider(task);
     const tools = capabilities.tools;
     const maxIterations = this.loopBudget.maxIterations;
     const deadline = Date.now() + this.loopBudget.deadlineMs;
@@ -1163,12 +1237,7 @@ export class TaskService {
     if (task.providerId !== undefined && !isSupportedProvider(task.providerId)) {
       throw new Error(unsupportedProviderMessage(task.providerId));
     }
-    const provider = new OpenAiChatCompletionsProvider({
-      baseUrl: this.config.magpieBaseUrl,
-      model: task.modelId ?? task.model,
-      ...(this.config.magpieAppKey ? { appKey: this.config.magpieAppKey } : {}),
-      ...(this.config.fetch ? { fetch: this.config.fetch } : {}),
-    });
+    const provider = this.taskProvider(task);
     let partialOutput = '';
     let deltaIndex = 0;
     // A single-turn task must honour the loop deadline too; otherwise one hung

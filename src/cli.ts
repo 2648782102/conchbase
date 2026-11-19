@@ -174,6 +174,7 @@ async function main(argv: readonly string[]): Promise<void> {
     const service = createTaskService(config.databasePath, {
       magpieBaseUrl: config.magpieBaseUrl,
       ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
+      ...(config.providerEndpoints ? { providers: config.providerEndpoints } : {}),
       defaultModel: config.defaultModel,
       executionMode: config.executionMode,
       loopBudget: config.loopBudget,
@@ -255,6 +256,7 @@ async function main(argv: readonly string[]): Promise<void> {
   const service = createTaskService(config.databasePath, {
     magpieBaseUrl: config.magpieBaseUrl,
     ...(config.magpieAppKey ? { magpieAppKey: config.magpieAppKey } : {}),
+    ...(config.providerEndpoints ? { providers: config.providerEndpoints } : {}),
     defaultModel: config.defaultModel,
     executionMode: config.executionMode,
     loopBudget: config.loopBudget,

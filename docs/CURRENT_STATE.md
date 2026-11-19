@@ -39,10 +39,12 @@ Updated: 2026-11-19
   project export exist but there is no scheduled automatic backup.
 - SQLite has a single runtime owner. Multi-process operation and broad crash
   testing are not complete product features.
-- Magpie is the only fully exercised model gateway. A provider contract
-  (`model-provider.ts`), a provider registry, error classification, capability
-  metadata, and a deterministic fake provider exist; a second real adapter still
-  needs live contract tests.
+- Magpie is the only gateway exercised against a real service. A provider
+  contract (`model-provider.ts`), registry, error classification, capability
+  metadata, and a deterministic fake provider exist. `openai-compatible` is a
+  real, separately routable adapter (own base URL, credential, and model
+  catalog) configured through `CONCHBASE_PROVIDER_ENDPOINTS`; it still needs a
+  live contract run against an actual endpoint.
 - External side effects are intentionally narrow. Do not assume that a
   capability record or approval record means arbitrary host execution is safe.
 - Pagurus is feature-rich but still exposes too many operator-oriented screens

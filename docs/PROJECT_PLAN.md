@@ -280,8 +280,9 @@ coding model does not redo finished work.
   `provider-registry.ts` is the one place provider ids live; failures are
   classified into provider kinds with retryability; a deterministic
   `FakeProvider` exists; the catalog publishes capability metadata and
-  `diagnose` shows gateway latency/model count. A second real adapter still
-  needs live contract tests (Magpie is the only exercised gateway).
+  `diagnose` shows gateway latency/model count. `openai-compatible` now routes
+  to its own endpoint and credential, verified against a local fixture
+  gateway; only a run against a live third-party service is outstanding.
 - **Phase 3 — done.** Read tools are bounded (depth, time, UTF-8-safe
   truncation, evidence); writes require explicit overwrite and report evidence;
   approvals name tool/target/risk; capability presets exist; untrusted-output
@@ -313,12 +314,20 @@ coding model does not redo finished work.
 
 ## Current next task
 
-Phases 0–6 are complete. The next executable slice is closing the remaining
-Pagurus gap for approvals: the Runtime now publishes the pending change and its
-bounded preview on the `waiting_approval` message, and the console renders that
-as one decision card. Keep the next slice small: pick one Phase 7 integration
-only after naming its owner, credential boundary, and disable path, or take a
-focused hardening item from `CURRENT_STATE.md`.
+Phases 0–6 are complete. The approval slice is done on both sides: the Runtime
+publishes the pending change and its bounded preview on the `waiting_approval`
+message, and Pagurus renders it as one decision card.
+
+`P2.5` is now real rather than nominal: `openai-compatible` resolves its own
+base URL, credential, and model catalog through
+`CONCHBASE_PROVIDER_ENDPOINTS`, never falls back to Magpie, and fails clearly
+when unconfigured (`tests/provider-routing.test.ts`). What remains is a live
+run against an actual endpoint; the adapter has only been exercised against a
+local fixture gateway.
+
+The next slice is that live contract check, or one focused hardening item from
+`CURRENT_STATE.md`. Pick a Phase 7 integration only after naming its owner,
+credential boundary, and disable path.
 
 Everything in Phases 0–6 that belongs to the Runtime is implemented and covered
 by `npm test`; `npm run smoke` is the end-to-end check a fresh checkout should

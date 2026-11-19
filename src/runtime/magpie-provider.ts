@@ -37,6 +37,16 @@ export interface MagpieProviderConfig {
   readonly baseUrl: string;
   readonly model: string;
   readonly appKey?: string;
+  /**
+   * How strictly `appKey` is validated.
+   *
+   * Magpie issues keys of the form `magpie-…`, so its adapter rejects anything
+   * else as an obvious misconfiguration. The same wire implementation serves a
+   * plain OpenAI-compatible endpoint, whose keys have no such prefix. Defaulting
+   * to the strict rule keeps the Magpie path unchanged; a second adapter opts
+   * out instead of failing with a message about a product it does not use.
+   */
+  readonly appKeyFormat?: 'magpie' | 'opaque';
   readonly timeoutMs?: number;
   readonly fetch?: typeof globalThis.fetch;
 }
@@ -159,8 +169,13 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
     if (config.model.trim().length === 0) {
       throw new ModelProviderError('Model id must not be empty.');
     }
-    if (config.appKey !== undefined && !/^magpie-[a-zA-Z0-9_-]+$/.test(config.appKey)) {
+    if (config.appKey !== undefined
+      && (config.appKeyFormat ?? 'magpie') === 'magpie'
+      && !/^magpie-[a-zA-Z0-9_-]+$/.test(config.appKey)) {
       throw new ModelProviderError('Magpie app key has an invalid format.');
+    }
+    if (config.appKey !== undefined && config.appKey.length === 0) {
+      throw new ModelProviderError('Provider credential must not be empty.');
     }
     this.endpoint = `${normalizeBaseUrl(config.baseUrl)}/chat/completions`;
     this.model = config.model;

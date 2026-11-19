@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { isSupportedProvider } from '../runtime/provider-registry.js';
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 const LOOPBACK_URL_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
@@ -34,12 +35,83 @@ function boundedInteger(
   return value;
 }
 
+/** Validates a loopback URL used to reach a local model gateway. */
+function requireLoopbackUrl(raw: string, name: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error(`${name} must be a loopback HTTP URL.`);
+  }
+  if (
+    (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')
+    || !LOOPBACK_URL_HOSTS.has(parsed.hostname.replace(/^\[|\]$/g, ''))
+    || parsed.username !== ''
+    || parsed.password !== ''
+  ) {
+    throw new Error(`${name} must be a loopback HTTP URL.`);
+  }
+  return raw;
+}
+
+/**
+ * Reads `CONCHBASE_PROVIDER_ENDPOINTS` — a JSON object of provider id to
+ * `{ baseUrl, appKey? }`.
+ *
+ * Ids must already be registered, so a typo cannot create a phantom provider
+ * that silently never receives traffic. Every URL must be loopback for the same
+ * reason Magpie's must be: this product does not yet support remote gateways.
+ */
+function parseProviderEndpoints(
+  env: NodeJS.ProcessEnv,
+): Readonly<Record<string, { readonly baseUrl: string; readonly appKey?: string }>> | undefined {
+  const raw = env.CONCHBASE_PROVIDER_ENDPOINTS;
+  if (raw === undefined || raw.trim().length === 0) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('CONCHBASE_PROVIDER_ENDPOINTS must be a JSON object.');
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error('CONCHBASE_PROVIDER_ENDPOINTS must be a JSON object.');
+  }
+  const entries: Record<string, { readonly baseUrl: string; readonly appKey?: string }> = {};
+  for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
+    if (!isSupportedProvider(id)) {
+      throw new Error(`CONCHBASE_PROVIDER_ENDPOINTS names an unsupported provider '${id}'.`);
+    }
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      throw new Error(`CONCHBASE_PROVIDER_ENDPOINTS['${id}'] must be an object.`);
+    }
+    const record = value as Record<string, unknown>;
+    if (typeof record.baseUrl !== 'string' || record.baseUrl.length === 0) {
+      throw new Error(`CONCHBASE_PROVIDER_ENDPOINTS['${id}'].baseUrl is required.`);
+    }
+    if (record.appKey !== undefined && (typeof record.appKey !== 'string' || record.appKey.length === 0)) {
+      throw new Error(`CONCHBASE_PROVIDER_ENDPOINTS['${id}'].appKey must be a non-empty string.`);
+    }
+    entries[id] = Object.freeze({
+      baseUrl: requireLoopbackUrl(record.baseUrl, `CONCHBASE_PROVIDER_ENDPOINTS['${id}'].baseUrl`),
+      ...(typeof record.appKey === 'string' ? { appKey: record.appKey } : {}),
+    });
+  }
+  return Object.freeze(entries);
+}
+
 export interface RuntimeConfig {
   host: string;
   port: number;
   databasePath: string;
   magpieBaseUrl: string;
   magpieAppKey?: string;
+  /**
+   * Endpoints for registered non-default providers, keyed by provider id.
+   *
+   * Absent means the provider is registered but not reachable: the Runtime
+   * reports that clearly rather than routing it to Magpie.
+   */
+  providerEndpoints?: Readonly<Record<string, { readonly baseUrl: string; readonly appKey?: string }>>;
   defaultModel: string;
   organizationIntentModel?: string;
   bossModel?: string;
@@ -96,26 +168,17 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     throw new Error('CONCHBASE_PORT must be an integer between 1 and 65535.');
   }
 
-  const magpieBaseUrl = env.CONCHBASE_MAGPIE_URL ?? 'http://127.0.0.1:3425';
-  let parsedMagpieUrl: URL;
-  try {
-    parsedMagpieUrl = new URL(magpieBaseUrl);
-  } catch {
-    throw new Error('CONCHBASE_MAGPIE_URL must be a loopback HTTP URL.');
-  }
-  if (
-    parsedMagpieUrl.protocol !== 'http:'
-    || !LOOPBACK_URL_HOSTS.has(parsedMagpieUrl.hostname.replace(/^\[|\]$/g, ''))
-    || parsedMagpieUrl.username !== ''
-    || parsedMagpieUrl.password !== ''
-  ) {
-    throw new Error('CONCHBASE_MAGPIE_URL must be a loopback HTTP URL.');
-  }
+  const magpieBaseUrl = requireLoopbackUrl(
+    env.CONCHBASE_MAGPIE_URL ?? 'http://127.0.0.1:3425',
+    'CONCHBASE_MAGPIE_URL',
+  );
 
   const magpieAppKey = env.CONCHBASE_MAGPIE_APP_KEY;
   if (magpieAppKey !== undefined && !/^magpie-[a-zA-Z0-9_-]+$/.test(magpieAppKey)) {
     throw new Error('CONCHBASE_MAGPIE_APP_KEY has an invalid format.');
   }
+
+  const providerEndpoints = parseProviderEndpoints(env);
   const executionModeValue = env.CONCHBASE_EXECUTION_MODE ?? 'restricted';
   if (!EXECUTION_MODES.includes(executionModeValue as ExecutionMode)) {
     throw new Error('CONCHBASE_EXECUTION_MODE must be restricted or unrestricted.');
@@ -176,6 +239,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     databasePath: env.CONCHBASE_DB ?? '.conchbase/runtime.sqlite',
     magpieBaseUrl,
     ...(magpieAppKey ? { magpieAppKey } : {}),
+    ...(providerEndpoints ? { providerEndpoints } : {}),
     defaultModel: env.CONCHBASE_MODEL ?? 'workbuddy/blind-model-h',
     ...(env.CONCHBASE_ORGANIZATION_INTENT_MODEL
       ? { organizationIntentModel: env.CONCHBASE_ORGANIZATION_INTENT_MODEL }
