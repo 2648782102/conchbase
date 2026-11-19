@@ -30,6 +30,7 @@ import { buildBossOrganizationFacts, runtimeCapabilityFacts } from './boss-organ
 import { containsSecretLike } from './secret-filter.js';
 import { MEMORY_LIMITS, renderMemoryIndex, type AgentMemoryInput, type AgentMemoryStore } from './agent-memory.js';
 import type { MemoryReviewInput, MemoryReviewResult } from './memory-review.js';
+import { defaultProviderId } from './provider-registry.js';
 import { BossMemory } from './boss-memory.js';
 import { restoreWorkerExecutions, type WorkerExecutionRecord } from './worker-execution-restore.js';
 import { composeOutcomeReply, type WorkerOutcome } from './worker-outcome-report.js';
@@ -56,7 +57,7 @@ export const BOSS_MODE_SERVICE_VERSION = 2;
  * compatibility adapter; when a second adapter is accepted this becomes an
  * explicit configuration value rather than a literal.
  */
-export const BOSS_UPSTREAM_PROVIDER_ID = 'magpie';
+export const BOSS_UPSTREAM_PROVIDER_ID = defaultProviderId();
 
 export interface BossModeExecution {
   readonly action: OrganizationAction;

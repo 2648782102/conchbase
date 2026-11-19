@@ -21,6 +21,7 @@ import { OpenAiChatCompletionsProvider } from './magpie-provider.js';
 import { ReadResultCache } from './read-result-cache.js';
 import { resolveTaskCapabilities, type TaskCapabilities } from './task-capabilities.js';
 import { requiresApproval } from './tool-gate.js';
+import { isSupportedProvider, unsupportedProviderMessage } from './provider-registry.js';
 import { drainToolCalls as drainToolCallsImpl, type AgentLoopToolContext } from './agent-loop-tools.js';
 import { digestArguments } from './tool-arguments.js';
 import { projectSkills, projectToolProvider } from './capability-grants.js';
@@ -694,8 +695,8 @@ export class TaskService {
   }
 
   async validateModelReference(reference: ModelReference): Promise<void> {
-    if (reference.providerId !== 'magpie') {
-      throw new AgentValidationError(`Provider '${reference.providerId}' is not available in this runtime.`);
+    if (!isSupportedProvider(reference.providerId)) {
+      throw new AgentValidationError(unsupportedProviderMessage(reference.providerId));
     }
     let models: readonly ModelCatalogEntry[];
     try {
@@ -817,8 +818,8 @@ export class TaskService {
   }
 
   private async executeAgentLoop(task: TaskSnapshot, signal: AbortSignal): Promise<void> {
-    if (task.providerId !== undefined && task.providerId !== 'magpie') {
-      throw new Error(`Model provider '${task.providerId}' is not available in this runtime.`);
+    if (task.providerId !== undefined && !isSupportedProvider(task.providerId)) {
+      throw new Error(unsupportedProviderMessage(task.providerId));
     }
     const continuation = parseLoopContinuation(this.store.getLoopState(task.id));
     if (continuation) {
@@ -1104,8 +1105,8 @@ export class TaskService {
   }
 
   private async executeSingleTurn(task: TaskSnapshot, signal: AbortSignal): Promise<void> {
-    if (task.providerId !== undefined && task.providerId !== 'magpie') {
-      throw new Error(`Model provider '${task.providerId}' is not available in this runtime.`);
+    if (task.providerId !== undefined && !isSupportedProvider(task.providerId)) {
+      throw new Error(unsupportedProviderMessage(task.providerId));
     }
     const provider = new OpenAiChatCompletionsProvider({
       baseUrl: this.config.magpieBaseUrl,
