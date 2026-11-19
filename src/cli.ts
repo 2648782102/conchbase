@@ -36,6 +36,7 @@ Usage:
   conchbase events [cursor]      Show events after an optional event ID
   conchbase retry <id>           Retry a terminal task directly
   conchbase diagnose             Check Node, paths, port, and provider connectivity
+  conchbase status               Report whether a Runtime is up on the configured port
   conchbase backup <path>        Write a consistent snapshot of the database
   conchbase verify-backup <path> Check a backup's tables, rows, and integrity
   conchbase export-project <id> <path>  Export one project to a JSON file
@@ -109,6 +110,15 @@ async function main(argv: readonly string[]): Promise<void> {
   const config = loadRuntimeConfig();
   if (!command || command === 'help' || command === '--help') {
     process.stdout.write(usage());
+    return;
+  }
+
+  if (command === 'status') {
+    const { probeRuntimeStatus, formatRuntimeStatus } = await import('./runtime/runtime-probe.js');
+    const baseUrl = `http://${config.host}:${config.port}`;
+    const status = await probeRuntimeStatus({ baseUrl });
+    process.stdout.write(formatRuntimeStatus(status));
+    process.exitCode = status.healthy ? 0 : 1;
     return;
   }
 

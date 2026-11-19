@@ -258,8 +258,56 @@ Do not: change unrelated behavior, expose secrets, or invent a second schema.
 Report: changed files, checks, failures, and remaining risks.
 ```
 
+## Progress
+
+Phases 0–4 are implemented in the Runtime and guarded by tests. The plan below
+stays as the reference for what each task meant; this section records state so a
+coding model does not redo finished work.
+
+- **Phase 0 — done.** Node 24 is enforced at both entry points (`.nvmrc`,
+  `assertSupportedNode`); `docs/PAIRED_DEVELOPMENT.md` covers ports and shared
+  failures; `conchbase diagnose` checks Node/paths/port/gateway/console;
+  `npm run smoke` is the one-command end-to-end check; obsolete process
+  documents stay gone (guardrail test).
+- **Phase 1 — done.** State machines are documented and table-driven
+  (`tests/task-state-machine.test.ts`); cancellation/retry/timeout races are
+  covered (`tests/task-race.test.ts`, which also found and fixed an unbounded
+  single-turn deadline); event replay is gap-free and cursor-stable; backup and
+  verify-backup exist; legacy databases upgrade in place; the single-process
+  model is documented with an actionable owner error; errors are categorized and
+  request logs exclude prompts.
+- **Phase 2 — done.** `model-provider.ts` defines the provider contract;
+  `provider-registry.ts` is the one place provider ids live; failures are
+  classified into provider kinds with retryability; a deterministic
+  `FakeProvider` exists; the catalog publishes capability metadata and
+  `diagnose` shows gateway latency/model count. A second real adapter still
+  needs live contract tests (Magpie is the only exercised gateway).
+- **Phase 3 — done.** Read tools are bounded (depth, time, UTF-8-safe
+  truncation, evidence); writes require explicit overwrite and report evidence;
+  approvals name tool/target/risk; capability presets exist; untrusted-output
+  fixtures cover prompt injection, oversized output, symlink escape, and match
+  caps; the tool set deliberately has no arbitrary shell — only fixed read-only
+  git commands.
+- **Phase 4 — done.** Memory entries are typed (preference/project-fact/
+  instruction/decision/temporary) with an in-place migration; the injected index
+  is ranked and bounded by a character budget; promotion rules (scope existence,
+  reviewer confirmation for global facts, secret/size rejection) are tested; a
+  project lifecycle view and portable project export exist.
+- **Phase 5 — client work, largely Pagurus-side.** The Agent surface is the
+  default entry and already shows connecting/connected/disconnected with a
+  Runtime error message. Remaining items (first-run wizard, merged activity
+  timeline, small-screen/keyboard polish, copyable support bundle) belong to the
+  Pagurus session; the Runtime already exposes what they need.
+- **Phase 6 — local operations, partially done.** `diagnose`, `smoke`, `backup`,
+  `verify-backup`, and `export-project` cover the operator's first needs.
+  Remaining: packaging target choice, start/stop/status/log verbs, automatic
+  backup rotation, upgrade/rollback guidance, and soak tests.
+- **Phase 7 — not started.** Each integration needs its own vertical slice with
+  ownership, credentials, rate limits, failure recovery, audit evidence, and a
+  disable path. Start only after Phase 6.
+
 ## Current next task
 
-Start with `P0.1`, then complete Phase 0 in order. After each task, update
-`CURRENT_STATE.md` only if the actual product changed. Move to Phase 1 when a
-fresh checkout can reliably run the documented smoke test.
+Pick the next Phase 6 task that the product needs most. Packaging (`P6.1`) is
+the gate: choose one target (desktop wrapper, background service, or documented
+local web process) before adding start/stop verbs.
