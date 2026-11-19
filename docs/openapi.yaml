@@ -3529,6 +3529,35 @@ components:
           oneOf:
             - $ref: '#/components/schemas/ToolRequestApproval'
             - type: 'null'
+        preview:
+          $ref: '#/components/schemas/ToolRequestPreview'
+    ToolRequestPreview:
+      description: >-
+        Bounded, renderable summary of a pending write, computed at request time
+        and absent for read tools, unsafe paths, or decided requests. Safe to
+        display: the target is workspace-relative, the diff is bounded, and
+        secret-like content is withheld.
+      type: object
+      additionalProperties: false
+      required: [targetLabel, effect, reversible, summary]
+      properties:
+        targetLabel:
+          type: string
+          maxLength: 200
+        effect:
+          type: string
+          enum: [create, modify, delete]
+        reversible:
+          type: boolean
+        summary:
+          type: string
+          maxLength: 240
+        diff:
+          type: string
+          maxLength: 2100
+        riskNote:
+          type: string
+          maxLength: 240
     ToolRequestEnvelope:
       type: object
       additionalProperties: false

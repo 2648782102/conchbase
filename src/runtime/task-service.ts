@@ -24,6 +24,7 @@ import { requiresApproval } from './tool-gate.js';
 import { isSupportedProvider, unsupportedProviderMessage } from './provider-registry.js';
 import { drainToolCalls as drainToolCallsImpl, type AgentLoopToolContext } from './agent-loop-tools.js';
 import { digestArguments } from './tool-arguments.js';
+import { buildToolRequestPreview } from './tool-request-preview.js';
 import { projectSkills, projectToolProvider } from './capability-grants.js';
 import type { ExecutionMode, LoopBudget } from '../config/runtime-config.js';
 import {
@@ -191,6 +192,12 @@ export class TaskService {
   private readonly loopOptions: AgentLoopOptions;
   private readonly effortByTaskId = new Map<string, 'low' | 'medium' | 'high'>();
   private readonly sliceBudgetByTaskId = new Map<string, number>();
+  /**
+   * Bounded, renderable previews computed when a tool request is created.
+   * Never persisted: the arguments exist only at request time, and a preview is
+   * derived data that must not drift from (or leak into) durable state.
+   */
+  private readonly toolRequestPreviews = new Map<string, import('./tool-request-preview.js').ToolRequestPreview>();
   private readonly readResults = new ReadResultCache();
 
   constructor(
@@ -329,13 +336,27 @@ export class TaskService {
         baseData,
       ),
     });
-    return Object.freeze({ request: result.record, created: result.created });
+    // Compute a preview from the arguments the caller just supplied, and keep
+    // it in memory for the read path. A read tool, an out-of-workspace path, or
+    // secret-like content yields no preview rather than an unsafe one.
+    const preview = buildToolRequestPreview({
+      toolName: identity.toolName,
+      arguments: proposal.toolCall.arguments as Readonly<Record<string, unknown>>,
+      // Infer create-vs-modify from the explicit overwrite flag rather than
+      // reading the target: the Runtime must not widen its own read surface to
+      // build a preview.
+      existing: proposal.toolCall.arguments.overwrite === true ? '' : null,
+    });
+    if (preview) this.toolRequestPreviews.set(requestId, preview);
+    const withPreview = preview ? Object.freeze({ ...result.record, preview }) : result.record;
+    return Object.freeze({ request: withPreview, created: result.created });
   }
 
   getToolRequest(requestId: string): ToolRequestRecord {
     const request = this.store.getToolRequest(requestId);
     if (!request) throw new ToolRequestNotFoundError();
-    return request;
+    const preview = this.toolRequestPreviews.get(requestId);
+    return preview ? Object.freeze({ ...request, preview }) : request;
   }
 
   decideToolRequest(requestId: string, input: unknown): {

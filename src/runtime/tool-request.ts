@@ -42,6 +42,12 @@ export interface ToolRequestRecord {
   readonly status: ToolRequestStatus;
   readonly createdAt: string;
   readonly approval: ToolRequestApproval | null;
+  /**
+   * Bounded, renderable summary of a pending write, computed at request time.
+   * Absent for read tools, unsafe paths, or already-decided requests. Optional
+   * so existing clients keep working unchanged.
+   */
+  readonly preview?: import('./tool-request-preview.js').ToolRequestPreview;
 }
 
 export interface ToolRequestApproval {
