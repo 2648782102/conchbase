@@ -55,3 +55,49 @@ move toward the same public read paths as the console.
 
 For subsystem details, read the source and focused tests rather than a giant
 global design document.
+
+## State machines
+
+Each durable resource has one small table. Transitions outside the table are
+bugs; `tests/task-state-machine.test.ts` fails when code and table diverge.
+
+### Task
+
+| From | Allowed to |
+|---|---|
+| `queued` | `running`, `cancelling`, `failed`, `interrupted` |
+| `running` | `waiting_approval`, `cancelling`, `succeeded`, `failed`, `interrupted` |
+| `waiting_approval` | `running`, `cancelling`, `failed`, `interrupted` |
+| `cancelling` | `cancelled`, `interrupted` |
+| `succeeded` / `failed` / `cancelled` | nothing (terminal) |
+| `interrupted` | `running` only (checkpoint resume) |
+
+Terminal: `succeeded`, `failed`, `cancelled`, `interrupted`. `interrupted` may
+resume once to `running` when a loop checkpoint exists; it never jumps straight
+to success or failure.
+
+### Work item
+
+| From | Allowed to |
+|---|---|
+| `open` | `running`, `cancelled` |
+| `running` | `paused` (cooperative yield), `completed`, `cancelled` |
+| `paused` | `running` (re-admission), `cancelled` |
+| `completed` / `cancelled` | nothing |
+
+### Assignment
+
+`planned → running → succeeded | failed`; `running → interrupted` on restart;
+`interrupted → running` on recovery. No assignment outlives its work item.
+
+### Agent Chat message
+
+User messages are `published`. The assistant message moves through
+`thinking → (streaming) → organizing | waiting_approval → replied | failed |
+cancelled | unavailable`. `waiting_approval` is a human phase and carries the
+pending task id; it returns to the model phase after a decision.
+
+### Rule of thumb
+
+A client never invents a transition. If a UI needs a new state, it is a Runtime
+contract change with tests, not a client-side flag.

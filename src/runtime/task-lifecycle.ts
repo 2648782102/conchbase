@@ -10,6 +10,17 @@ export type TaskState =
   | 'cancelled'
   | 'interrupted';
 
+export const TASK_STATES: readonly TaskState[] = Object.freeze([
+  'queued',
+  'running',
+  'waiting_approval',
+  'cancelling',
+  'succeeded',
+  'failed',
+  'cancelled',
+  'interrupted',
+]);
+
 export const TERMINAL_TASK_STATES: readonly TaskState[] = Object.freeze([
   'succeeded',
   'failed',
