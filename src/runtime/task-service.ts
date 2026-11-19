@@ -1108,12 +1108,28 @@ export class TaskService {
       writeAlreadyApplied: (task_, toolId, args) => this.writeAlreadyApplied(task_, toolId, args),
       eventInput: (task_, type, state, attempt) => this.eventInput(task_, type, state, attempt),
       requestApproval: (task_, iteration_, call, sideEffect) => {
+        // Compute the same bounded preview the tool-request ledger uses, so a
+        // person sees what will change. Only scalar fields go into the event.
+        const preview = buildToolRequestPreview({
+          toolName: call.name,
+          arguments: call.arguments as Readonly<Record<string, unknown>>,
+          existing: call.arguments.overwrite === true ? '' : null,
+        });
         this.recordLoopEvent(task_, 'agent_loop.approval_requested', 'waiting_approval', {
           iteration: iteration_,
           toolId: call.name,
           targetPath: typeof call.arguments.path === 'string' ? call.arguments.path : null,
           argumentKeys: Object.keys(call.arguments).sort().join(',').slice(0, 200),
           risk: sideEffect,
+          ...(preview
+            ? {
+              previewEffect: preview.effect,
+              previewSummary: preview.summary,
+              previewReversible: preview.reversible,
+              ...(preview.riskNote ? { previewRisk: preview.riskNote } : {}),
+              ...(preview.diff ? { previewDiff: preview.diff.slice(0, 2_000) } : {}),
+            }
+            : {}),
         });
         this.store.transitionTask(
           task_.id,

@@ -85,8 +85,12 @@ export function projectMessage(input: ProjectionInput): AgentChatMessage | null 
     });
   }
 
-  // Terminal: the projection is the authoritative record of the outcome.
-  const state = taskStateToMessageState(task);
+  // Terminal: the projection is the authoritative record of the outcome, but
+  // "already read" is a fact about this message, not the task. A task that
+  // succeeded maps to `done`; if the message was already marked read, keep the
+  // `replied` it carries so reading once is not undone by every projection.
+  const projected = taskStateToMessageState(task);
+  const state = projected === 'done' && message.state === 'replied' ? 'replied' : projected;
   const error = state === 'failed' ? (task.error ?? 'Agent task failed.').slice(0, 500) : null;
   const finalState = state === 'failed' && unavailableError(error) ? 'unavailable' : state;
   return Object.freeze({

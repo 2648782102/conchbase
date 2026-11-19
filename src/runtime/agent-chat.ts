@@ -110,6 +110,18 @@ export interface AgentChatConversationList {
   readonly defaultModelId: string | null;
 }
 
+/**
+ * A task-driven approval has no model prose of its own. Explain, in the reader's
+ * words, why the turn stopped — never an HTTP recipe, which belongs to the API.
+ */
+function withApprovalExplanation(message: AgentChatMessage): AgentChatMessage {
+  if (message.state !== 'waiting_approval' || message.body.trim().length > 0) return message;
+  return Object.freeze({
+    ...message,
+    body: '【需要你的批准】这一步会修改工作区。请查看上面的改动预览，然后选择批准或拒绝。',
+  });
+}
+
 export interface AgentChatMessageResult {
   readonly version: typeof AGENT_CHAT_CONTRACT_VERSION;
   readonly conversationId: string;
@@ -492,10 +504,15 @@ export class AgentChatService {
   view(conversationId: string): AgentChatConversationView {
     const record = this.load(conversationId);
     if (!record) throw new AgentChatServiceError('Agent Chat conversation not found.', 404);
-    this.projectForRead(record);
+    // Project first: a task that has just finished only becomes `done` during
+    // projection, so "mark read" has to run against the projected message, not
+    // the stale stored one.
+    const projected = this.projectForRead(record);
     // Reading the conversation is the signal that a finished reply has been
-    // seen. Without it, `done` and `replied` would be the same state and the
-    // "finished but unread" distinction would carry no information.
+    // seen. Promote `done` to `replied` in the record and in what we return.
+    const seen = projected.map((message) => (message.state === 'done'
+      ? Object.freeze({ ...message, state: 'replied' as const })
+      : message));
     this.markRead(record);
     return Object.freeze({
       version: AGENT_CHAT_CONTRACT_VERSION,
@@ -506,16 +523,7 @@ export class AgentChatService {
       modelId: record.modelId,
       configurationRevisionId: record.configurationRevisionId,
       reasoningEffort: record.reasoningEffort,
-      messages: Object.freeze(record.messages.map((message) => {
-        if (message.activity.length > 0 || message.taskId === null) {
-          return Object.freeze({ ...message });
-        }
-        const activity = this.taskActivity(message.taskId);
-        return Object.freeze({
-          ...message,
-          activity: activity.length > 0 ? activity : message.activity,
-        });
-      })),
+      messages: Object.freeze(seen.map((message) => Object.freeze({ ...message }))),
     });
   }
 
@@ -732,12 +740,9 @@ export class AgentChatService {
       knownTaskIds.add(changedTaskId);
       const current = this.getMessage(record, assistantMessage.id);
       if (!current || current.phase === 'terminal') return;
-      const approvalHint = [
-        '【需要你的批准】员工要执行一个写操作。',
-        `请调用 POST /v1/agent-chat/conversations/${record.id}/approval，`,
-        `请求体 {"assistantMessageId":"${assistantMessage.id}","decision":"approved"} 批准，`,
-        '或把 decision 设为 "rejected" 拒绝。批准后任务会自动继续。',
-      ].join(' ');
+      // Written for the person reading the conversation, not for an API caller:
+      // the client renders the批准/拒绝 controls from `state === 'waiting_approval'`.
+      const approvalHint = '【需要你的批准】这一步会修改工作区。请查看上面的改动预览，然后选择批准或拒绝。';
       const body = (current.body ?? '').includes('【需要你的批准】')
         ? current.body
         : [current.body, approvalHint].filter((part) => (part ?? '').trim().length > 0).join('\n\n');
@@ -853,8 +858,16 @@ export class AgentChatService {
         activity: message.taskId ? this.taskActivity(message.taskId) : [],
         now: this.now(),
       });
+      // A terminal message is not re-projected, but its activity still comes
+      // from durable events. Rebuild it here so a reopened conversation shows
+      // the same turns and tool calls it showed before the restart.
+      if (projected === null && message.author === 'assistant' && message.taskId !== null) {
+        const activity = this.taskActivity(message.taskId);
+        const rebuilt = activity.length > 0 ? Object.freeze({ ...message, activity }) : message;
+        return withApprovalExplanation(rebuilt);
+      }
       // The projection is returned, not stored: reads never mutate durable state.
-      return projected ?? message;
+      return withApprovalExplanation(projected ?? message);
     });
   }
 
@@ -952,13 +965,26 @@ export class AgentChatService {
         const tool = typeof event.data.toolId === 'string' ? event.data.toolId : 'tool';
         const target = typeof event.data.targetPath === 'string' ? event.data.targetPath : null;
         const risk = typeof event.data.risk === 'string' ? event.data.risk : 'write';
+        const summary = typeof event.data.previewSummary === 'string' ? event.data.previewSummary : null;
+        const diff = typeof event.data.previewDiff === 'string' ? event.data.previewDiff : null;
         activity.push(Object.freeze({
           id: `approval-${event.id}`,
           kind: 'approval',
           label: target ? `等待审批：${tool} → ${target}` : `等待审批：${tool}`,
           state: 'waiting_approval',
-          detail: `风险：${risk}；可批准或拒绝。`,
+          detail: summary ? `${summary}（风险：${risk}）` : `风险：${risk}；可批准或拒绝。`,
         }));
+        // The change itself, bounded and already computed by the Runtime, so the
+        // client can show what will happen without a second lookup.
+        if (summary || diff) {
+          activity.push(Object.freeze({
+            id: `approval-preview-${event.id}`,
+            kind: 'output',
+            label: '将要发生的改动',
+            state: 'waiting_approval',
+            detail: diff ?? summary,
+          }));
+        }
       } else if (event.type === 'agent_loop.approval_decided') {
         const index = [...activity].reverse().findIndex((entry) => entry.kind === 'approval'
           && entry.state === 'waiting_approval');
