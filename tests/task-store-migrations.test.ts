@@ -99,3 +99,40 @@ test('the event task index exists after migration', () => {
     cleanup();
   }
 });
+
+test('a fully opened store migrates an old file and can read/write it', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-migrations-open-'));
+  const filename = path.join(directory, 'runtime.sqlite');
+  try {
+    // Build a pre-Agent database the way an older runtime would have left it.
+    const legacy = new DatabaseSync(filename);
+    legacy.exec(BASE_SCHEMA);
+    legacy.exec(`
+      INSERT INTO tasks (id, prompt, model, configuration_revision_id, state, attempt, output)
+      VALUES ('task_legacy', 'old prompt', 'fixture/model', 'cfg_legacy', 'succeeded', 1, 'old output');
+      INSERT INTO events (sequence, id, task_id, type, state, configuration_revision_id, attempt, data)
+      VALUES (1, 'evt_000000000001', 'task_legacy', 'task.completed', 'succeeded', 'cfg_legacy', 1, '{}');
+    `);
+    legacy.close();
+
+    // Opening through the real store must upgrade in place without losing rows.
+    const { SqliteTaskStore } = await import('../src/runtime/task-store.js');
+    const store = new SqliteTaskStore(filename);
+    try {
+      const migrated = store.getTask('task_legacy');
+      assert.equal(migrated?.prompt, 'old prompt', 'legacy task survives migration');
+      assert.equal(store.listEvents(null).length >= 1, true, 'legacy event survives migration');
+      // New writes work after upgrade.
+      const created = store.createTask({
+        id: 'task_new', prompt: 'new', model: 'fixture/model',
+        configurationRevisionId: migrated!.configurationRevisionId,
+        attempt: 1,
+      });
+      assert.equal(created.prompt, 'new');
+    } finally {
+      store.close();
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
