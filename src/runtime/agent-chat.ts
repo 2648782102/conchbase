@@ -949,12 +949,15 @@ export class AgentChatService {
         }
         if (byTool.get(toolId)?.length === 0) byTool.delete(toolId);
       } else if (event.type === 'agent_loop.approval_requested') {
+        const tool = typeof event.data.toolId === 'string' ? event.data.toolId : 'tool';
+        const target = typeof event.data.targetPath === 'string' ? event.data.targetPath : null;
+        const risk = typeof event.data.risk === 'string' ? event.data.risk : 'write';
         activity.push(Object.freeze({
           id: `approval-${event.id}`,
           kind: 'approval',
-          label: '等待审批',
+          label: target ? `等待审批：${tool} → ${target}` : `等待审批：${tool}`,
           state: 'waiting_approval',
-          detail: null,
+          detail: `风险：${risk}；可批准或拒绝。`,
         }));
       } else if (event.type === 'agent_loop.approval_decided') {
         const index = [...activity].reverse().findIndex((entry) => entry.kind === 'approval'

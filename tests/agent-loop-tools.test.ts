@@ -53,6 +53,7 @@ function harness(options: {
     needsApproval: options.approval ?? (() => false),
     writeAlreadyApplied: () => options.writeApplied ?? false,
     eventInput: () => ({}),
+    requestApproval: (_t, _i, c, sideEffect) => { events.push(`approval:${c.name}:${sideEffect}`); transitions.push('waiting_approval'); },
     recordRequested: (_t, _i, c) => events.push(`requested:${c.name}`),
     recordReused: (_t, _i, c) => events.push(`reused:${c.name}`),
     recordExecuted: (_t, _i, c) => events.push(`executed:${c.name}`),
@@ -83,8 +84,9 @@ test('a consequential tool pauses before it runs', async () => {
   const messages: ProviderMessage[] = [];
   const outcome = await drainToolCalls(h.context, task, [call('workspace_write')], 0, messages, new AbortController().signal);
   assert.equal(outcome, 'paused');
-  assert.deepEqual(h.events, ['requested:workspace_write'], 'the tool is requested, not executed');
   assert.deepEqual(h.transitions, ['waiting_approval']);
+  assert.ok(h.events.some((e) => e.startsWith('approval:workspace_write')), 'approval metadata is recorded');
+  assert.equal(h.events.some((e) => e.startsWith('executed:')), false, 'the tool is not executed before approval');
   assert.equal(messages.length, 0, 'nothing is reported to the model until a decision');
 });
 

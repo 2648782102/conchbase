@@ -30,6 +30,8 @@ export interface AgentLoopToolContext {
   writeAlreadyApplied(task: TaskSnapshot, toolId: string, args: ProviderToolCall['arguments']): boolean;
   eventInput(task: TaskSnapshot, type: 'agent_loop.approval_requested', state: 'waiting_approval', attempt?: number): unknown;
   recordRequested(task: TaskSnapshot, iteration: number, call: ProviderToolCall): void;
+  /** Records approval metadata and moves the task to waiting_approval. */
+  requestApproval(task: TaskSnapshot, iteration: number, call: ProviderToolCall, sideEffect: string): void;
   recordReused(task: TaskSnapshot, iteration: number, call: ProviderToolCall, digest: string): void;
   recordExecuted(task: TaskSnapshot, iteration: number, call: ProviderToolCall, result: { readonly digest: string; readonly bytes: number }): void;
   recordFailed(task: TaskSnapshot, iteration: number, toolId: string, errorCode: string): void;
@@ -82,11 +84,7 @@ export async function drainToolCalls(
           arguments: entry.arguments,
         })),
       }));
-      context.store.transitionTask(
-        task.id,
-        'waiting_approval',
-        context.eventInput(task, 'agent_loop.approval_requested', 'waiting_approval', task.attempt) as never,
-      );
+      context.requestApproval(task, iteration, call, definition.sideEffect);
       return 'paused';
     }
 

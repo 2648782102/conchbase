@@ -1086,6 +1086,20 @@ export class TaskService {
       needsApproval: (sideEffect) => requiresApproval(this.executionMode, sideEffect),
       writeAlreadyApplied: (task_, toolId, args) => this.writeAlreadyApplied(task_, toolId, args),
       eventInput: (task_, type, state, attempt) => this.eventInput(task_, type, state, attempt),
+      requestApproval: (task_, iteration_, call, sideEffect) => {
+        this.recordLoopEvent(task_, 'agent_loop.approval_requested', 'waiting_approval', {
+          iteration: iteration_,
+          toolId: call.name,
+          targetPath: typeof call.arguments.path === 'string' ? call.arguments.path : null,
+          argumentKeys: Object.keys(call.arguments).sort().join(',').slice(0, 200),
+          risk: sideEffect,
+        });
+        this.store.transitionTask(
+          task_.id,
+          'waiting_approval',
+          this.eventInput(task_, 'task.approval_requested', 'waiting_approval', task_.attempt),
+        );
+      },
       recordRequested: (task_, iteration_, call) => this.recordLoopEvent(task_, 'agent_loop.tool_requested', 'running', {
         iteration: iteration_,
         toolId: call.name,
