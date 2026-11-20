@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { contentDigest, referenceDigest } from './digest.js';
 
 export const EXECUTION_CONTRACT_VERSION = '1.2.0';
 export const EXECUTION_PUBLIC_PATHS = Object.freeze([
@@ -133,14 +133,6 @@ const OPERATION_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function digest(prefix: string, value: string): string {
-  return `${prefix}_${createHash('sha256').update(value).digest('hex').slice(0, 24)}`;
-}
-
-function sha256(value: string): string {
-  return `sha256:${createHash('sha256').update(value).digest('hex')}`;
 }
 
 function boundedString(value: unknown, label: string, maximum = 200): string {
@@ -305,7 +297,7 @@ export interface FakeExecutor {
 export function createDeterministicFakeExecutor(): FakeExecutor {
   return {
     async execute(request) {
-      const resultDigest = sha256(`fake-execution:${request.id}:${request.argumentsDigest}`);
+      const resultDigest = contentDigest(`fake-execution:${request.id}:${request.argumentsDigest}`);
       return Object.freeze({
         outcome: 'succeeded' as const,
         resultDigest,
@@ -324,8 +316,8 @@ export function createExecutionSnapshot(now = () => new Date().toISOString()): E
       kind: 'fake' as const,
       name: 'fake-observe',
       adapterId: 'fake-bounded-executor',
-      destinationDigest: sha256('fake:observe'),
-      capabilitiesDigest: sha256('capability:fake-observe'),
+      destinationDigest: contentDigest('fake:observe'),
+      capabilitiesDigest: contentDigest('capability:fake-observe'),
       state: 'enabled' as const,
       createdAt,
     }),
@@ -338,7 +330,7 @@ export function createExecutionSnapshot(now = () => new Date().toISOString()): E
     events: Object.freeze([
       Object.freeze({
         version: EXECUTION_CONTRACT_VERSION,
-        id: digest('exe', 'execution.capability_enabled:cap_fake_observe'),
+        id: referenceDigest('exe', 'execution.capability_enabled:cap_fake_observe'),
         sequence: 1,
         type: 'execution.capability_enabled' as const,
         data: Object.freeze({ capabilityId: 'cap_fake_observe', state: 'enabled' }),
@@ -359,7 +351,7 @@ function appendEvent(
     ...snapshot.events,
     Object.freeze({
       version: EXECUTION_CONTRACT_VERSION,
-      id: digest('exe', `${type}:${sequence}:${JSON.stringify(data)}`),
+      id: referenceDigest('exe', `${type}:${sequence}:${JSON.stringify(data)}`),
       sequence,
       type,
       data: Object.freeze({ ...data }),
@@ -428,7 +420,7 @@ export class ControlledExecutionService {
     if (!parsed.capabilities.every((item) => capability.kind === item || item.startsWith('cap_'))) {
       throw new ExecutionValidationError('Grant capabilities are not accepted.');
     }
-    const id = digest('xgt', JSON.stringify([
+    const id = referenceDigest('xgt', JSON.stringify([
       parsed.capabilityId, parsed.agentId, parsed.agentRevisionId, parsed.delegationId,
       parsed.workItemId, parsed.assignmentId, parsed.operation, parsed.scope, parsed.capabilities,
     ]));
@@ -505,7 +497,7 @@ export class ControlledExecutionService {
     if (grant.operation !== parsed.operation) {
       throw new ExecutionConflictError('Request operation does not match grant.');
     }
-    const id = digest('xrq', JSON.stringify([
+    const id = referenceDigest('xrq', JSON.stringify([
       parsed.grantId, parsed.expectedGrantVersion, parsed.operation,
       parsed.argumentsDigest, parsed.idempotencyKey,
     ]));

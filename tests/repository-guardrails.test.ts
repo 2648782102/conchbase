@@ -125,6 +125,75 @@ test('scope narrowing stays in the kernel', () => {
   assert.match(read('src/runtime/capability-grants.ts'), /scopeToolSet\(/);
 });
 
+/**
+ * A module nothing imports is not a module, it is a liability.
+ *
+ * The previous cleanup deleted ~1650 lines of an abandoned execution path that
+ * still had twenty passing tests. Nothing failed, because nothing referenced
+ * it — which is exactly why a test was needed: dead code does not announce
+ * itself, it just makes the system look more complete than it is.
+ */
+test('every runtime module is imported by something', () => {
+  // Entry points are executed directly (`node dist/main.js`), so they are
+  // legitimately imported by nothing.
+  const entryPoints = new Set(['src/main.ts', 'src/cli.ts']);
+  // Files reachable from an entry point, computed over actual import edges.
+  const sources = [...listTypeScriptFiles('src'), ...listTypeScriptFiles('tests')];
+  const imported = new Set<string>();
+  for (const file of sources) {
+    for (const match of read(file).matchAll(/from\s+'([^']+)'/g)) {
+      const target = path.posix.normalize(
+        path.posix.join(path.posix.dirname(file), match[1]!.replace(/\.js$/, '.ts')),
+      );
+      imported.add(target);
+    }
+  }
+  // Everything must be reachable from an entry point, directly or through a
+  // test. A file only tests import is still load-bearing for coverage.
+  const unreferenced = listTypeScriptFiles('src')
+    .filter((file) => !entryPoints.has(file) && !imported.has(file));
+  assert.deepEqual(unreferenced, [], `modules no source or test imports:\n${unreferenced.join('\n')}`);
+  assert.ok([...entryPoints].every((entry) => sources.includes(entry)), 'entry points exist');
+});
+
+test('every script is wired to a command or a document', () => {
+  const packageJson = read('package.json');
+  const documentation = listTypeScriptFiles('docs').length > 0
+    ? listTypeScriptFiles('docs').map(read).join('\n')
+    : '';
+  const readme = read('README.md');
+  for (const script of readdirSync(path.join(repositoryRoot, 'scripts')).filter((name) => name.endsWith('.mjs'))) {
+    const named = packageJson.includes(script)
+      || documentation.includes(script)
+      || readme.includes(script)
+      || readdirSync(path.join(repositoryRoot, 'scripts')).some((other) =>
+        other !== script && read(`scripts/${other}`).includes(script));
+    assert.ok(named, `scripts/${script} is not referenced by any command, doc, or other script`);
+  }
+});
+
+/**
+ * Digest shapes must not fork again.
+ *
+ * Eleven modules had each grown their own `digest`, identical by coincidence.
+ * A change to one — another hash, a different truncation — would have produced
+ * digests that silently stopped matching their siblings, and digest equality is
+ * how several features decide "same thing" or "already applied".
+ */
+test('digest construction lives in one module', () => {
+  const offenders: string[] = [];
+  for (const file of listTypeScriptFiles('src')) {
+    if (file === 'src/runtime/digest.ts') continue;
+    const source = read(file);
+    // Only the two shapes `digest.ts` owns are duplication. A bare hex digest
+    // and a digest *validator* are different things and stay where they are.
+    const reimplementsSha256Prefix = /`sha256:\$\{createHash\('sha256'\)\.update\(value\)\.digest\('hex'\)\}`/.test(source);
+    const reimplementsPrefixed = /`\$\{prefix\}_\$\{createHash\('sha256'\)\.update\(value\)\.digest\('hex'\)\.slice\(0, 24\)\}`/.test(source);
+    if (reimplementsSha256Prefix || reimplementsPrefixed) offenders.push(file);
+  }
+  assert.deepEqual(offenders, [], `define digests via src/runtime/digest.ts:\n${offenders.join('\n')}`);
+});
+
 test('dependency baseline stays consistent', () => {
   const manifest = JSON.parse(read('package.json')) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
   const lock = JSON.parse(read('package-lock.json')) as { packages?: Record<string, unknown> };

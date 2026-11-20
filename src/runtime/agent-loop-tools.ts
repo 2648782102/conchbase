@@ -151,8 +151,3 @@ export async function drainToolCalls(
   }
   return 'done';
 }
-
-/** Exposed for tests: the digest a call is keyed by. */
-export function toolCallDigest(call: ProviderToolCall): string {
-  return digestArguments(call.arguments);
-}

@@ -27,9 +27,6 @@ export const OTEL_GENAI_ATTRIBUTES = Object.freeze({
   systemInstructions: 'gen_ai.system_instructions',
 } as const);
 
-export type OtelGenAiAttribute =
-  typeof OTEL_GENAI_ATTRIBUTES[keyof typeof OTEL_GENAI_ATTRIBUTES];
-
 /**
  * OTel attribute values are limited to bounded scalars. Conchbase events carry
  * the same scalar type, so an adapter can forward these fields verbatim.

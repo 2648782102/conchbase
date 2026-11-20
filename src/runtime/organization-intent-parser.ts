@@ -461,10 +461,6 @@ export interface StructuredModelCall {
   readonly signal?: AbortSignal;
 }
 
-export interface StructuredModelClient {
-  completeJson(input: StructuredModelCall): Promise<string>;
-}
-
 const OPENAI_COMPATIBLE_PARSER_INSTRUCTIONS = [
   'You are the Conchbase organization intent parser.',
   'Return only strict JSON with this shape: {"actions":[],"relay":string|null}.',

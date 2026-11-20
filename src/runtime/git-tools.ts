@@ -1,5 +1,5 @@
+import { referenceDigest } from './digest.js';
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { accessSync, constants } from 'node:fs';
 import path from 'node:path';
 import { ProcessSpecError, resolveProgram, validateProcessSpec } from '../kernel/process-spec.js';
@@ -42,9 +42,6 @@ export interface GitToolsOptions {
   readonly run?: (args: readonly string[], cwd: string) => Promise<{ code: number; stdout: string; stderr: string }>;
 }
 
-function digest(prefix: string, value: string): string {
-  return `${prefix}_${createHash('sha256').update(value).digest('hex').slice(0, 24)}`;
-}
 
 /**
  * Runs one git command with a fixed argument vector.
@@ -176,7 +173,7 @@ export function createGitReadTools(options: GitToolsOptions): ToolProvider {
       return Object.freeze({
         ok: false,
         summary: 'nothing staged: stage files (git add) before committing.',
-        digest: digest('git', 'nothing-staged'),
+        digest: referenceDigest('git', 'nothing-staged'),
         bytes: 0,
         errorCode: 'nothing_staged',
       });
@@ -187,7 +184,7 @@ export function createGitReadTools(options: GitToolsOptions): ToolProvider {
     return Object.freeze({
       ok: true,
       summary: summary.length > 0 ? summary : `committed ${files.length} file(s)`,
-      digest: digest('git', summary),
+      digest: referenceDigest('git', summary),
       bytes: Buffer.byteLength(summary, 'utf8'),
       evidence: { facts: { message, files: files.join(','), fileCount: files.length } },
     });
@@ -212,7 +209,7 @@ export function createGitReadTools(options: GitToolsOptions): ToolProvider {
     return Object.freeze({
       ok: true,
       summary: output.trim().length > 0 ? output : '(no output)',
-      digest: digest('git', output),
+      digest: referenceDigest('git', output),
       bytes: Buffer.byteLength(output, 'utf8'),
     });
   };

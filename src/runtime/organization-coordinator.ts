@@ -201,8 +201,4 @@ export class OrganizationCoordinator {
   }
 }
 
-export function organizationRelayEvents(relays: readonly OrganizationRelay[]): readonly OrganizationRelay[] {
-  return Object.freeze([...relays].sort((left, right) => left.sequence - right.sequence));
-}
-
 export type { OrganizationEvent };

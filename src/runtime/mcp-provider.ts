@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { contentDigest } from './digest.js';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -63,9 +63,6 @@ export interface McpToolProvider extends ToolProvider {
   close(): Promise<void>;
 }
 
-function digest(value: string): string {
-  return `sha256:${createHash('sha256').update(value).digest('hex')}`;
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -376,7 +373,7 @@ export async function createMcpToolProvider(input: unknown): Promise<McpToolProv
       return (async () => {
         const result = await entry.connection.callTool(entry.remoteName, args, entry.server.callTimeoutMs ?? CALL_TIMEOUT_MS);
         const { summary, bytes } = summarize(result, entry.server.maxResultBytes ?? MAX_RESULT_BYTES);
-        return Object.freeze({ ok: true, summary, digest: digest(summary), bytes });
+        return Object.freeze({ ok: true, summary, digest: contentDigest(summary), bytes });
       })();
     },
     async close() {

@@ -158,11 +158,6 @@ function parseLoopContinuation(raw: string | null): LoopContinuationCheckpoint |
   };
 }
 
-export interface CreateTaskInput {
-  readonly prompt: string;
-  readonly model?: string;
-}
-
 export interface ProviderModelCatalogEntry extends ModelReference {
   readonly reference: string;
   readonly displayName: string;

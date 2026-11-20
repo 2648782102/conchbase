@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { contentDigest } from './digest.js';
 import { containsSecretLike } from './secret-filter.js';
 
 /**
@@ -44,16 +45,15 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export function digest(value: string): string {
-  return `sha256:${createHash('sha256').update(value).digest('hex')}`;
-}
-
 export function reference(value: string, length = 24): string {
   return createHash('sha256').update(value).digest('hex').slice(0, length);
 }
 
+/** Full `sha256:` digest of a value. Re-exported for callers in this layer. */
+export const digest = contentDigest;
+
 export function intentId(idempotencyKey: string): string {
-  return `int_${digest(`intent:${idempotencyKey}`).slice(7, 31)}`;
+  return `int_${contentDigest(`intent:${idempotencyKey}`).slice(7, 31)}`;
 }
 
 /**

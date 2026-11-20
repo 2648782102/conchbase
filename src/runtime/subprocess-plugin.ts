@@ -1,6 +1,6 @@
+import { referenceDigest } from './digest.js';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { validateProcessSpec } from '../kernel/process-spec.js';
-import { createHash } from 'node:crypto';
 import type { ToolArguments, ToolExecutionResult } from './tool-provider.js';
 
 /**
@@ -36,21 +36,12 @@ export interface SubprocessPluginOptions {
   readonly maxResultBytes?: number;
 }
 
-export interface SubprocessPluginRequest {
-  readonly type: 'invoke';
-  readonly toolId: string;
-  readonly args: ToolArguments;
-}
-
 export interface SubprocessPluginResponse {
   readonly ok: boolean;
   readonly summary?: string;
   readonly errorCode?: string;
 }
 
-function digest(prefix: string, value: string): string {
-  return `${prefix}_${createHash('sha256').update(value).digest('hex').slice(0, 24)}`;
-}
 
 function boundedEnv(allowlist: readonly string[]): NodeJS.ProcessEnv {
   const names = new Set([...REQUIRED_ENV, ...allowlist]);
@@ -124,7 +115,7 @@ export class SubprocessPluginClient {
             resolve(Object.freeze({
               ok: false,
               summary: '',
-              digest: digest('plugin', `${toolId}:error`),
+              digest: referenceDigest('plugin', `${toolId}:error`),
               bytes: 0,
               errorCode: typeof response.errorCode === 'string' ? response.errorCode.slice(0, 80) : 'plugin_error',
             }));
@@ -134,7 +125,7 @@ export class SubprocessPluginClient {
           resolve(Object.freeze({
             ok: true,
             summary: summary.length > 0 ? summary : '(no output)',
-            digest: digest('plugin', `${toolId}:${summary}`),
+            digest: referenceDigest('plugin', `${toolId}:${summary}`),
             bytes: Buffer.byteLength(summary, 'utf8'),
           }));
         },

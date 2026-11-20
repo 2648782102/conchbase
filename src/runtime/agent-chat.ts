@@ -1,3 +1,4 @@
+import { referenceDigest } from './digest.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { AgentDetail } from './agent-profile.js';
 import type { TaskService } from './task-service.js';
@@ -186,10 +187,6 @@ export class AgentChatServiceError extends Error {
     this.name = 'AgentChatServiceError';
     this.statusCode = statusCode;
   }
-}
-
-function reference(prefix: string, value: string): string {
-  return `${prefix}_${createHash('sha256').update(value).digest('hex').slice(0, 24)}`;
 }
 
 function boundedText(value: unknown, label: string): string {
@@ -540,7 +537,7 @@ export class AgentChatService {
     idempotencyKey: string,
   ): AgentChatMessageResult {
     const userMessage = message({
-      id: reference('amsg', `${record.id}:${idempotencyKey}:user`),
+      id: referenceDigest('amsg', `${record.id}:${idempotencyKey}:user`),
       sequence: record.messages.length + 1,
       author: 'user',
       body: text,
@@ -551,7 +548,7 @@ export class AgentChatService {
       updatedAt: this.now(),
     }, this.now);
     const assistantMessage = message({
-      id: reference('amsg', `${record.id}:${idempotencyKey}:assistant`),
+      id: referenceDigest('amsg', `${record.id}:${idempotencyKey}:assistant`),
       sequence: record.messages.length + 2,
       author: 'assistant',
       body: '',
@@ -636,7 +633,7 @@ export class AgentChatService {
         );
       }
     }
-    const id = reference('chat', `${agent.id}:${agent.currentRevisionId}:${randomUUID()}`);
+    const id = referenceDigest('chat', `${agent.id}:${agent.currentRevisionId}:${randomUUID()}`);
     const record: ConversationRecord = {
       id,
       agentId: isBoss ? BOSS_AGENT_ID : agent.id,
@@ -725,7 +722,7 @@ export class AgentChatService {
         throw new AgentChatServiceError(errorText, 404);
       }
       const userMessage = message({
-        id: reference('amsg', `${record.id}:${idempotencyKey}:failed-user`),
+        id: referenceDigest('amsg', `${record.id}:${idempotencyKey}:failed-user`),
         sequence: record.messages.length + 1,
         author: 'user',
         body: text,
@@ -736,7 +733,7 @@ export class AgentChatService {
         updatedAt: this.now(),
       }, this.now);
       const assistantMessage = message({
-        id: reference('amsg', `${record.id}:${idempotencyKey}:failed-assistant`),
+        id: referenceDigest('amsg', `${record.id}:${idempotencyKey}:failed-assistant`),
         sequence: record.messages.length + 2,
         author: 'assistant',
         body: unavailableError(errorText)
@@ -760,7 +757,7 @@ export class AgentChatService {
       });
     }
     const userMessage = message({
-      id: reference('amsg', `${conversationId}:${task.id}:user`),
+      id: referenceDigest('amsg', `${conversationId}:${task.id}:user`),
       sequence: record.messages.length + 1,
       author: 'user',
       body: text,
@@ -771,7 +768,7 @@ export class AgentChatService {
       updatedAt: this.now(),
     }, this.now);
     const assistantMessage = message({
-      id: reference('amsg', `${conversationId}:${task.id}:assistant`),
+      id: referenceDigest('amsg', `${conversationId}:${task.id}:assistant`),
       sequence: record.messages.length + 2,
       author: 'assistant',
       body: '',
@@ -919,7 +916,7 @@ export class AgentChatService {
     if (!record) throw new AgentChatServiceError('Agent Chat conversation not found.', 404);
     if (!record.isBoss) throw new AgentChatServiceError('Only the Boss conversation accepts Runtime notices.', 409);
     const key = `runtime-notice:${input.idempotencyKey}`;
-    const existing = record.messages.find((message) => message.id === reference('amsg', `${record.id}:${key}`));
+    const existing = record.messages.find((message) => message.id === referenceDigest('amsg', `${record.id}:${key}`));
     if (existing) return existing;
     const text = input.body.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 4_000);
     if (text.length === 0) throw new AgentChatServiceError('Runtime notice must not be empty.');
@@ -929,7 +926,7 @@ export class AgentChatService {
     // never said, and — because the context builders keep any non-empty body —
     // replayed the notice back to the model as one of its own turns.
     const notice = message({
-      id: reference('amsg', `${record.id}:${key}`),
+      id: referenceDigest('amsg', `${record.id}:${key}`),
       sequence: record.messages.length + 1,
       author: 'runtime',
       body: text,
@@ -1048,7 +1045,7 @@ export class AgentChatService {
       body: message.body,
     }));
     const userMessage = message({
-      id: reference('amsg', `${record.id}:${idempotencyKey}:user`),
+      id: referenceDigest('amsg', `${record.id}:${idempotencyKey}:user`),
       sequence: record.messages.length + 1,
       author: 'user',
       body: text,
@@ -1059,7 +1056,7 @@ export class AgentChatService {
       updatedAt: this.now(),
     }, this.now);
     const assistantMessage = message({
-      id: reference('amsg', `${record.id}:${idempotencyKey}:assistant`),
+      id: referenceDigest('amsg', `${record.id}:${idempotencyKey}:assistant`),
       sequence: record.messages.length + 2,
       author: 'assistant',
       body: '',

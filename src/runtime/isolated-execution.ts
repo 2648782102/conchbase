@@ -1,4 +1,5 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { contentDigest, referenceDigest } from './digest.js';
+import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { validateProcessSpec } from '../kernel/process-spec.js';
@@ -105,13 +106,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function digest(prefix: string, value: string): string {
-  return `${prefix}_${createHash('sha256').update(value).digest('hex').slice(0, 24)}`;
-}
-
-function sha256(value: string): string {
-  return `sha256:${createHash('sha256').update(value).digest('hex')}`;
-}
 
 function boundedString(value: unknown, label: string, maximum = 200): string {
   if (typeof value !== 'string' || value.trim().length === 0 || value.length > maximum) {
@@ -301,12 +295,12 @@ export function createIsolatedChildExecutor(): IsolatedChildExecutor {
       } catch {
         result = {
           ok: false,
-          errorDigest: sha256(`isolated-worker-invalid-stdout:${stderr.slice(0, 200)}`),
+          errorDigest: contentDigest(`isolated-worker-invalid-stdout:${stderr.slice(0, 200)}`),
         };
       }
       return Object.freeze({
         exitCode,
-        workerPidDigest: child.pid ? sha256(`pid:${child.pid}:${randomUUID()}`) : null,
+        workerPidDigest: child.pid ? contentDigest(`pid:${child.pid}:${randomUUID()}`) : null,
         result,
       });
     },
@@ -345,7 +339,7 @@ function appendEvent(
     ...snapshot.events,
     Object.freeze({
       version: EXECUTION_RUN_CONTRACT_VERSION,
-      id: digest('xev', `${type}:${sequence}:${JSON.stringify(data)}`),
+      id: referenceDigest('xev', `${type}:${sequence}:${JSON.stringify(data)}`),
       sequence,
       type,
       data: Object.freeze({ ...data }),
@@ -394,7 +388,7 @@ export class IsolatedExecutionService {
     }
     const adapter = this.snapshot.adapters.find((item) => item.id === parsed.adapterId);
     if (!adapter) throw new ExecutionRunNotFoundError('Execution adapter not found.');
-    const id = digest('xrn', JSON.stringify([
+    const id = referenceDigest('xrn', JSON.stringify([
       parsed.requestId, parsed.expectedRequestVersion, parsed.grantId, parsed.operation,
       parsed.argumentsDigest, parsed.idempotencyKey,
     ]));
@@ -471,7 +465,7 @@ export class IsolatedExecutionService {
       workerPidDigest: execution.workerPidDigest,
       exitCode: execution.exitCode,
       resultDigest: succeeded ? execution.result.resultDigest! : null,
-      errorDigest: succeeded ? null : execution.result.errorDigest ?? sha256(`isolated-worker-exit:${execution.exitCode}`),
+      errorDigest: succeeded ? null : execution.result.errorDigest ?? contentDigest(`isolated-worker-exit:${execution.exitCode}`),
       finishedAt: this.now(),
     });
     this.replaceRun(finished);

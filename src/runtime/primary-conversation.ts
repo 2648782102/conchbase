@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { referenceDigest } from './digest.js';
 import type { OrganizationEvent, OrganizationSnapshot } from './organization-contract.js';
 import { chineseAgentDisplayName } from './agent-name.js';
 
@@ -80,9 +80,6 @@ export interface PrimaryConversationProjectionInput {
 const MAX_LIMIT = 200;
 const DEFAULT_LIMIT = 100;
 
-function digest(prefix: string, value: string): string {
-  return `${prefix}_${createHash('sha256').update(value).digest('hex').slice(0, 24)}`;
-}
 
 function boundedText(value: string | undefined, fallback: string): string {
   const candidate = (value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
@@ -110,7 +107,7 @@ function messageForEvent(
   const attentionId = typeof event.data.attentionId === 'string' ? event.data.attentionId : null;
   const base = {
     version: PRIMARY_CONVERSATION_CONTRACT_VERSION,
-    id: digest('msg', `${event.id}:${event.type}`),
+    id: referenceDigest('msg', `${event.id}:${event.type}`),
     sequence: event.sequence,
     createdByEventId: event.id,
     projectId: event.projectId,
@@ -230,7 +227,7 @@ export function projectPrimaryConversation(
     const linked = input.snapshot.events.find((event) => event.type === 'organization.worker_execution_recorded'
       && event.data.taskId === task.taskId);
     if (!linked) continue;
-    const id = digest('msg', `task:${task.taskId}:${task.state}:${task.attempt}:${index}`);
+    const id = referenceDigest('msg', `task:${task.taskId}:${task.state}:${task.attempt}:${index}`);
     if (seen.has(id)) continue;
     seen.add(id);
     messages.push(Object.freeze({

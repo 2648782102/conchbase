@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { referenceDigest } from './digest.js';
 import type { CompositionExecutionPlan } from './composition-execution.js';
 
 export type ToolRequestStatus = 'approved' | 'pending' | 'rejected';
@@ -109,9 +109,6 @@ const MAX_ARGUMENT_STRING_LENGTH = 500;
 const MAX_REASON_LENGTH = 500;
 const MAX_TASK_ID_LENGTH = 200;
 
-function digest(prefix: string, value: string): string {
-  return `${prefix}_${createHash('sha256').update(value).digest('hex').slice(0, 24)}`;
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object'
@@ -136,7 +133,7 @@ function canonicalizeArguments(args: ToolCallArguments): string {
 }
 
 export function toolArgumentsDigest(args: ToolCallArguments): string {
-  return digest('arg', `conchbase-tool-arguments-v1\0${canonicalizeArguments(args)}`);
+  return referenceDigest('arg', `conchbase-tool-arguments-v1\0${canonicalizeArguments(args)}`);
 }
 
 export function toolRequestIdempotencyKey(input: {
@@ -148,7 +145,7 @@ export function toolRequestIdempotencyKey(input: {
   readonly toolName: string;
   readonly argumentsDigest: string;
 }): string {
-  return digest('idem', `conchbase-tool-request-v1\0${JSON.stringify([
+  return referenceDigest('idem', `conchbase-tool-request-v1\0${JSON.stringify([
     input.taskId,
     input.attempt,
     input.configurationRevisionId,
@@ -160,7 +157,7 @@ export function toolRequestIdempotencyKey(input: {
 }
 
 export function toolRequestId(idempotencyKey: string): string {
-  return digest('tqr', `conchbase-tool-request-id-v1\0${idempotencyKey}`);
+  return referenceDigest('tqr', `conchbase-tool-request-id-v1\0${idempotencyKey}`);
 }
 
 export function toolApprovalId(
@@ -168,7 +165,7 @@ export function toolApprovalId(
   decision: ToolRequestDecision,
   reasonDigest: string,
 ): string {
-  return digest('tap', `conchbase-tool-approval-v1\0${JSON.stringify([
+  return referenceDigest('tap', `conchbase-tool-approval-v1\0${JSON.stringify([
     requestId,
     decision,
     reasonDigest,
@@ -176,7 +173,7 @@ export function toolApprovalId(
 }
 
 export function toolRequestReasonDigest(reason: string): string {
-  return digest('rsn', `conchbase-tool-approval-reason-v1\0${reason}`);
+  return referenceDigest('rsn', `conchbase-tool-approval-reason-v1\0${reason}`);
 }
 
 export function validateToolCallProposal(

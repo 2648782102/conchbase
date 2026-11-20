@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { contentDigest } from './digest.js';
 import { mkdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import {
@@ -11,9 +11,6 @@ import {
 
 const MAX_WRITE_BYTES = 16 * 1024;
 
-function digest(value: string): string {
-  return `sha256:${createHash('sha256').update(value).digest('hex')}`;
-}
 
 function asString(args: ToolArguments, key: string): string {
   const value = args[key];
@@ -96,7 +93,7 @@ export function createBuiltinWriteTools(options: {
       summary: previousBytes > 0
         ? `replaced ${relative} (${previousBytes} → ${bytes} bytes)`
         : `created ${relative} (${bytes} bytes)`,
-      digest: digest(content),
+      digest: contentDigest(content),
       bytes,
       evidence: { facts: { path: relative, created: previousBytes === 0, previousBytes, bytes } },
     });

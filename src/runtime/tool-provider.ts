@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { contentDigest } from './digest.js';
 import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { pageToolResult } from './tool-result-paging.js';
@@ -73,9 +73,6 @@ const MAX_MATCHES = 40;
 const MAX_SEARCH_DEPTH = 8;
 const SEARCH_TIME_BUDGET_MS = 2_000;
 
-function digest(value: string): string {
-  return `sha256:${createHash('sha256').update(value).digest('hex')}`;
-}
 
 function asString(args: ToolArguments, key: string, fallback = ''): string {
   const value = args[key];
@@ -218,7 +215,7 @@ export function createBuiltinReadTools(options: {
       : '';
     const summary = `${paged.summary}${footer}`;
     return Object.freeze({
-      ok: true, summary, digest: digest(summary), bytes: Buffer.byteLength(summary),
+      ok: true, summary, digest: contentDigest(summary), bytes: Buffer.byteLength(summary),
       truncated: paged.truncated || hasMore,
       evidence: { facts: { path: relative, totalEntries: all.length, returned: entries.length, hasMore } },
     });
@@ -263,7 +260,7 @@ export function createBuiltinReadTools(options: {
     return Object.freeze({
       ok: true,
       summary,
-      digest: digest(summary),
+      digest: contentDigest(summary),
       bytes: Buffer.byteLength(summary),
       truncated: paged.truncated,
       evidence: { facts: { path: relative, totalBytes: buffer.length, offset, truncated: paged.truncated } },
@@ -313,7 +310,7 @@ export function createBuiltinReadTools(options: {
     const footer = notices.length > 0 ? `\n\n${notices.join('\n')}` : '';
     const summary = `${paged.summary}${footer}`;
     return Object.freeze({
-      ok: true, summary, digest: digest(summary), bytes: Buffer.byteLength(summary),
+      ok: true, summary, digest: contentDigest(summary), bytes: Buffer.byteLength(summary),
       truncated: paged.truncated || capped || timedOut || tooDeep,
       evidence: { facts: { path: relative, pattern, matches: matches.length, capped, timedOut, tooDeep } },
     });

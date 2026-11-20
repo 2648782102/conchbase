@@ -24,13 +24,6 @@ export interface OrganizationIntentSubmission {
   readonly expectedSequence: number;
 }
 
-export interface OrganizationIntentRecord {
-  readonly version: typeof ORGANIZATION_PUBLIC_CONTRACT_VERSION;
-  readonly intentId: string;
-  readonly state: 'accepted';
-  readonly expectedSequence: number;
-}
-
 export interface OrganizationAttentionSubmission {
   readonly expectedVersion: number;
   readonly decisionDigest?: string;
@@ -157,24 +150,6 @@ export function isOrganizationValidationError(cause: unknown): boolean {
     || cause instanceof OrganizationConflictError
     || cause instanceof OrganizationNotFoundError
     || cause instanceof OrganizationIntentValidationError;
-}
-
-export function parseOrganizationEventQuery(input: unknown): OrganizationEventPageQuery {
-  if (input === undefined) return Object.freeze({});
-  if (!isRecord(input)) throw new OrganizationIntentValidationError('Event query must be an object.');
-  const allowed = new Set(['after', 'limit']);
-  const unknown = Object.keys(input).filter((key) => !allowed.has(key));
-  if (unknown.length > 0) {
-    throw new OrganizationIntentValidationError(`Event query has unknown fields: ${unknown.sort().join(', ')}.`);
-  }
-  const after = input.after === undefined
-    ? undefined
-    : boundedString(input.after, 'after', 200);
-  if (after !== undefined && !/^evt_[a-z0-9]+$/.test(after)) {
-    throw new OrganizationIntentValidationError('after must be an opaque organization event id.');
-  }
-  const limit = input.limit === undefined ? undefined : boundedEventLimit(input.limit);
-  return Object.freeze({ ...(after === undefined ? {} : { after }), ...(limit === undefined ? {} : { limit }) });
 }
 
 function boundedEventLimit(input: unknown): string {
