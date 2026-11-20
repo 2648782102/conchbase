@@ -122,7 +122,12 @@ export const CAPABILITY_PRESETS: readonly CapabilityPreset[] = Object.freeze([
   Object.freeze({
     id: 'external-integrations',
     label: '外部集成',
-    description: '连接外部工具（MCP/插件）；默认关闭，需单独审核。',
+    // The preset deliberately grants no MCP or plugin tool: those are named by
+    // the operator on the Agent revision, because a preset cannot know which
+    // servers exist. It grants the read-only built-ins a connected Agent still
+    // needs, and nothing more. The earlier description claimed it connected
+    // external tools, which no code path did.
+    description: '为接入外部工具的 Agent 提供只读基础工具；MCP 与插件需在 Agent 上单独授予。',
     allowsWrites: false,
     tools: Object.freeze(['workspace_list', 'workspace_read', 'text_search']),
   }),

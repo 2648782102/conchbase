@@ -15,6 +15,27 @@ function tools(ids: readonly string[]): ToolProvider {
   };
 }
 
+/**
+ * A preset's description must not promise a capability it does not grant.
+ *
+ * `external-integrations` used to say it connected MCP and plugins, while
+ * `grantsForPreset` only ever selected names from `preset.tools` — the built-in
+ * read tools. An operator choosing it would reasonably expect external access
+ * and get none.
+ */
+test('external-integrations does not claim to grant external tools', () => {
+  const preset = findCapabilityPreset('external-integrations');
+  assert.ok(preset);
+  assert.doesNotMatch(preset.description, /连接外部工具/);
+  // Everything it grants is a built-in name, never a dynamically discovered one.
+  const grants = grantsForPreset(
+    'external-integrations',
+    tools(['workspace_list', 'workspace_read', 'text_search', 'mcp_notes_post']),
+    [],
+  );
+  assert.equal(grants.some((grant) => grant.name.startsWith('mcp_')), false);
+});
+
 test('presets are named, described, and unique', () => {
   assert.equal(CAPABILITY_PRESETS.length >= 4, true);
   const ids = CAPABILITY_PRESETS.map((p) => p.id);
