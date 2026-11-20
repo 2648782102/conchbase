@@ -363,21 +363,26 @@ export class AgentChatService {
       this.unwatchQueue(record.id);
       return;
     }
-    const live = record.messages.some((message) => {
-      if (message.author !== 'assistant' || message.taskId === null) return false;
-      const task = this.taskService.store.getTask(message.taskId);
-      return task !== null && !isTerminalTaskState(task.state);
-    });
-    if (live) return;
+    // The queued turn itself is not live yet, so only its predecessor can be.
+    if (this.runningTurnIn(record)) return;
 
     const next = queue.shift();
     if (!next) return;
-    if (queue.length === 0) this.queuedTurns.delete(record.id);
-    if (queue.length === 0) this.unwatchQueue(record.id);
+    if (queue.length === 0) {
+      this.queuedTurns.delete(record.id);
+      this.unwatchQueue(record.id);
+    }
 
     const userMessage = record.messages.find((message) => message.id === next.userMessageId);
     const assistantMessage = record.messages.find((message) => message.id === next.assistantMessageId);
-    if (!userMessage || !assistantMessage) return;
+    /*
+     * Messages are never removed from a record, so this cannot happen today.
+     * Returning silently would drop the queued turn with nothing on screen to
+     * say so, which is worse than a loud failure if the invariant ever breaks.
+     */
+    if (!userMessage || !assistantMessage) {
+      throw new Error(`Queued turn ${next.idempotencyKey} lost its message pair.`);
+    }
 
     /*
      * The prompt is the transcript up to and including this turn.
@@ -503,6 +508,17 @@ export class AgentChatService {
    */
   private hasLiveTurn(record: ConversationRecord): boolean {
     if ((this.queuedTurns.get(record.id)?.length ?? 0) > 0) return true;
+    return this.runningTurnIn(record);
+  }
+
+  /**
+   * Whether any turn in this conversation still has a task running.
+   *
+   * One definition for both callers: the queue asks "may I start the next turn",
+   * and a new message asks "should I queue at all". Two copies would drift, and
+   * drifting here means either two tasks at once or a queue that never advances.
+   */
+  private runningTurnIn(record: ConversationRecord): boolean {
     return record.messages.some((message) => {
       if (message.author !== 'assistant' || message.taskId === null) return false;
       const task = this.taskService.store.getTask(message.taskId);
@@ -636,6 +652,7 @@ export class AgentChatService {
       idempotency: new Map(),
     };
     this.conversations.set(id, record);
+    this.evictIfOverCapacity(id);
     this.persist(record);
     return this.view(id);
   }
@@ -1335,6 +1352,29 @@ export class AgentChatService {
     if (index >= 0) record.messages[index] = Object.freeze(next);
   }
 
+  /**
+   * Drops the oldest cached conversation once the cache is over its limit.
+   *
+   * Both entry points call this: creating a conversation inserts directly, and
+   * `load` inserts after a miss. Leaving the check only in `load` meant a
+   * service that only created conversations never evicted anything, since the
+   * `view()` that follows a create finds the record already cached.
+   *
+   * A queue lives beside the conversation, so it is evicted with it. A
+   * surviving queue would hold a task-change listener for a record nothing
+   * references, and a re-loaded conversation would promote turns against a
+   * stale queue.
+   */
+  private evictIfOverCapacity(keep: string): void {
+    if (this.conversations.size <= AgentChatService.MAX_CACHED_CONVERSATIONS) return;
+    const oldest = this.conversations.keys().next().value;
+    if (oldest === undefined || oldest === keep) return;
+    this.conversations.delete(oldest);
+    this.queuedTurns.delete(oldest);
+    this.promoting.delete(oldest);
+    this.unwatchQueue(oldest);
+  }
+
   private load(conversationId: string): ConversationRecord | null {
     const existing = this.conversations.get(conversationId);
     if (existing) return existing;
@@ -1346,10 +1386,7 @@ export class AgentChatService {
       idempotency: new Map(stored.idempotency),
     };
     this.conversations.set(conversationId, record);
-    if (this.conversations.size > AgentChatService.MAX_CACHED_CONVERSATIONS) {
-      const oldest = this.conversations.keys().next().value;
-      if (oldest !== undefined && oldest !== conversationId) this.conversations.delete(oldest);
-    }
+    this.evictIfOverCapacity(conversationId);
     return record;
   }
 
