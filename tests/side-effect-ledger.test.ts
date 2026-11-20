@@ -149,6 +149,75 @@ test('a repeated write inside one attempt is refused after an unrecorded crash',
  * inside a write would write again as soon as the user approved — while the
  * task reported success.
  */
+/**
+ * MCP tools are the main case the ledger does not own.
+ *
+ * The Runtime cannot make a remote server idempotent, so the contract is
+ * narrower: an `external` tool is never assumed safe. It pauses for approval in
+ * restricted mode, runs exactly once, and is recorded like any other effect.
+ */
+test('an external tool pauses for approval and runs exactly once', async () => {
+  const { createTaskService } = await import('../src/runtime/task-service.js');
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-external-effect-'));
+  let invoked = 0;
+  const external = {
+    list: () => [{ id: 'send_message', version: 1 as const, description: 'send', sideEffect: 'external' as const }],
+    has: (id: string) => id === 'send_message',
+    invoke: async () => {
+      invoked += 1;
+      return { ok: true, summary: 'sent', digest: 'sha256:sent', bytes: 4 };
+    },
+  };
+  const toolTurn = () => new Response(
+    `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{
+      index: 0, id: 'c1', type: 'function',
+      function: { name: 'send_message', arguments: JSON.stringify({ text: 'hi' }) },
+    }] } }] })}\n\ndata: [DONE]\n\n`,
+    { status: 200, headers: { 'content-type': 'text/event-stream' } },
+  );
+  const finalTurn = () => new Response(
+    'data: {"choices":[{"delta":{"content":"done"}}]}\n\ndata: [DONE]\n\n',
+    { status: 200, headers: { 'content-type': 'text/event-stream' } },
+  );
+  const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).endsWith('/v1/models')) {
+      return new Response(JSON.stringify({ data: [{ id: 'm' }] }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    }
+    return String(init?.body ?? '').includes('"role":"tool"') ? finalTurn() : toolTurn();
+  }) as typeof globalThis.fetch;
+  const service = createTaskService(
+    path.join(directory, 'runtime.sqlite'),
+    { magpieBaseUrl: 'http://127.0.0.1:3425', defaultModel: 'm', fetch, executionMode: 'restricted' },
+    { tools: external },
+  );
+  try {
+    const agent = await service.createAgent({
+      name: 'sender', instructions: 'x', providerId: 'magpie', modelId: 'm',
+      grantedCapabilities: [{ kind: 'tool', name: 'send_message' }] as never,
+    });
+    const task = await service.createAgentTask({ prompt: 'go', agentId: agent.id });
+    service.startTask(task.id);
+    for (let i = 0; i < 150 && service.store.getTask(task.id)?.state !== 'waiting_approval'; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(service.store.getTask(task.id)?.state, 'waiting_approval');
+    assert.equal(invoked, 0, 'an external effect must not run before approval');
+
+    service.decideApproval(task.id, 'approved');
+    assert.equal((await service.waitForTask(task.id)).state, 'succeeded');
+    assert.equal(invoked, 1);
+    assert.equal(
+      service.store.listTaskEvents(task.id).filter((event) => event.type === 'agent_loop.tool_executed').length,
+      1,
+    );
+  } finally {
+    await service.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('resuming an approval whose effect is unknown fails instead of writing', async () => {
   const { createTaskService } = await import('../src/runtime/task-service.js');
   const { createBuiltinWriteTools } = await import('../src/runtime/write-tools.js');

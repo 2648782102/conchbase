@@ -39,8 +39,10 @@ Updated: 2026-11-19
 - User-facing capability presets: read-only, workspace-editing, local-commands,
   external-integrations. There is deliberately no arbitrary-shell tool; the
   only subprocess tools are fixed read-only git commands.
-- Optional read-only MCP/Skill providers, bounded plugin/subprocess seams, and
-  runtime-wide restricted/unrestricted execution modes.
+- Optional MCP/Skill providers, bounded plugin/subprocess seams, and
+  runtime-wide restricted/unrestricted execution modes. MCP tools discovered
+  without a declared side effect default to `external` (approval + side-effect
+  ledger); read-only must be opted into per server.
 - Pagurus-compatible API for Agent editing, tasks, organization views,
   execution views, work controls, capability records, and write-only
   SecretHandles.

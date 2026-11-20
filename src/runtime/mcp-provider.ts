@@ -41,8 +41,13 @@ export interface McpServerDeclaration {
   readonly tools?: readonly McpToolDeclaration[];
   /**
    * Side-effect class applied to tools discovered from `tools/list` when the
-   * server did not declare them individually. MCP does not report a trustworthy
-   * side-effect class, so undeclared tools default to `read`.
+   * server did not declare them individually.
+   *
+   * MCP reports no trustworthy side-effect class, so the default is the
+   * cautious one: `external`. Guessing `read` would skip approval, skip the
+   * side-effect ledger, and let an identical call be served from the read
+   * cache — for a tool that might post a message or move money. An operator who
+   * knows a server is read-only opts in explicitly.
    */
   readonly discoverySideEffect?: ToolSideEffect;
   readonly startTimeoutMs?: number;
@@ -336,7 +341,7 @@ export async function createMcpToolProvider(input: unknown): Promise<McpToolProv
         : (await connection.listTools(server.startTimeoutMs ?? START_TIMEOUT_MS))
           .map((tool) => ({
             name: tool.name,
-            sideEffect: server.discoverySideEffect ?? ('read' as const),
+            sideEffect: server.discoverySideEffect ?? ('external' as const),
             ...(tool.description ? { description: tool.description } : {}),
             ...(tool.inputSchema ? { inputSchema: tool.inputSchema } : {}),
           }));

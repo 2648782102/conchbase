@@ -141,6 +141,15 @@ crashed write wrote the file a second time while the task reported success.
 `unknown` is a deliberate dead end rather than a retry: recovery is the
 explicit `retry` endpoint, which starts a fresh attempt with its own key.
 
+External tools (MCP, plugins) cannot be made idempotent by the Runtime, so the
+contract is narrower but still strict: a tool declared `external` is never
+assumed safe. It pauses for approval in restricted mode, runs at most once per
+attempt, and is recorded like any other effect. MCP reports no trustworthy
+side-effect class, so a tool discovered from `tools/list` without a declaration
+defaults to `external`; an operator who knows a server is read-only opts in
+with `discoverySideEffect: "read"`. Plugin manifests must declare a class —
+there is no default.
+
 ## Operating model: one process per database
 
 Conchbase is a local, single-process runtime. One process owns one SQLite file

@@ -96,6 +96,30 @@ test('discovered tools carry their description and input schema to the definitio
   }
 });
 
+test('an undeclared discovered tool is not assumed to be read-only', async () => {
+  const provider = await createMcpToolProvider(config({ tools: undefined }));
+  try {
+    const echo = provider.list().find((tool) => tool.id === 'mcp_fixture_echo');
+    assert.ok(echo);
+    // MCP reports no trustworthy side-effect class. Assuming `read` would skip
+    // approval, skip the side-effect ledger, and let an identical call be served
+    // from cache — for a tool that may have posted a message or moved money.
+    assert.equal(echo.sideEffect, 'external');
+  } finally {
+    await provider.close();
+  }
+});
+
+test('an operator can still declare discovered tools as read-only', async () => {
+  const provider = await createMcpToolProvider(config({ tools: undefined, discoverySideEffect: 'read' }));
+  try {
+    const echo = provider.list().find((tool) => tool.id === 'mcp_fixture_echo');
+    assert.equal(echo?.sideEffect, 'read');
+  } finally {
+    await provider.close();
+  }
+});
+
 test('a declared tool description overrides the discovery default', async () => {
   const provider = await createMcpToolProvider({
     servers: [{
