@@ -172,13 +172,24 @@ test('the replayed prompt opens on a question, not on an orphaned answer', async
     const chat = new AgentChatService(taskService);
     const conversation = await chat.createConversation({ agentId: agent.id });
 
-    // Five complete exchanges, then a sixth question whose reply is still
-    // outstanding when the window is taken.
+    /*
+     * Six exchanges, then a seventh. Turns are serialized: each one starts only
+     * after the previous reply lands, so the wait has to be per turn rather than
+     * "until N prompts exist".
+     */
     for (let index = 1; index <= 6; index += 1) {
+      const before = prompts.length;
       await chat.postMessage(conversation.id, { text: `Q${index}`, idempotencyKey: `q${index}` });
-      for (let attempt = 0; attempt < 200 && prompts.length < index; attempt += 1) {
+      for (let attempt = 0; attempt < 200 && prompts.length === before; attempt += 1) {
+        chat.view(conversation.id);
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
+    }
+    const beforeSeventh = prompts.length;
+    await chat.postMessage(conversation.id, { text: 'Q7', idempotencyKey: 'q7' });
+    for (let attempt = 0; attempt < 200 && prompts.length === beforeSeventh; attempt += 1) {
+      chat.view(conversation.id);
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
 
     const last = prompts.at(-1) ?? '';
