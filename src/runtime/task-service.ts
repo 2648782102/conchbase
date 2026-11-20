@@ -76,6 +76,7 @@ import {
   type ToolRequestRecord,
 } from './tool-request.js';
 import { createBuiltinReadTools, ToolRejectedError, type ToolProvider } from './tool-provider.js';
+import { categorizeError } from './error-categories.js';
 import type { ProviderMessage } from './model-adapter.js';
 import type { ProviderToolCall } from './model-adapter.js';
 
@@ -915,7 +916,13 @@ export class TaskService {
       this.store.transitionTask(
         task.id,
         'failed',
-        this.eventInput(task, 'task.failed', 'failed', task.attempt),
+        {
+          ...this.eventInput(task, 'task.failed', 'failed', task.attempt),
+          // The category is the actionable part: a bad credential, a rate
+          // limit, and an outage all read as "failed" otherwise. It is derived
+          // from the error alone and carries no prompt, argument, or output.
+          data: { category: categorizeError(cause) },
+        },
         { error: message.slice(0, 500) },
       );
       this.store.saveLoopState(task.id, null);

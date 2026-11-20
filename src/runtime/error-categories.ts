@@ -49,6 +49,15 @@ export function safeMessage(value: unknown, max = 300): string {
 export function categorizeError(cause: unknown): ErrorCategory {
   const name = (cause as { name?: string })?.name ?? '';
   const status = (cause as { statusCode?: number })?.statusCode;
+  // An adapter already classified this failure. Its `kind` is more precise than
+  // anything inferred from the message, and folding it back into a generic
+  // provider error would hide whether to fix a credential, wait, or move an
+  // address.
+  const kind = (cause as { kind?: string })?.kind;
+  if (kind !== undefined) {
+    const mapped = PROVIDER_KIND_CATEGORY[kind];
+    if (mapped) return mapped;
+  }
   if (status && status >= 400 && status < 500) {
     if (status === 400) return 'validation';
     if (status === 401 || status === 403) return 'auth';
@@ -70,6 +79,17 @@ export function categorizeError(cause: unknown): ErrorCategory {
   if (/unavailable|not configured|misconfigured/.test(text)) return 'unavailable';
   return 'internal';
 }
+
+/** A provider's own failure class, translated once. */
+const PROVIDER_KIND_CATEGORY: Readonly<Record<string, ErrorCategory>> = Object.freeze({
+  authentication: 'auth',
+  'rate-limit': 'rate-limit',
+  timeout: 'timeout',
+  unavailable: 'unavailable',
+  'invalid-request': 'validation',
+  'context-limit': 'validation',
+  'upstream-failure': 'provider',
+});
 
 export function toErrorRecord(
   cause: unknown,

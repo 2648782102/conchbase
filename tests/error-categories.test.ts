@@ -1,6 +1,46 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { categorizeError, formatErrorLog, safeMessage, toErrorRecord } from '../src/runtime/error-categories.js';
+import { ProviderError } from '../src/runtime/model-provider.js';
+
+/**
+ * A provider error already knows what went wrong.
+ *
+ * The adapter classifies a 401 as `authentication`, a 429 as `rate-limit`, and
+ * an unreachable gateway as `unavailable`. Folding that back into "the provider
+ * returned something" loses the one fact an operator needs: whether to fix a
+ * credential, wait, or change an address. These cases were found by running a
+ * task against an endpoint that answered 401.
+ */
+test('a classified provider error keeps its category', () => {
+  assert.equal(categorizeError(new ProviderError('authentication', 'Model provider returned HTTP 401.')), 'auth');
+  assert.equal(categorizeError(new ProviderError('rate-limit', 'slow down')), 'rate-limit');
+  assert.equal(categorizeError(new ProviderError('timeout', 'timed out')), 'timeout');
+  assert.equal(categorizeError(new ProviderError('unavailable', 'endpoint is down')), 'unavailable');
+  assert.equal(categorizeError(new ProviderError('upstream-failure', 'HTTP 500')), 'provider');
+  assert.equal(categorizeError(new ProviderError('invalid-request', 'bad body')), 'validation');
+  assert.equal(categorizeError(new ProviderError('context-limit', 'too long')), 'validation');
+});
+
+test('a transport failure is retryable and reported as unavailable', async () => {
+  const { ModelProviderError, OpenAiChatCompletionsProvider } = await import('../src/runtime/magpie-provider.js');
+  const provider = new OpenAiChatCompletionsProvider({
+    baseUrl: 'http://127.0.0.1:9',
+    model: 'x',
+    appKeyFormat: 'opaque',
+    fetch: (async () => { throw new TypeError('fetch failed'); }) as typeof globalThis.fetch,
+  });
+  await assert.rejects(
+    () => provider.streamTurn({ taskId: 't', turnIndex: 0, prompt: 'hi', onOutputDelta: () => undefined }),
+    (error: unknown) => {
+      assert.ok(error instanceof ModelProviderError);
+      assert.equal(error.kind, 'unavailable');
+      assert.equal(error.retryable, true);
+      assert.equal(categorizeError(error), 'unavailable');
+      return true;
+    },
+  );
+});
 
 test('known error names map to categories', () => {
   assert.equal(categorizeError({ name: 'TaskValidationError', message: 'prompt must be a non-empty string.' }), 'validation');

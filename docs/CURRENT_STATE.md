@@ -22,6 +22,9 @@ Updated: 2026-11-19
 - Safe workspace writes: an existing file needs an explicit `overwrite: true`,
   and each result reports created-vs-replaced and byte sizes.
 - Approval requests name the tool, target path, and risk before anything runs.
+- A failed task records a bounded `category` (`auth`, `rate-limit`, `timeout`,
+  `unavailable`, `provider`, …) on its `task.failed` event, derived from the
+  classified provider error rather than the message text.
 - User-facing capability presets: read-only, workspace-editing, local-commands,
   external-integrations. There is deliberately no arbitrary-shell tool; the
   only subprocess tools are fixed read-only git commands.

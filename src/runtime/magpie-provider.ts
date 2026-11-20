@@ -158,6 +158,22 @@ function normalizeBaseUrl(baseUrl: string): string {
   return parsed.toString().replace(/\/$/, '');
 }
 
+/**
+ * A transport failure is not the upstream's answer.
+ *
+ * Refused connections, DNS errors, TLS failures, and socket resets all mean
+ * "cannot reach the gateway", which is retryable and independent of the request
+ * body. Wrapping them as an upstream failure made an unreachable endpoint look
+ * like a bad response and hid the retry hint.
+ */
+function transportFailure(cause: unknown): ModelProviderError {
+  const timedOut = cause instanceof Error && (cause.name === 'TimeoutError' || cause.name === 'AbortError');
+  return new ModelProviderError(
+    timedOut ? 'Model provider request timed out.' : 'Model provider is unreachable.',
+    timedOut ? 'timeout' : 'unavailable',
+  );
+}
+
 export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, StreamingModelAdapter {
   private readonly endpoint: string;
   private readonly model: string;
@@ -218,7 +234,7 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
       });
     } catch (cause) {
       if (input.signal?.aborted) throw cause;
-      throw new ModelProviderError('Model provider request failed.');
+      throw transportFailure(cause);
     }
 
     if (!response.ok) {
@@ -297,7 +313,7 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
       });
     } catch (cause) {
       if (input.signal?.aborted) throw cause;
-      throw new ModelProviderError('Model provider request failed.');
+      throw transportFailure(cause);
     }
 
     if (!response.ok) {

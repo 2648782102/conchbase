@@ -133,3 +133,49 @@ test('each provider publishes its own models instead of one Magpie catalog', asy
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+/**
+ * A failed task must say *why*, not just echo the upstream's status line.
+ *
+ * Running a task against a 401 endpoint surfaced the raw message and no
+ * category: the background failure path wrote only `error.message`, so an
+ * operator could not tell a bad credential from an outage.
+ */
+test('a task failing on a 401 records the auth category', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-provider-auth-'));
+  const fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith('/v1/models')) {
+      return new Response(JSON.stringify({ data: [{ id: 'mock-model' }] }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify({ error: { message: 'invalid api key' } }), {
+      status: 401, headers: { 'content-type': 'application/json' },
+    });
+  }) as typeof globalThis.fetch;
+  const service = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'mock-model',
+    providers: { 'openai-compatible': { baseUrl: 'http://127.0.0.1:8124' } },
+    fetch,
+  });
+  try {
+    const agent = await service.createAgent({
+      name: '认证失败', instructions: 'x',
+      providerId: 'openai-compatible', modelId: 'mock-model',
+    });
+    const task = await service.createAgentTask({ prompt: 'hi', agentId: agent.id });
+    service.startTask(task.id);
+    const finished = await service.waitForTask(task.id);
+
+    assert.equal(finished.state, 'failed');
+    const failed = service.store.listTaskEvents(task.id).find((event) => event.type === 'task.failed');
+    assert.ok(failed, 'a task.failed event was recorded');
+    assert.equal(failed.data.category, 'auth');
+    assert.match(finished.error ?? '', /401/);
+  } finally {
+    await service.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
