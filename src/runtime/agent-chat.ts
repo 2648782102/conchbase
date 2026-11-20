@@ -245,6 +245,15 @@ const CONVERSATION_WINDOW = 8;
  * flight shifts the parity — and the model would open on an answer to a
  * question it cannot see. `Q a Q a Q a Q a` is a conversation; `a Q a Q a Q a`
  * is not, and a model reading it has to guess what the first answer replied to.
+ *
+ * The result is flattened to `User:`/`Assistant:` lines rather than passed as
+ * structured turns, because a `Task` carries one `prompt: string`. That loses
+ * nothing a model can exploit: user text is normalized by `boundedText`, which
+ * replaces every control character — including newlines — with a space, so a
+ * message cannot forge a line of its own. What it does lose is a user's
+ * paragraph breaks, which arrive as one line. Carrying structured history is a
+ * schema change; it is a formatting improvement, not a security one, and is not
+ * made here.
  */
 function conversationalHistory(messages: readonly AgentChatMessage[]): readonly AgentChatMessage[] {
   const turns = messages.filter((message) => message.author === 'user'
@@ -354,9 +363,18 @@ export class AgentChatService {
     const assistantMessage = record.messages.find((message) => message.id === next.assistantMessageId);
     if (!userMessage || !assistantMessage) return;
 
-    const context = conversationalHistory(record.messages).map((message) =>
+    /*
+     * The prompt is the transcript up to and including this turn.
+     *
+     * Not the whole record: a later question may already be queued behind this
+     * one, and it must not appear — the reply being written cannot answer a
+     * question the reader has not had answered yet, and a model that sees it
+     * will answer both. Not re-appended either: this question is already a turn
+     * in the transcript, so adding the text again would repeat it.
+     */
+    const upToThisTurn = record.messages.filter((message) => message.sequence <= assistantMessage.sequence);
+    const prompt = conversationalHistory(upToThisTurn).map((message) =>
       `${message.author === 'user' ? 'User' : 'Assistant'}: ${message.body}`).join('\n');
-    const prompt = context.length > 0 ? `${context}\n\nUser: ${next.text}` : next.text;
 
     this.promoting.add(record.id);
     void this.launchQueuedTurn(record, next, userMessage, assistantMessage, prompt)
