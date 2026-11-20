@@ -225,6 +225,33 @@ every *tool* spawn be checked without a special case hiding in the code.
 
 ## Side effects
 
+### One tool call, one decision order
+
+`executeToolCall` in `tool-execution.ts` is the only place that knows what has
+to happen around a tool invocation, and in what order:
+
+1. approval — a consequential call pauses before anything is recorded;
+2. idempotency — an identical write that already landed is refused;
+3. read reuse — an identical read in this attempt is served from cache;
+4. execution — with the side-effect intent recorded first;
+5. bookkeeping — commit the effect, or cache the read.
+
+This order used to be four `if` blocks inline in the agent loop, with
+`sideEffect === 'read'` written out three times. Each occurrence had to agree
+with the others, and only a full task run could catch a divergence. The loop
+now translates the returned `ToolOutcome` into events and a tool message.
+
+Two related invariants:
+
+- `ToolSideEffect` stays a closed union end to end. It used to degrade to
+  `string` at the loop boundary, which is why `tool-gate` needed a runtime
+  "unknown class counts as external" fallback. That fallback is now a `switch`
+  that fails to compile if the union gains a member.
+- `combineToolProviders` is the one merge point for every provider, so it is
+  where the tool-id pattern is enforced. The pattern previously lived in the
+  plugin manifest, meaning plugin and MCP tools were checked and built-ins were
+  not.
+
 A consequential tool records its intent in `side_effects` *before* it runs, and
 marks it `committed` only after it returns. The key is
 `task:attempt:tool:argumentsDigest`, so:

@@ -4,6 +4,24 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { createToolRuntime } from '../src/runtime/tool-runtime.js';
+import { combineToolProviders, ToolRejectedError } from '../src/runtime/tool-provider.js';
+
+/**
+ * Every provider merges through `combineToolProviders`, so that is the one
+ * place a malformed id can be caught for all of them. Before this, the pattern
+ * lived in the plugin manifest and built-ins were never checked.
+ */
+test('a malformed tool id is refused at the merge point', () => {
+  const provider = {
+    list: () => [{ id: 'Not Valid!', version: 1 as const, description: 'x', sideEffect: 'read' as const }],
+    has: () => true,
+    invoke: () => { throw new Error('not called'); },
+  };
+  assert.throws(
+    () => combineToolProviders([provider]),
+    (cause: unknown) => cause instanceof ToolRejectedError && cause.code === 'invalid_tool_id',
+  );
+});
 
 test('write tools are absent unless explicitly enabled', async () => {
   // This assembly decides the tool surface. A regression here would either

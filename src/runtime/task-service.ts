@@ -76,7 +76,9 @@ import {
   toolRequestIdempotencyKey,
   type ToolRequestRecord,
 } from './tool-request.js';
-import { createBuiltinReadTools, ToolRejectedError, type ToolProvider } from './tool-provider.js';
+import {
+  createBuiltinReadTools, ToolRejectedError, type ToolProvider, type ToolSideEffect,
+} from './tool-provider.js';
 import { categorizeError } from './error-categories.js';
 import type { ProviderMessage } from './model-adapter.js';
 import type { ProviderToolCall } from './model-adapter.js';
@@ -306,7 +308,7 @@ export class TaskService {
    * here. The kernel still owns the approval rule, which keeps one answer to
    * "does this need a person" for every entry point.
    */
-  private requiresApproval(definition: { readonly id?: string; readonly sideEffect: string }): boolean {
+  private requiresApproval(definition: { readonly id?: string; readonly sideEffect: ToolSideEffect }): boolean {
     return decideToolAction({
       level: resolveLevel(this.config.permissionLevel, this.executionMode),
       action: definition.id ?? 'tool',

@@ -1,4 +1,4 @@
-import type { ToolSideEffect } from './tool-provider.js';
+import { TOOL_ID_PATTERN, type ToolSideEffect } from './tool-provider.js';
 
 /**
  * Plugin declarations.
@@ -10,7 +10,9 @@ import type { ToolSideEffect } from './tool-provider.js';
 
 export const PLUGIN_MANIFEST_VERSION = 1;
 export const PLUGIN_ID_PATTERN = /^[a-z][a-z0-9_-]{1,63}$/;
-export const TOOL_ID_PATTERN = /^[a-z][a-z0-9_.-]{1,63}$/;
+// Re-exported for existing importers; the definition belongs to the tool
+// contract so every provider is held to the same rule.
+export { TOOL_ID_PATTERN };
 export const MAX_TOOLS_PER_PLUGIN = 32;
 export const MAX_DESCRIPTION = 280;
 

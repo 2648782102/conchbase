@@ -5,6 +5,16 @@ import { pageToolResult } from './tool-result-paging.js';
 
 export type ToolSideEffect = 'read' | 'write' | 'external';
 
+/**
+ * The shape of a tool id, wherever the tool comes from.
+ *
+ * It lived in the plugin manifest, which meant only plugin and MCP tools were
+ * ever checked — a built-in with a malformed id would have reached the model
+ * unchecked. The id appears in model-visible prompts and in event data, so the
+ * rule belongs to the tool contract rather than to one provider.
+ */
+export const TOOL_ID_PATTERN = /^[a-z][a-z0-9_.-]{1,63}$/;
+
 export type ToolScalar = string | number | boolean | null;
 export type ToolArguments = Readonly<Record<string, ToolScalar>>;
 
@@ -54,6 +64,16 @@ export class ToolRejectedError extends Error {
 
 export function combineToolProviders(providers: readonly ToolProvider[]): ToolProvider {
   const all = providers.flatMap((provider) => [...provider.list()]);
+  // Every provider is merged here, so this is the one place that can check the
+  // whole surface. Duplicate ids were already refused; a malformed id was not,
+  // because the pattern lived in the plugin manifest and built-ins never saw it.
+  const malformed = all.filter((tool) => !TOOL_ID_PATTERN.test(tool.id));
+  if (malformed.length > 0) {
+    throw new ToolRejectedError(
+      'invalid_tool_id',
+      `tool ids must match ${TOOL_ID_PATTERN.source}: ${malformed.map((tool) => tool.id).join(', ')}`,
+    );
+  }
   const ids = new Set(all.map((tool) => tool.id));
   if (ids.size !== all.length) throw new ToolRejectedError('duplicate_tool');
   return Object.freeze({

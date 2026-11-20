@@ -1,4 +1,5 @@
 import type { ExecutionMode } from '../config/runtime-config.js';
+import type { ToolSideEffect } from './tool-provider.js';
 import {
   approvalRequired,
   decidePolicy,
@@ -41,10 +42,20 @@ export function resolveLevel(
   return permissionLevel ?? levelForExecutionMode(mode);
 }
 
-function asEffect(sideEffect: string): ActionEffect {
-  // An unknown class is treated as the most consequential one: a typo must not
-  // silently downgrade a tool to "read" and skip its approval.
-  return sideEffect === 'read' || sideEffect === 'write' ? sideEffect : 'external';
+/**
+ * Narrows a tool's effect class to the kernel's action class.
+ *
+ * The two unions currently have the same members, so this is an identity at
+ * runtime. It is written as an explicit mapping rather than an assertion so
+ * that if either union gains a member the compiler fails here instead of
+ * silently admitting an effect the policy has no rule for.
+ */
+function asEffect(sideEffect: ToolSideEffect): ActionEffect {
+  switch (sideEffect) {
+    case 'read': return 'read';
+    case 'write': return 'write';
+    case 'external': return 'external';
+  }
 }
 
 /**
@@ -53,7 +64,7 @@ function asEffect(sideEffect: string): ActionEffect {
  * Kept as a narrow helper because most callers only need this bit; the full
  * decision (including denial) is available through `decideToolAction`.
  */
-export function requiresApproval(mode: ExecutionMode, sideEffect: string): boolean {
+export function requiresApproval(mode: ExecutionMode, sideEffect: ToolSideEffect): boolean {
   return approvalRequired(levelForExecutionMode(mode), asEffect(sideEffect));
 }
 
@@ -63,7 +74,7 @@ export interface ToolPolicyInput {
   readonly mode?: ExecutionMode;
   /** Stable tool id, used only for the audit reason. */
   readonly action: string;
-  readonly sideEffect: string;
+  readonly sideEffect: ToolSideEffect;
   readonly granted: boolean;
   readonly withinBoundary?: boolean;
 }
