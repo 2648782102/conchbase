@@ -29,17 +29,12 @@ export async function createToolRuntime(options: {
   const pluginRegistry = options.plugins && options.plugins.length > 0
     ? new PluginRegistry(options.plugins)
     : null;
+  // The registry already exposes one provider per plugin; merging them is what
+  // `combineToolProviders` does. A hand-written loop here duplicated its
+  // dispatch and its id checks, and would have kept the old behaviour if the
+  // merge point ever changed.
   const pluginProvider = pluginRegistry && pluginRegistry.tools().length > 0
-    ? {
-      list: () => pluginRegistry.tools(),
-      has: (id: string) => pluginRegistry.tools().some((tool) => tool.id === id),
-      invoke: async (id: string, args: Parameters<ToolProvider['invoke']>[1]) => {
-        for (const plugin of pluginRegistry.list()) {
-          if (plugin.provider.has(id)) return plugin.provider.invoke(id, args);
-        }
-        throw new ToolRejectedError('unknown_tool');
-      },
-    }
+    ? combineToolProviders(pluginRegistry.list().map((plugin) => plugin.provider))
     : null;
   const providers = [
     builtins,
