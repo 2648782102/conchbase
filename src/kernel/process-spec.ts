@@ -34,6 +34,32 @@ export interface ValidatedProcessSpec {
   readonly killable: true;
 }
 
+/**
+ * Resolves a bare program name to an absolute path using an explicit PATH.
+ *
+ * Some tools (`git`) are conventionally invoked by name, and hard-coding
+ * `/usr/bin/git` would break on every machine that installs it elsewhere. The
+ * resolution is deliberately explicit and one-shot: the caller passes the PATH
+ * it trusts, gets back an absolute path, and the spec validator still refuses
+ * anything relative. Nothing here silently searches the ambient environment.
+ */
+export function resolveProgram(
+  program: string,
+  pathValue: string,
+  isExecutable: (candidate: string) => boolean,
+): string {
+  if (isAbsolute(program)) return program;
+  if (program.includes('/') || program.includes('\\')) {
+    throw new ProcessSpecError(`program '${program}' must be absolute or a bare name.`);
+  }
+  for (const directory of pathValue.split(':').filter((entry) => entry.length > 0)) {
+    if (!isAbsolute(directory)) continue;
+    const candidate = `${directory.replace(/\/+$/, '')}/${program}`;
+    if (isExecutable(candidate)) return candidate;
+  }
+  throw new ProcessSpecError(`program '${program}' was not found on the provided PATH.`);
+}
+
 export class ProcessSpecError extends Error {
   constructor(message: string) {
     super(message);

@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { accessSync, constants } from 'node:fs';
 import path from 'node:path';
+import { ProcessSpecError, resolveProgram, validateProcessSpec } from '../kernel/process-spec.js';
 import { ToolRejectedError, type ToolArguments, type ToolExecutionResult, type ToolProvider } from './tool-provider.js';
 
 /**
@@ -23,6 +25,17 @@ const MAX_COMMITS = 100;
 
 export interface GitToolsOptions {
   readonly root: string;
+  /**
+   * Absolute path to the git binary.
+   *
+   * When omitted it is resolved once from `PATH` so a machine that installs git
+   * somewhere other than `/usr/bin` still works. Resolution happens at
+   * construction, not per call: the process must not be able to observe a PATH
+   * that changed underneath it.
+   */
+  readonly gitBinary?: string;
+  /** The PATH to resolve `git` from; defaults to the ambient one. */
+  readonly searchPath?: string;
   readonly timeoutMs?: number;
   readonly maxBytes?: number;
   /** Injected for tests: resolves the binary, or throws when unavailable. */
@@ -45,18 +58,32 @@ async function runGit(
   cwd: string,
   timeoutMs: number,
   maxBytes: number,
+  gitBinary: string,
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    // Minimal environment for the same reason subprocess plugins use one:
-    // an external binary must not inherit unrelated credentials, and hooks
-    // must not be able to prompt for them.
-    const env: NodeJS.ProcessEnv = { GIT_TERMINAL_PROMPT: '0' };
-    for (const name of ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL']) {
-      const value = process.env[name];
-      if (value !== undefined) env[name] = value;
+    // The kernel validates the spawn instead of this module re-deciding what is
+    // safe: absolute binary, cwd inside the workspace, an explicit env
+    // allowlist, bounded argv, and a bounded timeout. `GIT_TERMINAL_PROMPT=0`
+    // is supplied as a caller variable so a hook cannot prompt.
+    let spec;
+    try {
+      spec = validateProcessSpec({
+        command: gitBinary,
+        args,
+        cwd,
+        envAllowlist: ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL'],
+        env: { GIT_TERMINAL_PROMPT: '0' },
+        timeoutMs,
+      }, cwd, process.env as Record<string, string | undefined>);
+    } catch (cause) {
+      reject(cause instanceof ProcessSpecError
+        ? new ToolRejectedError('git_unavailable')
+        : cause);
+      return;
     }
-    const child = spawn('git', [...args], {
-      cwd,
+    const env: NodeJS.ProcessEnv = { ...spec.env };
+    const child = spawn(spec.command, [...spec.args], {
+      cwd: spec.cwd,
       shell: false,
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -117,7 +144,21 @@ export function createGitReadTools(options: GitToolsOptions): ToolProvider {
   const root = path.resolve(options.root);
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxBytes = options.maxBytes ?? MAX_OUTPUT_BYTES;
-  const run = options.run ?? ((args, cwd) => runGit(args, cwd, timeoutMs, maxBytes));
+  // Resolve once: a per-call PATH lookup would let the binary change under a
+  // running Runtime, and would make the validated spec differ between calls.
+  const gitBinary = options.gitBinary ?? resolveProgram(
+    'git',
+    options.searchPath ?? process.env.PATH ?? '',
+    (candidate) => {
+      try {
+        accessSync(candidate, constants.X_OK);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  );
+  const run = options.run ?? ((args, cwd) => runGit(args, cwd, timeoutMs, maxBytes, gitBinary));
 
   const commit = async (args: ToolArguments): Promise<ToolExecutionResult> => {
     const message = requireString(args, 'message', 'message');

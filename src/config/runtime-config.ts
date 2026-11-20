@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { isPermissionLevel, type PermissionLevel } from '../kernel/policy.js';
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 const LOOPBACK_URL_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
@@ -141,7 +142,7 @@ export interface RuntimeConfig {
    * from a task, Agent revision, model output, or API request. `executionMode`
    * remains for compatibility; this is the value the policy kernel consumes.
    */
-  permissionLevel?: 'standard' | 'trusted';
+  permissionLevel?: PermissionLevel;
   loopBudget: LoopBudget;
   /** the implementation: worker loop iterations per cooperative slice. 0 disables yielding. */
   workerSliceIterations: number;
@@ -204,16 +205,16 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
   }
   const executionMode = executionModeValue as ExecutionMode;
   // The permission level is the forward-looking setting; `executionMode` stays
-  // accepted so existing deployments keep working. Only the two levels that
-  // match the old semantics are selectable from the environment for now; the
-  // remaining levels land with the kernel rollout so a config value can never
-  // promise a behaviour that does not exist yet.
+  // accepted so existing deployments keep working. The valid set comes from the
+  // kernel rather than a literal here, so adding or removing a level cannot
+  // leave the config accepting a value the policy engine does not know.
   const configuredLevel = env.CONCHBASE_PERMISSION_LEVEL?.trim() || undefined;
-  const permissionLevelValue = configuredLevel ?? (executionMode === 'unrestricted' ? 'trusted' : 'standard');
-  if (permissionLevelValue !== 'standard' && permissionLevelValue !== 'trusted') {
-    throw new Error('CONCHBASE_PERMISSION_LEVEL must be standard or trusted.');
+  const requestedLevel: unknown = configuredLevel
+    ?? (executionMode === 'unrestricted' ? 'trusted' : 'standard');
+  if (!isPermissionLevel(requestedLevel)) {
+    throw new Error('CONCHBASE_PERMISSION_LEVEL must be strict, standard, or trusted.');
   }
-  const permissionLevel = permissionLevelValue;
+  const permissionLevel: PermissionLevel = requestedLevel;
   const workspaceRoot = env.CONCHBASE_WORKSPACE_ROOT ?? process.cwd();
   if (!path.isAbsolute(workspaceRoot) && !path.posix.isAbsolute(workspaceRoot) && !path.win32.isAbsolute(workspaceRoot)) {
     throw new Error('CONCHBASE_WORKSPACE_ROOT must be an absolute path.');

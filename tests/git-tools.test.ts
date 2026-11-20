@@ -98,6 +98,15 @@ test('a non-repository directory reports a bounded code, not a crash', async () 
   );
 });
 
+test('an unresolvable binary is refused before any spawn', () => {
+  // The kernel resolves the program once, so an empty PATH fails at
+  // construction instead of producing a spawn error per call.
+  assert.throws(
+    () => createGitReadTools({ root: '/tmp/workspace', searchPath: '' }),
+    /was not found/,
+  );
+});
+
 test('a missing binary is reported as unavailable', async () => {
   const provider = createGitReadTools({
     root: '/tmp/workspace',
@@ -168,10 +177,16 @@ test('the git subprocess does not inherit unrelated environment variables', asyn
         },
       });
       // The injected runner above bypasses env construction, so also assert the
-      // policy at the source: the spawn options are now built from an allowlist.
+      // policy at the source: the env is built by the kernel from an allowlist,
+      // not by copying the parent environment.
       const source = readFileSync(new URL('../src/runtime/git-tools.ts', import.meta.url), 'utf8');
-      assert.match(source, /for \(const name of \['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL'\]\)/);
+      assert.match(
+        source,
+        /envAllowlist: \['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL'\]/,
+        'git must pass an explicit env allowlist to the kernel',
+      );
       assert.doesNotMatch(source, /env: \{ \.\.\.process\.env/);
+      assert.match(source, /validateProcessSpec\(/, 'the git spawn must go through the kernel');
       assert.equal(captured.list().filter((tool) => tool.sideEffect === 'read').length, 3);
     } finally {
       rmSync(root, { recursive: true, force: true });

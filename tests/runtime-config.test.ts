@@ -51,11 +51,12 @@ test('accepts configured loopback host and decimal port', () => {
 test('resolves the permission level from the environment', () => {
   assert.equal(loadRuntimeConfig({}).permissionLevel, 'standard');
   assert.equal(loadRuntimeConfig({ CONCHBASE_PERMISSION_LEVEL: 'trusted' }).permissionLevel, 'trusted');
+  assert.equal(loadRuntimeConfig({ CONCHBASE_PERMISSION_LEVEL: 'strict' }).permissionLevel, 'strict');
   // The legacy mode still selects a level, so old deployments keep working.
   assert.equal(loadRuntimeConfig({ CONCHBASE_EXECUTION_MODE: 'unrestricted' }).permissionLevel, 'trusted');
   // An unknown or not-yet-shipped level is refused rather than silently
   // narrowed to a level with weaker or stronger behaviour than requested.
-  for (const bad of ['strict', 'unbounded', 'admin']) {
+  for (const bad of ['unbounded', 'admin', 'Strict']) {
     assert.throws(() => loadRuntimeConfig({ CONCHBASE_PERMISSION_LEVEL: bad }), /CONCHBASE_PERMISSION_LEVEL/);
   }
   // An empty value means "not set", so it falls back instead of failing.

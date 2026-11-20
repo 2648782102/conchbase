@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ExecutionMode, LoopBudget } from '../../../config/runtime-config.js';
+import type { PermissionLevel } from '../../../kernel/policy.js';
 
 export function registerRuntimeRoute(
   app: FastifyInstance,
@@ -10,7 +11,7 @@ export function registerRuntimeRoute(
   conversationEnabled = false,
   agentChatEnabled = false,
   executionMode: ExecutionMode = 'restricted',
-  permissionLevel?: 'standard' | 'trusted',
+  permissionLevel?: PermissionLevel,
   loopBudget?: LoopBudget,
   projectIdleMs?: number,
   memoryEnabled = false,

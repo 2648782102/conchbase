@@ -35,6 +35,7 @@ import { digestArguments } from './tool-arguments.js';
 import { buildToolRequestPreview } from './tool-request-preview.js';
 import { projectSkills, projectToolProvider } from './capability-grants.js';
 import type { ExecutionMode, LoopBudget } from '../config/runtime-config.js';
+import type { PermissionLevel } from '../kernel/policy.js';
 import {
   OTEL_GENAI_ATTRIBUTES,
   flattenOtelAttributes,
@@ -99,7 +100,7 @@ export interface TaskServiceConfig {
    * The resolved permission level. When absent, the level is derived from
    * `executionMode` so existing callers keep their current behaviour.
    */
-  readonly permissionLevel?: 'standard' | 'trusted';
+  readonly permissionLevel?: PermissionLevel;
   /**
    * the implementation. Operator-set Agent loop ceilings. Resolved once at process start
    * and never influenced by a task, client, Agent revision, or model.

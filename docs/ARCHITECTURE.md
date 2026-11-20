@@ -159,14 +159,12 @@ boundary.
 | `strict` | every tool, including reads | enforced | always |
 | `standard` (default) | writes and external calls | enforced | always |
 | `trusted` | none | enforced | always |
-| `unbounded` | none | waived | always |
 
 `CONCHBASE_PERMISSION_LEVEL` selects the level at startup and is never read from
 a task, Agent revision, model output, or request. `CONCHBASE_EXECUTION_MODE`
-still works: `restricted` → `standard`, `unrestricted` → `trusted`. Only those
-two levels are selectable today; `strict` and `unbounded` land with the kernel
-rollout so a configuration value can never promise behaviour that does not
-exist yet.
+still works: `restricted` → `standard`, `unrestricted` → `trusted`. There is no
+level that waives grants: a level answers "how much ceremony surrounds an
+allowed action", never "what may this Agent touch".
 
 `decidePolicy` resolves in a fixed order, and the order is the contract:
 boundary → grants → approval. Reversing it would let a level waive a boundary
@@ -178,8 +176,10 @@ typo can never downgrade a tool to read-only.
 `validateProcessSpec` is the single rule for spawning a child: absolute command,
 `cwd` inside the workspace, an environment allowlist, bounded arguments, and a
 bounded timeout. It validates; it does not spawn. Modules that already spawn
-(the plugin subprocess, git tools, isolated execution) pass through it, so a
-new spawn path inherits the rules instead of re-deriving them.
+(the plugin subprocess, git tools) pass through it, so a new spawn path inherits
+the rules instead of re-deriving them. `resolveProgram` turns a bare name such
+as `git` into an absolute path once, from an explicitly supplied `PATH`, so a
+conventional binary name does not force a caller to hard-code a machine path.
 
 ## Side effects
 
