@@ -25,6 +25,13 @@ Updated: 2026-11-19
 - A failed task records a bounded `category` (`auth`, `rate-limit`, `timeout`,
   `unavailable`, `provider`, …) on its `task.failed` event, derived from the
   classified provider error rather than the message text.
+- A restart re-admits tasks that were accepted but never started instead of
+  stranding them as interrupted; concurrent execution is bounded by
+  `CONCHBASE_MAX_CONCURRENT_TASKS` (default 4), with waiting tasks still queued
+  and cancellable.
+- A task that was mid-request when the process died is `interrupted`, not
+  auto-replayed: the crash window cannot prove a write did not run, so
+  recovery stays an explicit `retry` that starts a new attempt.
 - User-facing capability presets: read-only, workspace-editing, local-commands,
   external-integrations. There is deliberately no arbitrary-shell tool; the
   only subprocess tools are fixed read-only git commands.

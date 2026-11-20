@@ -76,6 +76,17 @@ Terminal: `succeeded`, `failed`, `cancelled`, `interrupted`. `interrupted` may
 resume once to `running` when a loop checkpoint exists; it never jumps straight
 to success or failure.
 
+A `queued` task that has never run is not interrupted on restart: it is
+re-admitted, because the caller was already told the Runtime owns the work and
+nothing retries an interrupted task.
+
+A task that was `running` without a checkpoint stays `interrupted` on restart,
+even though it had only issued a model request. The crash window cannot prove
+whether a tool call already ran, and `writeAlreadyApplied` only knows about
+recorded executions — replaying could duplicate a write. Recovery is therefore
+explicit: the task reports `interrupted`, and the existing retry endpoint starts
+a fresh attempt.
+
 ### Work item
 
 | From | Allowed to |
@@ -101,6 +112,15 @@ pending task id; it returns to the model phase after a decision.
 
 A client never invents a transition. If a UI needs a new state, it is a Runtime
 contract change with tests, not a client-side flag.
+
+## Admission
+
+Execution is bounded by `CONCHBASE_MAX_CONCURRENT_TASKS` (default 4). A task
+over the limit waits as `queued` with its controller still attached, so it can
+be cancelled and a shutdown still aborts it. This matters most at restart, when
+every queued task is re-admitted at once: without a bound, a burst opens one
+completion stream per task. Admission is per Runtime process, not a durable
+state, and never changes the task state machine.
 
 ## Operating model: one process per database
 

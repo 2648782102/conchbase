@@ -100,6 +100,15 @@ export interface TaskServiceConfig {
    * and never influenced by a task, client, Agent revision, or model.
    */
   readonly loopBudget?: LoopBudget;
+  /**
+   * How many tasks may hold a provider call at once.
+   *
+   * Without a bound, starting a burst — the common case after a restart, when
+   * every queued task is re-admitted — opens one completion stream per task and
+   * can exhaust the gateway. Admission is internal: a task waiting for a slot
+   * is still `queued` and still cancellable.
+   */
+  readonly maxConcurrentTasks?: number;
 }
 
 export interface AgentLoopOptions {
@@ -114,6 +123,8 @@ const DEFAULT_LOOP_BUDGET: LoopBudget = Object.freeze({
   maxToolCallsPerTurn: 4,
   deadlineMs: 120_000,
 });
+
+const DEFAULT_MAX_CONCURRENT_TASKS = 4;
 
 interface LoopContinuationCheckpoint {
   readonly version: 1;
@@ -213,6 +224,11 @@ export class TaskService {
    */
   private readonly toolRequestPreviews = new Map<string, import('./tool-request-preview.js').ToolRequestPreview>();
   private readonly readResults = new ReadResultCache();
+  /** Tasks currently holding an admission slot. */
+  private readonly admitted = new Set<string>();
+  /** Tasks waiting for a slot, in arrival order. */
+  private readonly admissionWaiters: { taskId: string; grant: () => void }[] = [];
+  private readonly maxConcurrentTasks: number;
 
   constructor(
     store: TaskStore,
@@ -223,6 +239,10 @@ export class TaskService {
     this.store = store;
     this.config = config;
     this.loopOptions = loopOptions;
+    this.maxConcurrentTasks = Math.max(
+      1,
+      Math.min(32, config.maxConcurrentTasks ?? DEFAULT_MAX_CONCURRENT_TASKS),
+    );
     this.catalog = catalog ?? new MagpieModelCatalog({
       baseUrl: config.magpieBaseUrl,
       ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
@@ -583,12 +603,62 @@ export class TaskService {
 
     const controller = new AbortController();
     this.active.set(taskId, controller);
-    const execution = this.execute(task, controller.signal).finally(() => {
+    // Under the limit, execution must begin synchronously: callers and tests
+    // rely on the task being `running` by the time `startTask` returns. Only a
+    // task that actually waits is deferred to a later turn.
+    if (this.admitted.size < this.maxConcurrentTasks) {
+      this.admitted.add(taskId);
+      this.trackExecution(taskId, controller, this.execute(task, controller.signal));
+      return;
+    }
+    this.admissionWaiters.push({
+      taskId,
+      grant: () => {
+        if (controller.signal.aborted) {
+          this.active.delete(taskId);
+          // The slot was assigned to this waiter, so it must be released once.
+          this.releaseAdmission(taskId);
+          return;
+        }
+        this.trackExecution(taskId, controller, this.execute(task, controller.signal));
+      },
+    });
+  }
+
+  private trackExecution(taskId: string, controller: AbortController, execution: Promise<void>): void {
+    this.inFlight.add(execution);
+    void execution.finally(() => {
+      this.releaseAdmission(taskId);
       this.active.delete(taskId);
       this.inFlight.delete(execution);
       this.readResults.clear(taskId);
     });
-    this.inFlight.add(execution);
+  }
+
+  /**
+   * Ends one task's use of a slot and passes it to the next waiter.
+   *
+   * Calling this for a task that never held a slot is a no-op: a cancelled
+   * waiter settles without one, and releasing on its behalf would grant a
+   * second slot and break the bound.
+   */
+  private releaseAdmission(taskId: string): void {
+    if (!this.admitted.delete(taskId)) return;
+    this.handOffSlot();
+  }
+
+  /**
+   * Gives a free slot to the next waiter, if any.
+   *
+   * The slot is recorded as taken *before* the waiter runs. Waking first leaves
+   * a window where a task finishing at the same moment sees a free slot,
+   * releases one it never held, and strands the queue.
+   */
+  private handOffSlot(): void {
+    const next = this.admissionWaiters.shift();
+    if (!next) return;
+    this.admitted.add(next.taskId);
+    next.grant();
   }
 
   decideApproval(taskId: string, decision: 'approved' | 'rejected'): TaskSnapshot {
@@ -688,6 +758,16 @@ export class TaskService {
       throw new TaskConflictError('Task is not active.');
     }
     this.store.transitionTask(taskId, 'cancelling', this.eventInput(task, 'task.cancellation_requested', 'cancelling'));
+    // A task still waiting for a slot has no execution to abort; drop it from
+    // the queue so it settles as cancelled instead of waiting for a slot it
+    // will never use.
+    const waiting = this.admissionWaiters.findIndex((waiter) => waiter.taskId === taskId);
+    if (waiting >= 0) {
+      this.admissionWaiters.splice(waiting, 1);
+      this.active.delete(taskId);
+      this.finishCancelled(task);
+      return this.store.getTask(taskId)!;
+    }
     controller.abort();
     return this.store.getTask(taskId)!;
   }
@@ -1475,6 +1555,14 @@ export class TaskService {
     const resumable: string[] = [];
     for (const task of this.store.listTasks()) {
       if (isTerminalTaskState(task.state)) continue;
+      // A queued task was accepted (202) but never started: no provider call,
+      // no tool call, no side effect. Marking it interrupted stranded work the
+      // caller was told the Runtime owns, because nothing retries an
+      // interrupted task. Re-admit it instead.
+      if (task.state === 'queued') {
+        resumable.push(task.id);
+        continue;
+      }
       if (task.state === 'waiting_approval') continue;
       if (task.state === 'running'
         && parseLoopContinuation(this.store.getLoopState(task.id)) !== undefined) {

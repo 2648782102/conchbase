@@ -40,6 +40,7 @@ const taskService = createTaskService(config.databasePath, {
   defaultModel: config.defaultModel,
   executionMode: config.executionMode,
   loopBudget: config.loopBudget,
+  ...(config.maxConcurrentTasks ? { maxConcurrentTasks: config.maxConcurrentTasks } : {}),
   }, { tools: toolRuntime.tools, skills: toolRuntime.skills.skills });
 const executionService = new ControlledExecutionService();
 const executionRunService = new IsolatedExecutionService({ host: executionService });

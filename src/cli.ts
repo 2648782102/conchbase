@@ -178,6 +178,7 @@ async function main(argv: readonly string[]): Promise<void> {
       defaultModel: config.defaultModel,
       executionMode: config.executionMode,
       loopBudget: config.loopBudget,
+      ...(config.maxConcurrentTasks ? { maxConcurrentTasks: config.maxConcurrentTasks } : {}),
       }, { tools: toolRuntime.tools, skills: toolRuntime.skills.skills });
     const conversationService = new PrimaryConversationService({
       recordIntentText: (intentId, text) => service.store.organization.recordIntentText?.(intentId, text),
@@ -260,6 +261,7 @@ async function main(argv: readonly string[]): Promise<void> {
     defaultModel: config.defaultModel,
     executionMode: config.executionMode,
     loopBudget: config.loopBudget,
+    ...(config.maxConcurrentTasks ? { maxConcurrentTasks: config.maxConcurrentTasks } : {}),
     }, { tools: toolRuntime.tools, skills: toolRuntime.skills.skills });
   const conversationService = new PrimaryConversationService();
   const controller = new AbortController();

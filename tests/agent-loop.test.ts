@@ -359,7 +359,7 @@ test('retry clears a stale continuation checkpoint', async () => {
   }
 });
 
-test('a legacy approval checkpoint is not treated as a continuation', async () => {
+test('a legacy approval checkpoint is not treated as a resumable continuation', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-loop-legacy-'));
   const filename = path.join(directory, 'runtime.sqlite');
   const first = new TaskService(
@@ -383,7 +383,15 @@ test('a legacy approval checkpoint is not treated as a continuation', async () =
     {},
   );
   try {
-    assert.equal(second.store.getTask(taskId)?.state, 'interrupted');
+    // The task never started, so it is re-queued rather than interrupted, and
+    // it runs from scratch. A legacy `{ iteration, messages, pending }`
+    // checkpoint is not a continuation: resuming from it would replay a prompt
+    // with no matching tool results.
+    const finished = await second.waitForTask(taskId);
+    assert.equal(finished.state, 'succeeded');
+    const events = second.store.listTaskEvents(taskId).map((event) => event.type);
+    assert.equal(events.includes('task.resumed'), false);
+    assert.ok(events.includes('task.started'));
   } finally {
     second.close();
     rmSync(directory, { recursive: true, force: true });

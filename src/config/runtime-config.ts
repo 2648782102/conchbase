@@ -143,6 +143,14 @@ export interface RuntimeConfig {
   /** the implementation: non-preemptive global work capacity. */
   globalActiveWork: number;
   perProjectActiveWork: number;
+  /**
+   * How many Agent-backed tasks may hold a provider call at once.
+   *
+   * Separate from `globalActiveWork`, which governs organization work items: a
+   * burst of queued tasks (for example after a restart) would otherwise open
+   * one completion stream per task and exhaust the gateway.
+   */
+  maxConcurrentTasks?: number;
   allowAuthenticatedRemoteBinding: boolean;
   authTokenDigest?: string;
 }
@@ -223,6 +231,11 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     'CONCHBASE_PER_PROJECT_ACTIVE_WORK',
     { fallback: 2, min: 1, max: 16 },
   );
+  const maxConcurrentTasks = boundedInteger(
+    env.CONCHBASE_MAX_CONCURRENT_TASKS,
+    'CONCHBASE_MAX_CONCURRENT_TASKS',
+    { fallback: 4, min: 1, max: 32 },
+  );
   const workerSliceIterations = boundedInteger(
     env.CONCHBASE_WORKER_SLICE_ITERATIONS,
     'CONCHBASE_WORKER_SLICE_ITERATIONS',
@@ -256,6 +269,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     projectIdleMs,
     globalActiveWork,
     perProjectActiveWork,
+    maxConcurrentTasks,
     allowAuthenticatedRemoteBinding,
     ...(authTokenDigest ? { authTokenDigest } : {}),
   };

@@ -141,7 +141,7 @@ test('Agent task creation rejects an Agent revision changed during async model v
   }
 });
 
-test('restart interrupts unfinished work and explicit retry creates a new attempt', async () => {
+test('restart re-queues unstarted work and explicit retry creates a new attempt', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-recovery-'));
   const filename = path.join(directory, 'runtime.sqlite');
   const first = createService(filename);
@@ -162,11 +162,11 @@ test('restart interrupts unfinished work and explicit retry creates a new attemp
 
   const second = createService(filename);
   try {
-    const interrupted = second.store.getTask(taskId);
-    assert.equal(interrupted?.state, 'interrupted');
-    assert.match(interrupted?.error ?? '', /Runtime restarted/);
-    assert.equal(interrupted?.partialOutput, null);
-    assert.equal(second.store.listEvents(null).at(-1)?.type, 'task.interrupted');
+    // The task was accepted but never ran, so a restart re-admits it instead
+    // of stranding it as interrupted. It finishes without a retry.
+    const restarted = await second.waitForTask(taskId);
+    assert.equal(restarted.state, 'succeeded');
+    assert.equal(second.store.listEvents(null).some((event) => event.type === 'task.interrupted'), false);
 
     const retriedTask = second.retryTask(taskId);
     assert.equal(retriedTask.state, 'queued');
@@ -176,9 +176,10 @@ test('restart interrupts unfinished work and explicit retry creates a new attemp
     assert.equal(finished.state, 'succeeded');
     assert.equal(finished.attempt, 2);
     assert.equal(finished.output, 'fake answer');
+    // The retry is a fresh attempt, not a replay of the earlier run.
     assert.equal(second.store.listEvents(null).filter(
-      (event) => event.taskId === taskId && event.type === 'task.interrupted',
-    ).length, 1);
+      (event) => event.taskId === taskId && event.type === 'task.queued',
+    ).length, 2);
   } finally {
     second.close();
     rmSync(directory, { recursive: true, force: true });

@@ -17,6 +17,7 @@ test('uses loopback defaults', () => {
     projectIdleMs: 30 * 60 * 1000,
     globalActiveWork: 8,
     perProjectActiveWork: 2,
+    maxConcurrentTasks: 4,
     allowAuthenticatedRemoteBinding: false,
   });
 });
@@ -37,11 +38,21 @@ test('accepts configured loopback host and decimal port', () => {
       projectIdleMs: 30 * 60 * 1000,
       globalActiveWork: 8,
       perProjectActiveWork: 2,
+      maxConcurrentTasks: 4,
       allowAuthenticatedRemoteBinding: false,
     },
   );
   assert.equal(loadRuntimeConfig({ CONCHBASE_HOST: 'localhost' }).host, 'localhost');
   assert.equal(loadRuntimeConfig({}).organizationIntentModel, undefined);
+});
+
+test('bounds how many tasks may run at once', () => {
+  assert.equal(loadRuntimeConfig({}).maxConcurrentTasks, 4);
+  assert.equal(loadRuntimeConfig({ CONCHBASE_MAX_CONCURRENT_TASKS: '1' }).maxConcurrentTasks, 1);
+  assert.equal(loadRuntimeConfig({ CONCHBASE_MAX_CONCURRENT_TASKS: '32' }).maxConcurrentTasks, 32);
+  for (const bad of ['0', '33', 'x', '2.5']) {
+    assert.throws(() => loadRuntimeConfig({ CONCHBASE_MAX_CONCURRENT_TASKS: bad }), /CONCHBASE_MAX_CONCURRENT_TASKS/);
+  }
 });
 
 test('accepts operator loop budgets within the documented ranges', () => {
