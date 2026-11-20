@@ -55,8 +55,9 @@ Updated: 2026-11-19
 
 - This is still a local personal product. It has no polished installer or
   production remote pairing experience. Background lifecycle is script-level
-  (`start`/`stop`/`status`/`logs`), not an OS service; backup/verify/rotation and
-  project export exist but there is no scheduled automatic backup.
+  (`start`/`stop`/`status`/`logs`), not an OS service. Backups now run on a
+  timer (default daily, 7 kept, `CONCHBASE_BACKUP_INTERVAL_MS=0` disables) on
+  the live connection, alongside the manual `backup`/`verify-backup` verbs.
 - SQLite has a single runtime owner. Multi-process operation and broad crash
   testing are not complete product features.
 - Magpie is the only gateway exercised against a real service. A provider

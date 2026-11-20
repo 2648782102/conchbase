@@ -163,6 +163,16 @@ export interface RuntimeConfig {
    * one completion stream per task and exhaust the gateway.
    */
   maxConcurrentTasks?: number;
+  /**
+   * Automatic snapshotting of the database.
+   *
+   * On by default because the alternative — an operator who remembers to run
+   * `conchbase backup` — is the failure mode that loses data. A short interval
+   * is clamped by the scheduler; 0 disables it entirely.
+   */
+  backupIntervalMs?: number;
+  backupKeep?: number;
+  backupDirectory?: string;
   allowAuthenticatedRemoteBinding: boolean;
   authTokenDigest?: string;
 }
@@ -259,6 +269,17 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     'CONCHBASE_MAX_CONCURRENT_TASKS',
     { fallback: 4, min: 1, max: 32 },
   );
+  // 0 is a deliberate opt-out, so the bound starts at 0 rather than 1.
+  const backupIntervalMs = boundedInteger(
+    env.CONCHBASE_BACKUP_INTERVAL_MS,
+    'CONCHBASE_BACKUP_INTERVAL_MS',
+    { fallback: 24 * 60 * 60 * 1000, min: 0, max: 7 * 24 * 60 * 60 * 1000 },
+  );
+  const backupKeep = boundedInteger(
+    env.CONCHBASE_BACKUP_KEEP,
+    'CONCHBASE_BACKUP_KEEP',
+    { fallback: 7, min: 1, max: 64 },
+  );
   const workerSliceIterations = boundedInteger(
     env.CONCHBASE_WORKER_SLICE_ITERATIONS,
     'CONCHBASE_WORKER_SLICE_ITERATIONS',
@@ -294,6 +315,9 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     globalActiveWork,
     perProjectActiveWork,
     maxConcurrentTasks,
+    backupIntervalMs,
+    backupKeep,
+    ...(env.CONCHBASE_BACKUP_DIR ? { backupDirectory: env.CONCHBASE_BACKUP_DIR } : {}),
     allowAuthenticatedRemoteBinding,
     ...(authTokenDigest ? { authTokenDigest } : {}),
   };

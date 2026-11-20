@@ -4,6 +4,7 @@ import path from 'node:path';
 import { loadRuntimeConfig } from './config/runtime-config.js';
 import { createApp } from './http/create-app.js';
 import { createTaskService } from './runtime/task-service.js';
+import { createAutomaticBackup } from './runtime/automatic-backup.js';
 import { BOSS_UPSTREAM_PROVIDER_ID, BossModeService } from './runtime/boss-mode-service.js';
 import { ControlledExecutionService } from './runtime/controlled-execution.js';
 import { IsolatedExecutionService } from './runtime/isolated-execution.js';
@@ -115,9 +116,27 @@ if (config.organizationIntentModel || config.bossModel || config.defaultModel) {
 
 await servingApp.listen(config);
 
+// Automatic snapshots run on the live connection: the database has exactly one
+// owner, so nothing else may open it. A failure is recorded, never thrown.
+const backupIntervalMs = config.backupIntervalMs ?? 24 * 60 * 60 * 1000;
+const automaticBackup = backupIntervalMs > 0
+  ? createAutomaticBackup({
+    store: taskService.store,
+    directory: config.backupDirectory ?? path.join(path.dirname(config.databasePath), 'backups'),
+    keep: config.backupKeep ?? 7,
+    intervalMs: backupIntervalMs,
+  })
+  : null;
+automaticBackup?.start();
+
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {
-    convergence?.stop();
-    process.exit(0);
+    // Await the in-flight snapshot before exiting, otherwise a shutdown that
+    // lands mid-backup leaves a half-written file behind.
+    void (async () => {
+      await automaticBackup?.stop();
+      convergence?.stop();
+      process.exit(0);
+    })();
   });
 }

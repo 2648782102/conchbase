@@ -19,6 +19,8 @@ test('uses loopback defaults', () => {
     globalActiveWork: 8,
     perProjectActiveWork: 2,
     maxConcurrentTasks: 4,
+    backupIntervalMs: 24 * 60 * 60 * 1000,
+    backupKeep: 7,
     allowAuthenticatedRemoteBinding: false,
   });
 });
@@ -41,6 +43,8 @@ test('accepts configured loopback host and decimal port', () => {
       globalActiveWork: 8,
       perProjectActiveWork: 2,
       maxConcurrentTasks: 4,
+      backupIntervalMs: 24 * 60 * 60 * 1000,
+      backupKeep: 7,
       allowAuthenticatedRemoteBinding: false,
     },
   );

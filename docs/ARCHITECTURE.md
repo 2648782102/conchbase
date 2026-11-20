@@ -211,6 +211,24 @@ there is no default.
 
 ## Operating model: one process per database
 
+### Backups
+
+Snapshots are taken automatically, because a backup the operator must remember
+to run is the failure mode that loses data. `CONCHBASE_BACKUP_INTERVAL_MS`
+defaults to 24 hours and `0` disables it; `CONCHBASE_BACKUP_KEEP` defaults to 7;
+`CONCHBASE_BACKUP_DIR` defaults to `backups/` beside the database.
+
+The snapshot runs on the live connection (`store.backupTo`), which is the only
+connection that may open the file — `PRAGMA locking_mode = EXCLUSIVE` means an
+external process cannot. Consequences that the implementation respects:
+
+- a failure is recorded in `status()` and never thrown into the task loop;
+- runs are serialized, so a slow snapshot cannot queue up behind itself;
+- rotation happens in the same operation, so the directory cannot grow without
+  bound;
+- the timer is `unref`'d, so a pending snapshot never keeps the process alive,
+  and shutdown awaits an in-flight one so it cannot be cut in half.
+
 Conchbase is a local, single-process runtime. One process owns one SQLite file
 exclusively; a second process opening the same file fails fast with a clear
 message instead of corrupting state or silently interleaving writes.

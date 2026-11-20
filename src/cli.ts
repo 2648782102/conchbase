@@ -56,6 +56,10 @@ Configuration:
   CONCHBASE_ALLOW_AUTHENTICATED_REMOTE_BINDING=1   Enable reviewed non-loopback binding
   CONCHBASE_AUTH_TOKEN_DIGEST    sha256 digest of an approved bearer token
   CONCHBASE_EXECUTION_MODE       restricted (default) or unrestricted
+  CONCHBASE_PERMISSION_LEVEL     strict, standard (default), or trusted
+  CONCHBASE_BACKUP_INTERVAL_MS   Automatic snapshot interval (default 86400000; 0 disables)
+  CONCHBASE_BACKUP_KEEP          Snapshots to retain (default 7)
+  CONCHBASE_BACKUP_DIR           Snapshot directory (default backups/ beside the database)
   CONCHBASE_MAX_ITERATIONS       Agent loop iteration ceiling (default 6, max 64)
   CONCHBASE_MAX_TOOL_CALLS_PER_TURN   Tool calls per turn (default 4, max 16)
   CONCHBASE_LOOP_DEADLINE_MS     Agent loop wall-clock budget (default 120000)
