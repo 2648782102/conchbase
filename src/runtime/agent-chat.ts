@@ -404,6 +404,12 @@ export class AgentChatService {
    * listener's lifetime is the queue's. Subscribing in the constructor would be
    * simpler but leaves one listener per service instance forever, which a test
    * already guards against.
+   *
+   * This listener releases itself: the queue drains inside the callback. That is
+   * safe with the `Set` `notifyChange` iterates — removing the entry the
+   * iterator is currently on does not skip the next one. Removing a *different*
+   * entry would, so a future change that clears every watcher from here must
+   * not run inside the callback.
    */
   private watchQueue(record: ConversationRecord): void {
     if (this.queueWatchers.has(record.id)) return;
