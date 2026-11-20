@@ -287,8 +287,18 @@ export class AgentChatService {
    */
   private readonly queuedTurns = new Map<string, QueuedTurn[]>();
 
-  /** Conversations with an in-flight promotion, so a settle cannot start two. */
-  private readonly promoting = new Set<string>();
+  /**
+   * Conversations with an in-flight promotion, so a settle cannot start two.
+   *
+   * The value is the promotion's own token, not just a flag. An evicted
+   * conversation can be re-loaded and promoted again while the first launch is
+   * still awaiting its task, and a bare `delete` in that first launch's
+   * `finally` would clear the *second* promotion's mark — letting a third start
+   * alongside it. Deleting only when the token still matches keeps the count at
+   * one.
+   */
+  private readonly promoting = new Map<string, number>();
+  private promotionToken = 0;
 
   /**
    * One task-change subscription per conversation that currently has a queue.
@@ -403,9 +413,22 @@ export class AgentChatService {
     const prompt = conversationalHistory(upToThisTurn).map((message) =>
       `${message.author === 'user' ? 'User' : 'Assistant'}: ${message.body}`).join('\n');
 
-    this.promoting.add(record.id);
+    const token = (this.promotionToken += 1);
+    this.promoting.set(record.id, token);
     void this.launchQueuedTurn(record, next, userMessage, assistantMessage, prompt)
-      .finally(() => { this.promoting.delete(record.id); });
+      .finally(() => { this.releasePromotion(record.id, token); });
+  }
+
+  /**
+   * Clears a promotion mark, but only if it is still the one that set it.
+   *
+   * An evicted conversation can be re-loaded and promoted while an earlier
+   * launch is still awaiting its task. The earlier launch's release then runs
+   * against a conversation that already carries a newer mark. Clearing by id
+   * alone would remove the newer mark and let a third turn start beside it.
+   */
+  releasePromotion(conversationId: string, token: number): void {
+    if (this.promoting.get(conversationId) === token) this.promoting.delete(conversationId);
   }
 
   /**
@@ -1377,7 +1400,6 @@ export class AgentChatService {
     if (oldest === undefined || oldest === keep) return;
     this.conversations.delete(oldest);
     this.queuedTurns.delete(oldest);
-    this.promoting.delete(oldest);
     this.unwatchQueue(oldest);
   }
 

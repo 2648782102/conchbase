@@ -607,3 +607,49 @@ test('a corrupt queue entry is skipped, not thrown, and does not stall the queue
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+/**
+ * A promotion's release is bound to its own launch, not to the conversation id.
+ *
+ * An evicted conversation can be re-loaded and promoted while the first launch
+ * is still awaiting its task. That first launch's `finally` then runs against a
+ * conversation that already has a newer promotion mark. Clearing by id alone
+ * would remove the *newer* mark and let a third turn start alongside it.
+ *
+ * The ordering is asserted directly rather than raced: the mark is set to a
+ * newer token, the stale release is applied the way `finally` does, and the
+ * newer mark must survive.
+ */
+test('a stale promotion release leaves a newer mark in place', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-promotion-token-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: (async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/v1/models')) {
+        return new Response(JSON.stringify({ data: [{ id: 'fixture/chat-model' }] }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof globalThis.fetch,
+  });
+  const chat = new AgentChatService(taskService);
+  try {
+    const internals = chat as unknown as { promoting: Map<string, number> };
+    assert.ok(internals.promoting instanceof Map, 'promotion marks carry a token');
+
+    const conversationId = 'chat_fixture';
+    internals.promoting.set(conversationId, 7);
+    // The stale launch releases with the token it was given, not the current one.
+    chat.releasePromotion(conversationId, 3);
+    assert.equal(internals.promoting.get(conversationId), 7, 'the newer mark survives a stale release');
+
+    // The launch that owns the current mark does clear it.
+    chat.releasePromotion(conversationId, 7);
+    assert.equal(internals.promoting.has(conversationId), false);
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
