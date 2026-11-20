@@ -74,11 +74,25 @@ and the reply arrives when it is ready. What changes is that the later prompt
 sees the earlier reply, so the conversation the model is given is the one a
 reader believes they are having.
 
-Promotion happens when the conversation is next settled (any read or stream
-tick) and is bounded: one turn per conversation is in flight, and a promotion
-in progress makes a concurrent settle a no-op rather than a second start. The
-queue is in-memory, so a restart drops it; a turn that had already started is
-handled by the normal interruption path.
+Promotion is driven by task transitions, not by readers. A conversation with a
+queue subscribes to them for as long as the queue exists, so a client that never
+polls still gets its queued reply; the subscription is released when the queue
+empties, which is why it is not taken in the constructor (that would leave one
+listener per service instance). Promotion is bounded — one turn per conversation
+in flight, a concurrent promotion a no-op — and settles the record first, since
+a finished task carries its output before the assistant message has learned it.
+The queue is in-memory, so a restart drops it; a turn that had already started
+is handled by the normal interruption path.
+
+### Context window
+
+Each turn's prompt carries the most recent eight turns — `CONVERSATION_WINDOW`
+in `agent-chat.ts` — trimmed forward to a question so the transcript never opens
+on an answer whose question was cut off. The transcript published over the API
+is the full history; the window is what a model is given. A conversation longer
+than eight turns is therefore answered with its recent context only, and a reply
+that does not recall something said much earlier is expected rather than a
+fault. The limit is fixed, not configurable.
 
 ## State machines
 

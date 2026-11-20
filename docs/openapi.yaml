@@ -5872,6 +5872,15 @@ components:
       type: object
       additionalProperties: false
       required: [version, id, agentId, agentRevisionId, providerId, modelId, configurationRevisionId, reasoningEffort, messages]
+      description: |
+        One conversation and its full message history.
+
+        The history published here is complete; the history a model is given is
+        not. Each turn's prompt carries the most recent eight turns, so a
+        conversation longer than that is answered with its recent context only.
+        This is a fixed implementation limit, not configuration: it is stated
+        here so a client can explain a reply that does not recall something
+        said much earlier, rather than treating it as a model failure.
       properties:
         version:
           $ref: '#/components/schemas/AgentChatVersion'
