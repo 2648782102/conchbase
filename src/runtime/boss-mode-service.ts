@@ -75,7 +75,7 @@ export interface BossModeSubmitResult {
   readonly holds: readonly {
     readonly workItemId: string;
     readonly projectId: string;
-    readonly reason: 'global-limit' | 'project-limit';
+    readonly reason: HoldReason;
   }[];
   readonly relays: readonly OrganizationRelay[];
   readonly reply: string | null;
@@ -1016,7 +1016,18 @@ export class BossModeService {
       });
     const scheduled = scheduleGlobalWork(work, this.schedulerLimits);
     const decision = scheduled.decisions.find((candidate) => candidate.workItemId === workItemId);
-    if (decision?.type === 'start') return { admitted: true, reason: 'global-limit' };
+    if (decision?.type === 'start') {
+      // The work scheduler and the task layer are two gates over the same
+      // capacity. The scheduler counts running WorkItems; the task layer counts
+      // held model calls. Passing one does not imply passing the other, and
+      // admitting here without asking leaves the WorkItem `running` while its
+      // task waits in `queued` — the two views disagree until something else
+      // happens to release a slot.
+      if ((this.taskService?.availableModelSlots ?? 1) <= 0) {
+        return { admitted: false, reason: 'model-slot-limit' };
+      }
+      return { admitted: true, reason: 'global-limit' };
+    }
     const reason = decision?.type === 'hold' ? decision.reason : 'global-limit';
     return { admitted: false, reason };
   }

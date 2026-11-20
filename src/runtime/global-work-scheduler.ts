@@ -20,7 +20,15 @@ export const MAX_SCHEDULER_LIMITS = Object.freeze({
 
 export type WorkPriority = 'interactive' | 'normal';
 
-export type HoldReason = 'global-limit' | 'project-limit';
+/**
+ * Why a work item was not admitted.
+ *
+ * `model-slot-limit` is distinct from `global-limit`: the work scheduler may
+ * allow more work items than the task layer can hold model calls for. Naming
+ * the two separately lets an operator tell "too much work" from "the model
+ * gateway is saturated", which need different responses.
+ */
+export type HoldReason = 'global-limit' | 'project-limit' | 'model-slot-limit';
 
 export interface SchedulableWork {
   readonly workItemId: string;

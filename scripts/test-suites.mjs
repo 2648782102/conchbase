@@ -39,7 +39,7 @@ const SUITES = Object.freeze({
     'read-reuse.test.ts', 'read-result-cache.test.ts', 'task-capabilities.test.ts', 'tool-result-paging.test.ts', 'execution-mode.test.ts', 'agent-scenario.test.ts',
     'tool-gate.test.ts', 'task-lifecycle.test.ts', 'task-service.test.ts',
     'memory-review.test.ts', 'project-summary.test.ts', 'project-lifecycle.test.ts', 'project-export.test.ts',
-    'task-race.test.ts', 'event-replay.test.ts', 'approval-preview-chat.test.ts',
+    'task-race.test.ts', 'admission-alignment.test.ts', 'event-replay.test.ts', 'approval-preview-chat.test.ts',
     'tool-bounds.test.ts', 'tool-untrusted-output.test.ts', 'write-safety.test.ts',
     'no-arbitrary-shell.test.ts', 'capability-presets.test.ts',
     'worker-start-admission.test.ts', 'worker-slice-yield.test.ts',

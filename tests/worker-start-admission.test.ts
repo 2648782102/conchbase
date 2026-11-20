@@ -40,10 +40,15 @@ function multiWorkerParser(projects: readonly string[]): OrganizationIntentParse
   };
 }
 
-function makeTaskService(directory: string, slowTasks = false) {
+function makeTaskService(
+  directory: string,
+  slowTasks = false,
+  maxConcurrentTasks?: number,
+) {
   return createTaskService(path.join(directory, 'runtime.sqlite'), {
     magpieBaseUrl: 'http://127.0.0.1:3425',
     defaultModel: 'fixture-model',
+    ...(maxConcurrentTasks === undefined ? {} : { maxConcurrentTasks }),
     fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input).endsWith('/v1/models')) {
         return new Response(JSON.stringify({ data: [{ id: 'fixture-model', display_name: 'Fixture Model' }] }), {
@@ -70,9 +75,10 @@ async function withBoss(
   run: (service: BossModeService, taskService: ReturnType<typeof createTaskService>) => Promise<void>,
   waitForTasks = false,
   slowTasks = false,
+  maxConcurrentTasks?: number,
 ) {
   const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-admission-'));
-  const taskService = makeTaskService(directory, slowTasks);
+  const taskService = makeTaskService(directory, slowTasks, maxConcurrentTasks);
   const service = new BossModeService(new InMemoryOrganizationStore(), taskService, {
     parser: multiWorkerParser(projects), waitForTasks, schedulerLimits,
   });
@@ -110,6 +116,35 @@ test('globalActive bounds worker starts across projects', async () => {
       assert.equal(result.holds.length, 1);
       assert.equal(result.holds[0]?.reason, 'global-limit');
     }, false, true);
+});
+
+/**
+ * The work scheduler and the task layer are two gates over one capacity.
+ *
+ * Before this, the scheduler could admit a worker whose task then waited in
+ * `queued` for a model slot, leaving the WorkItem `running` with no work
+ * happening. The scheduler has to hold instead, and say why.
+ */
+test('a worker is held when no model slot is free, even with scheduler room', async () => {
+  await withBoss(['project_a'], { globalActive: 8, perProjectActive: 8 },
+    async (service, taskService) => {
+      // Occupy every slot with unrelated tasks held open.
+      const blockers = Array.from({ length: 1 }, (_, index) =>
+        taskService.createTask({ prompt: `blocker${index}`, model: 'fixture-model' }));
+      for (const blocker of blockers) taskService.startTask(blocker.id);
+      for (let attempt = 0; attempt < 100 && taskService.availableModelSlots > 0; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      assert.equal(taskService.availableModelSlots, 0, 'the only slot is held');
+
+      const result = await service.submit({ text: 'hire', idempotencyKey: 'int_1' });
+      assert.equal(
+        result.executions.filter((entry) => entry.status === 'created-agent').length,
+        0,
+        'no worker starts while the only model slot is held',
+      );
+      assert.ok(result.holds.some((hold) => hold.reason === 'model-slot-limit'));
+    }, false, true, 1);
 });
 
 test('operator limits override the scheduler defaults', async () => {

@@ -282,6 +282,23 @@ export class TaskService {
   }
 
   /**
+   * How many tasks could start right now without waiting for a slot.
+   *
+   * Exposed because another admission gate exists above this one: the work
+   * scheduler decides how many work items may be *running*, and this decides
+   * how many model calls may be *held*. Without this number the scheduler
+   * promises concurrency this layer cannot deliver, and a WorkItem sits in
+   * `running` while its task waits in `queued` — two views of the same work
+   * that disagree indefinitely.
+   *
+   * A number rather than a boolean keeps the caller from mistaking "one slot"
+   * for "any number of slots".
+   */
+  get availableModelSlots(): number {
+    return Math.max(0, this.maxConcurrentTasks - this.admitted.size);
+  }
+
+  /**
    * The kernel decides; this only supplies the facts it needs.
    *
    * A tool reaching the loop is already inside the Agent's pinned grant set
