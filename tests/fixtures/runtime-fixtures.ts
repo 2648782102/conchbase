@@ -1,5 +1,4 @@
 import type { ModelAdapter, ModelTurn } from '../../src/runtime/model-adapter.js';
-import type { ToolApprovalSource } from '../../src/runtime/task-runner.js';
 
 export const FAKE_SECRET_MARKER = 'fixture-secret-never-logged';
 
@@ -112,24 +111,6 @@ export const FINAL_TURN: ModelTurn = Object.freeze({
   kind: 'final',
   output: 'done',
 });
-
-export function mutableApprovalSource(
-  approvedToolNames: readonly string[],
-): ToolApprovalSource & { revoke(toolName: string): void; grant(toolName: string): void } {
-  const approved = new Set(approvedToolNames);
-
-  return {
-    isApproved(toolName: string): boolean {
-      return approved.has(toolName);
-    },
-    revoke(toolName: string): void {
-      approved.delete(toolName);
-    },
-    grant(toolName: string): void {
-      approved.add(toolName);
-    },
-  };
-}
 
 export function scriptedModelAdapter(turns: readonly ModelTurn[]): ModelAdapter {
   const remaining = [...turns];

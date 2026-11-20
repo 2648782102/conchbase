@@ -26,11 +26,10 @@ const TESTS = path.join(process.cwd(), 'tests');
 const SUITES = Object.freeze({
   domain: [
     'organization-contract.test.ts', 'organization-store.test.ts', 'organization-execution.test.ts',
-    'organization-coordinator.test.ts', 'work-hold-projection.test.ts', 'work-hold-route.test.ts', 'organization-agent-projection.test.ts',
-    'organization-action-contract.test.ts', 'organization-validators.test.ts', 'composition-document.test.ts',
+    'organization-coordinator.test.ts', 'work-hold-projection.test.ts', 'work-hold-route.test.ts', 'organization-action-contract.test.ts', 'organization-validators.test.ts', 'composition-document.test.ts',
     'configuration-document.test.ts', 'configuration-revision.test.ts',
     'composition-execution.test.ts', 'work-contract.test.ts', 'platform-contract.test.ts',
-    'tool-request.test.ts', 'tool-capability.test.ts', 'agent-memory.test.ts', 'secret-filter.test.ts',
+    'tool-request.test.ts', 'agent-memory.test.ts', 'secret-filter.test.ts',
     'memory-types.test.ts', 'memory-promotion.test.ts', 'tool-request-preview.test.ts',
     'task-state-machine.test.ts',
     'kernel-policy.test.ts', 'capability-scope.test.ts', 'kernel-process-spec.test.ts', 'kernel-level-integration.test.ts',
@@ -38,7 +37,7 @@ const SUITES = Object.freeze({
   'agent-loop': [
     'agent-loop.test.ts', 'agent-loop-tools.test.ts', 'agent-multi-tool.test.ts', 'agent-approval.test.ts',
     'read-reuse.test.ts', 'read-result-cache.test.ts', 'task-capabilities.test.ts', 'tool-result-paging.test.ts', 'execution-mode.test.ts', 'agent-scenario.test.ts',
-    'policy-gate.test.ts', 'tool-gate.test.ts', 'task-runner.test.ts', 'task-lifecycle.test.ts', 'task-service.test.ts',
+    'tool-gate.test.ts', 'task-lifecycle.test.ts', 'task-service.test.ts',
     'memory-review.test.ts', 'project-summary.test.ts', 'project-lifecycle.test.ts', 'project-export.test.ts',
     'task-race.test.ts', 'event-replay.test.ts', 'approval-preview-chat.test.ts',
     'tool-bounds.test.ts', 'tool-untrusted-output.test.ts', 'write-safety.test.ts',

@@ -4,7 +4,6 @@ import {
   PERMISSION_LEVELS,
   approvalRequired,
   decidePolicy,
-  grantEnforced,
   isPermissionLevel,
   scopeToolSet,
   type ActionEffect,
@@ -50,12 +49,6 @@ test('no level can waive the pinned grant list', () => {
   }
 });
 
-test('every level enforces grants', () => {
-  for (const level of PERMISSION_LEVELS) {
-    assert.equal(grantEnforced(level), true, `${level} must enforce the grant list`);
-  }
-});
-
 test('strict asks a human even for reads', () => {
   for (const effect of EFFECTS) {
     const outcome = decidePolicy(request({ level: 'strict', effect }));
@@ -83,7 +76,14 @@ test('every level and effect maps to exactly one decision', () => {
     for (const effect of EFFECTS) {
       const decision = decidePolicy(request({ level, effect })).decision;
       assert.ok(['allow', 'approve', 'deny'].includes(decision));
-      assert.equal(grantEnforced(level), true);
+      // Grant enforcement is unconditional, so an ungranted action must be
+      // denied at every level — asserted here rather than via a flag that only
+      // tests could call.
+      assert.equal(
+        decidePolicy(request({ level, effect, granted: false })).decision,
+        'deny',
+        `${level}/${effect} must deny an ungranted action`,
+      );
       assert.equal(
         approvalRequired(level, effect),
         decision === 'approve',

@@ -61,20 +61,6 @@ export interface PolicyOutcome {
 }
 
 /**
- * No level waives the pinned grant list.
- *
- * A level answers "how much ceremony surrounds an allowed action", never "what
- * is this Agent allowed to touch". `capability-grants.ts` promises that grants
- * can only narrow, and `resolveTaskCapabilities` is a tested security boundary;
- * a configuration value able to switch it off would make both decorative.
- *
- * This is kept as a named constant rather than deleted so the reason survives
- * where the old rule was, and so a future attempt to add a waiver has to argue
- * with it explicitly.
- */
-const GRANT_ENFORCED = Object.freeze(true);
-
-/**
  * Level → which effects need a human before running.
  *
  * `strict` treats reading as consequential too: it exists for the case where
@@ -108,6 +94,12 @@ export function decidePolicy(request: PolicyRequest): PolicyOutcome {
     });
   }
 
+  // No level waives this. A level answers "how much ceremony surrounds an
+  // allowed action", never "what is this Agent allowed to touch":
+  // `capability-grants.ts` promises grants can only narrow, and a config value
+  // able to switch that off would make the promise decorative. The check is
+  // written inline rather than behind a flag so adding a waiver has to delete
+  // it, not flip a boolean.
   if (!request.granted) {
     return Object.freeze({
       decision: 'deny',
@@ -129,16 +121,6 @@ export function decidePolicy(request: PolicyRequest): PolicyOutcome {
     reason: REASON.allow,
     requiresApproval: false,
   });
-}
-
-/**
- * Whether a level enforces the pinned grant list.
- *
- * Always true. Kept so a caller can ask the question in code without knowing
- * the rule is unconditional, and so the answer is documented in one place.
- */
-export function grantEnforced(_level: PermissionLevel): boolean {
-  return GRANT_ENFORCED;
 }
 
 /** Whether a level requires approval for an effect. Exposed for docs and tests. */

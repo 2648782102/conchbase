@@ -92,7 +92,7 @@ export interface TaskServiceConfig {
   readonly defaultModel: string;
   readonly fetch?: typeof globalThis.fetch;
   /**
-   * the implementation. `restricted` pauses consequential tool calls for approval;
+   * `restricted` pauses consequential tool calls for approval;
    * `unrestricted` executes every granted tool immediately.
    */
   readonly executionMode?: ExecutionMode;
@@ -102,7 +102,7 @@ export interface TaskServiceConfig {
    */
   readonly permissionLevel?: PermissionLevel;
   /**
-   * the implementation. Operator-set Agent loop ceilings. Resolved once at process start
+   * Operator-set Agent loop ceilings. Resolved once at process start
    * and never influenced by a task, client, Agent revision, or model.
    */
   readonly loopBudget?: LoopBudget;
@@ -1288,7 +1288,7 @@ export class TaskService {
   }
 
   /**
-   * the implementation. Read results already produced in the current attempt, keyed by
+   * Read results already produced in the current attempt, keyed by
    * `taskId:toolId:argumentsDigest`. Scoped to the process and cleared when the
    * attempt ends, so a retry always sees fresh data. Reads only: replaying one
    * has no side effect, while writes and external calls keep their existing

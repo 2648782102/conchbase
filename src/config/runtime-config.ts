@@ -123,7 +123,7 @@ export interface RuntimeConfig {
   skillsDirectory?: string;
   allowToolWrites?: boolean;
   /**
-   * the implementation. Read-only git tools. Opt-in because they execute a subprocess;
+   * Read-only git tools. Opt-in because they execute a subprocess;
    * every other built-in tool is a filesystem call.
    */
   enableGitTools?: boolean;
@@ -147,7 +147,7 @@ export interface RuntimeConfig {
   /** the implementation: worker loop iterations per cooperative slice. 0 disables yielding. */
   workerSliceIterations: number;
   /**
-   * the implementation. How long a project may receive no observable activity before the
+   * How long a project may receive no observable activity before the
    * Runtime closes it. Operator configuration only: a model, task, or client
    * can never change the retention policy.
    */

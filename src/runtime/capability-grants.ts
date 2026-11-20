@@ -82,7 +82,7 @@ export function defaultWorkerGrants(
 }
 
 /**
- * User-facing capability presets (ADR P3.8).
+ * User-facing capability presets.
  *
  * The names are what a person sees when choosing what an Agent may do; the
  * mapping to concrete grants stays here so the UI never invents capability.
