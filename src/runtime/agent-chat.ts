@@ -358,30 +358,39 @@ export class AgentChatService {
    */
   private startNextQueuedTurn(record: ConversationRecord): void {
     if (this.promoting.has(record.id)) return;
-    const queue = this.queuedTurns.get(record.id);
-    if (!queue || queue.length === 0) {
-      this.unwatchQueue(record.id);
-      return;
-    }
-    // The queued turn itself is not live yet, so only its predecessor can be.
-    if (this.runningTurnIn(record)) return;
+    let userMessage: AgentChatMessage | undefined;
+    let assistantMessage: AgentChatMessage | undefined;
+    let next: QueuedTurn | undefined;
+    for (;;) {
+      const queue = this.queuedTurns.get(record.id);
+      if (!queue || queue.length === 0) {
+        this.unwatchQueue(record.id);
+        return;
+      }
+      // The queued turn itself is not live yet, so only its predecessor can be.
+      if (this.runningTurnIn(record)) return;
 
-    const next = queue.shift();
-    if (!next) return;
-    if (queue.length === 0) {
-      this.queuedTurns.delete(record.id);
-      this.unwatchQueue(record.id);
-    }
+      next = queue.shift();
+      if (!next) return;
+      if (queue.length === 0) {
+        this.queuedTurns.delete(record.id);
+        this.unwatchQueue(record.id);
+      }
 
-    const userMessage = record.messages.find((message) => message.id === next.userMessageId);
-    const assistantMessage = record.messages.find((message) => message.id === next.assistantMessageId);
-    /*
-     * Messages are never removed from a record, so this cannot happen today.
-     * Returning silently would drop the queued turn with nothing on screen to
-     * say so, which is worse than a loud failure if the invariant ever breaks.
-     */
-    if (!userMessage || !assistantMessage) {
-      throw new Error(`Queued turn ${next.idempotencyKey} lost its message pair.`);
+      userMessage = record.messages.find((message) => message.id === next!.userMessageId);
+      assistantMessage = record.messages.find((message) => message.id === next!.assistantMessageId);
+      /*
+       * Messages are never removed from a record, so this cannot happen today.
+       *
+       * If it ever does, this turn is dropped and the loop takes the next one.
+       * Throwing would be worse: this runs from `settleRecord`, which `view()`
+       * calls — a broken queue entry would turn every read of the conversation
+       * into a 500 — and from the task-change listener, where an exception
+       * would reach `notifyChange` and stop the remaining listeners from
+       * hearing about the transition. A corrupt entry must not take either
+       * down, and it must not stall the turns queued behind it.
+       */
+      if (userMessage && assistantMessage) break;
     }
 
     /*

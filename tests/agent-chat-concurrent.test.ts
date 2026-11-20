@@ -515,3 +515,95 @@ test('evicting a conversation releases its queue and listener', async () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+/**
+ * A corrupt queue entry must not take the conversation down with it.
+ *
+ * The branch that drops a turn whose message pair is missing is unreachable
+ * today — records only ever append. It is defensive, and the defence has to be
+ * shaped for where it runs: `startNextQueuedTurn` is called from `settleRecord`,
+ * which `view()` calls, so throwing there would turn every read of the
+ * conversation into a 500. It is also called from the task-change listener,
+ * where an exception would reach `notifyChange` and stop the remaining
+ * listeners from hearing about the transition. The entry is skipped instead, and
+ * the turns behind it still run.
+ */
+test('a corrupt queue entry is skipped, not thrown, and does not stall the queue', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-orphan-'));
+  const prompts: string[] = [];
+
+  const providerFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).endsWith('/v1/models')) {
+      return new Response(JSON.stringify({ data: [{ id: 'fixture/chat-model' }] }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    }
+    const body = JSON.parse(String(init?.body ?? '{}')) as {
+      messages?: readonly { role: string; content: string }[];
+    };
+    prompts.push((body.messages ?? [])
+      .filter((message) => message.role === 'user')
+      .map((message) => message.content)
+      .join('\n'));
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    return new Response(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: 'ok' }, finish_reason: null }] })}\n\ndata: [DONE]\n\n`,
+      { status: 200, headers: { 'content-type': 'text/event-stream' } },
+    );
+  }) as typeof globalThis.fetch;
+
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: providerFetch,
+  });
+  const chat = new AgentChatService(taskService);
+  try {
+    const agent = await taskService.createAgent({
+      name: '坏队列',
+      instructions: '',
+      providerId: 'magpie',
+      modelId: 'fixture/chat-model',
+    });
+    const conversation = await chat.createConversation({ agentId: agent.id });
+    await chat.postMessage(conversation.id, { text: 'Q0', idempotencyKey: 'q0' });
+    await chat.postMessage(conversation.id, { text: 'Q1', idempotencyKey: 'q1' });
+
+    // Put an entry with no matching messages at the head. The public API cannot
+    // produce this, which is why the code path is defensive.
+    const internals = chat as unknown as {
+      queuedTurns: Map<string, { conversationId: string; userMessageId: string; assistantMessageId: string; text: string; idempotencyKey: string }[]>;
+    };
+    const queue = internals.queuedTurns.get(conversation.id) ?? [];
+    queue.unshift({
+      conversationId: conversation.id,
+      userMessageId: 'amsg_missing_user',
+      assistantMessageId: 'amsg_missing_assistant',
+      text: 'ghost',
+      idempotencyKey: 'ghost',
+    });
+    internals.queuedTurns.set(conversation.id, queue);
+
+    /*
+     * Read until both real turns are terminal. A read drives settling, so a
+     * throw in the promotion path would surface here as a failed read rather
+     * than as the assertion below.
+     */
+    let view = chat.view(conversation.id);
+    for (let attempt = 0; attempt < 250; attempt += 1) {
+      if (view.messages.length === 4 && view.messages.every((message) => message.state === 'replied')) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      view = chat.view(conversation.id);
+    }
+
+    assert.equal(prompts.length, 2, 'the real turns behind the corrupt entry still run');
+    assert.deepEqual(
+      view.messages.map((message) => `${message.author}:${message.state}`),
+      ['user:published', 'assistant:replied', 'user:published', 'assistant:replied'],
+      'and the conversation still reads cleanly',
+    );
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
