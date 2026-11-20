@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { validateProcessSpec } from '../kernel/process-spec.js';
 import { createHash } from 'node:crypto';
 import type { ToolArguments, ToolExecutionResult } from './tool-provider.js';
 
@@ -21,6 +22,15 @@ export interface SubprocessPluginOptions {
   readonly args: readonly string[];
   /** Only these variable names are passed; values come from the parent. */
   readonly envAllowlist: readonly string[];
+  /**
+   * Working directory for the plugin process.
+   *
+   * When present it is validated by the kernel against `workspaceRoot`: a
+   * plugin that could choose its own cwd would make the workspace boundary
+   * decorative. Absent keeps the historical behaviour of inheriting cwd.
+   */
+  readonly cwd?: string;
+  readonly workspaceRoot?: string;
   readonly startTimeoutMs?: number;
   readonly callTimeoutMs?: number;
   readonly maxResultBytes?: number;
@@ -68,9 +78,21 @@ export class SubprocessPluginClient {
 
   async start(): Promise<void> {
     if (this.child || this.closed) return;
-    const child = spawn(this.options.command, [...this.options.args], {
+    // Route the spawn through the kernel when a workspace is known, so the
+    // process boundary is the same rule the file tools obey.
+    const validated = this.options.cwd && this.options.workspaceRoot
+      ? validateProcessSpec({
+        command: this.options.command,
+        args: this.options.args,
+        cwd: this.options.cwd,
+        envAllowlist: this.options.envAllowlist,
+        ...(this.options.startTimeoutMs ? { timeoutMs: this.options.startTimeoutMs } : {}),
+      }, this.options.workspaceRoot, process.env as Record<string, string | undefined>)
+      : undefined;
+    const child = spawn(validated?.command ?? this.options.command, [...(validated?.args ?? this.options.args)], {
       shell: false,
-      env: boundedEnv(this.options.envAllowlist),
+      env: validated ? { ...validated.env } : boundedEnv(this.options.envAllowlist),
+      ...(validated ? { cwd: validated.cwd } : {}),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.child = child;

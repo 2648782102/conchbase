@@ -10,6 +10,7 @@ export function registerRuntimeRoute(
   conversationEnabled = false,
   agentChatEnabled = false,
   executionMode: ExecutionMode = 'restricted',
+  permissionLevel?: 'standard' | 'trusted',
   loopBudget?: LoopBudget,
   projectIdleMs?: number,
   memoryEnabled = false,
@@ -20,6 +21,7 @@ export function registerRuntimeRoute(
     version: '1.0.0',
     state: 'ready',
     executionMode,
+    ...(permissionLevel ? { permissionLevel } : {}),
     ...(loopBudget ? { loopBudget } : {}),
     ...(projectIdleMs === undefined ? {} : {
       projectConvergence: {

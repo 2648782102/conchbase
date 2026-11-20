@@ -177,6 +177,7 @@ async function main(argv: readonly string[]): Promise<void> {
       ...(config.providerEndpoints ? { providers: config.providerEndpoints } : {}),
       defaultModel: config.defaultModel,
       executionMode: config.executionMode,
+      ...(config.permissionLevel ? { permissionLevel: config.permissionLevel } : {}),
       loopBudget: config.loopBudget,
       ...(config.maxConcurrentTasks ? { maxConcurrentTasks: config.maxConcurrentTasks } : {}),
       }, { tools: toolRuntime.tools, skills: toolRuntime.skills.skills });
@@ -260,6 +261,7 @@ async function main(argv: readonly string[]): Promise<void> {
     ...(config.providerEndpoints ? { providers: config.providerEndpoints } : {}),
     defaultModel: config.defaultModel,
     executionMode: config.executionMode,
+    ...(config.permissionLevel ? { permissionLevel: config.permissionLevel } : {}),
     loopBudget: config.loopBudget,
     ...(config.maxConcurrentTasks ? { maxConcurrentTasks: config.maxConcurrentTasks } : {}),
     }, { tools: toolRuntime.tools, skills: toolRuntime.skills.skills });

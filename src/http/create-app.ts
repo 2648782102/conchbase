@@ -112,6 +112,7 @@ export function createApp(options: CreateAppOptions = {}) {
     Boolean(conversation),
     Boolean(agentChat),
     options.config?.executionMode ?? 'restricted',
+    options.config?.permissionLevel,
     options.config?.loopBudget,
     options.config?.projectIdleMs,
     Boolean(options.taskService?.store?.memory),

@@ -11,6 +11,7 @@ test('uses loopback defaults', () => {
     magpieBaseUrl: 'http://127.0.0.1:3425',
     defaultModel: 'workbuddy/blind-model-h',
     executionMode: 'restricted',
+    permissionLevel: 'standard',
     workspaceRoot: process.cwd(),
     loopBudget: { maxIterations: 6, maxToolCallsPerTurn: 4, deadlineMs: 120_000 },
     workerSliceIterations: 0,
@@ -32,6 +33,7 @@ test('accepts configured loopback host and decimal port', () => {
       magpieBaseUrl: 'http://127.0.0.1:3425',
       defaultModel: 'workbuddy/blind-model-h',
       executionMode: 'restricted',
+      permissionLevel: 'standard',
       workspaceRoot: process.cwd(),
       loopBudget: { maxIterations: 6, maxToolCallsPerTurn: 4, deadlineMs: 120_000 },
       workerSliceIterations: 0,
@@ -44,6 +46,20 @@ test('accepts configured loopback host and decimal port', () => {
   );
   assert.equal(loadRuntimeConfig({ CONCHBASE_HOST: 'localhost' }).host, 'localhost');
   assert.equal(loadRuntimeConfig({}).organizationIntentModel, undefined);
+});
+
+test('resolves the permission level from the environment', () => {
+  assert.equal(loadRuntimeConfig({}).permissionLevel, 'standard');
+  assert.equal(loadRuntimeConfig({ CONCHBASE_PERMISSION_LEVEL: 'trusted' }).permissionLevel, 'trusted');
+  // The legacy mode still selects a level, so old deployments keep working.
+  assert.equal(loadRuntimeConfig({ CONCHBASE_EXECUTION_MODE: 'unrestricted' }).permissionLevel, 'trusted');
+  // An unknown or not-yet-shipped level is refused rather than silently
+  // narrowed to a level with weaker or stronger behaviour than requested.
+  for (const bad of ['strict', 'unbounded', 'admin']) {
+    assert.throws(() => loadRuntimeConfig({ CONCHBASE_PERMISSION_LEVEL: bad }), /CONCHBASE_PERMISSION_LEVEL/);
+  }
+  // An empty value means "not set", so it falls back instead of failing.
+  assert.equal(loadRuntimeConfig({ CONCHBASE_PERMISSION_LEVEL: '' }).permissionLevel, 'standard');
 });
 
 test('bounds how many tasks may run at once', () => {

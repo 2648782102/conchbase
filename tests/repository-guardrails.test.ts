@@ -86,6 +86,25 @@ test('runtime boundaries do not leak private IO or unapproved SDKs', () => {
   assert.doesNotMatch(read('src/runtime/task-service.ts'), /plaintextSecret|resolveSecret|decryptSecret/);
 });
 
+/**
+ * The kernel is the bottom of the dependency graph.
+ *
+ * It answers "may this run?", so if it imported the runtime it would depend on
+ * the thing it governs — and the policy rule could quietly start reading task
+ * state. This guard keeps the direction one-way: http → runtime → kernel.
+ */
+test('the policy kernel depends on nothing above it', () => {
+  for (const file of listTypeScriptFiles('src/kernel')) {
+    const source = read(file);
+    assert.doesNotMatch(source, /from '\.\.\/runtime\//, `${file} must not import the runtime`);
+    assert.doesNotMatch(source, /from '\.\.\/http\//, `${file} must not import http`);
+    assert.doesNotMatch(source, /from 'node:sqlite'/, `${file} must not touch the database`);
+    assert.doesNotMatch(source, /readFileSync|writeFileSync|readdirSync/, `${file} must stay free of file IO`);
+  }
+  // And the config layer no longer reaches up into the runtime.
+  assert.doesNotMatch(read('src/config/runtime-config.ts'), /from '\.\.\/runtime\//);
+});
+
 test('dependency baseline stays consistent', () => {
   const manifest = JSON.parse(read('package.json')) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
   const lock = JSON.parse(read('package-lock.json')) as { packages?: Record<string, unknown> };

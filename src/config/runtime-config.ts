@@ -1,5 +1,4 @@
 import path from 'node:path';
-import { isSupportedProvider } from '../runtime/provider-registry.js';
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 const LOOPBACK_URL_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
@@ -78,8 +77,12 @@ function parseProviderEndpoints(
   }
   const entries: Record<string, { readonly baseUrl: string; readonly appKey?: string }> = {};
   for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
-    if (!isSupportedProvider(id)) {
-      throw new Error(`CONCHBASE_PROVIDER_ENDPOINTS names an unsupported provider '${id}'.`);
+    // Shape only. Whether an id is a registered provider is a Runtime question,
+    // answered by `provider-registry`; validating it here made the config layer
+    // depend on `src/runtime`, so the dependency now points one way only. An
+    // unknown id is inert at resolve time and is rejected with a clear message.
+    if (!/^[a-z][a-z0-9-]{0,63}$/.test(id)) {
+      throw new Error(`CONCHBASE_PROVIDER_ENDPOINTS names an invalid provider id '${id}'.`);
     }
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
       throw new Error(`CONCHBASE_PROVIDER_ENDPOINTS['${id}'] must be an object.`);
@@ -131,6 +134,14 @@ export interface RuntimeConfig {
    */
   workspaceRoot: string;
   executionMode: ExecutionMode;
+  /**
+   * How much this Runtime trusts its Agents.
+   *
+   * Resolved once at startup from the operator's environment and never read
+   * from a task, Agent revision, model output, or API request. `executionMode`
+   * remains for compatibility; this is the value the policy kernel consumes.
+   */
+  permissionLevel?: 'standard' | 'trusted';
   loopBudget: LoopBudget;
   /** the implementation: worker loop iterations per cooperative slice. 0 disables yielding. */
   workerSliceIterations: number;
@@ -192,6 +203,17 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     throw new Error('CONCHBASE_EXECUTION_MODE must be restricted or unrestricted.');
   }
   const executionMode = executionModeValue as ExecutionMode;
+  // The permission level is the forward-looking setting; `executionMode` stays
+  // accepted so existing deployments keep working. Only the two levels that
+  // match the old semantics are selectable from the environment for now; the
+  // remaining levels land with the kernel rollout so a config value can never
+  // promise a behaviour that does not exist yet.
+  const configuredLevel = env.CONCHBASE_PERMISSION_LEVEL?.trim() || undefined;
+  const permissionLevelValue = configuredLevel ?? (executionMode === 'unrestricted' ? 'trusted' : 'standard');
+  if (permissionLevelValue !== 'standard' && permissionLevelValue !== 'trusted') {
+    throw new Error('CONCHBASE_PERMISSION_LEVEL must be standard or trusted.');
+  }
+  const permissionLevel = permissionLevelValue;
   const workspaceRoot = env.CONCHBASE_WORKSPACE_ROOT ?? process.cwd();
   if (!path.isAbsolute(workspaceRoot) && !path.posix.isAbsolute(workspaceRoot) && !path.win32.isAbsolute(workspaceRoot)) {
     throw new Error('CONCHBASE_WORKSPACE_ROOT must be an absolute path.');
@@ -264,6 +286,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     ...(enableGitTools ? { enableGitTools: true } : {}),
     workspaceRoot,
     executionMode,
+    permissionLevel,
     loopBudget,
     workerSliceIterations,
     projectIdleMs,

@@ -34,7 +34,14 @@ export interface LoadedPlugin {
 export interface PluginInvocationGuard {
   /** Whether an Agent may use this tool, given its pinned grants. */
   isGranted(toolId: string): boolean;
-  /** Whether a consequential operation must pause for approval. */
+  /**
+   * Whether a consequential operation must pause for approval.
+   *
+   * Production composition passes no guard: the agent loop applies the kernel's
+   * decision before any tool runs, so a second check here would be a second
+   * rule that can drift. The hook exists for embedders that expose a plugin
+   * without that loop.
+   */
   requiresApproval(toolId: string): boolean;
 }
 

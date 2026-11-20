@@ -19,6 +19,24 @@ const script = (body: string): string => {
   return file;
 };
 
+test('a plugin cwd outside the workspace is refused before spawning', async () => {
+  const workspace = mkdtempSync(path.join(tmpdir(), 'cb-plugin-ws-'));
+  const file = script('process.exit(0);');
+  const client = new SubprocessPluginClient({
+    command: process.execPath,
+    args: [file],
+    envAllowlist: [],
+    cwd: '/etc',
+    workspaceRoot: workspace,
+  });
+  try {
+    await assert.rejects(() => client.start(), /inside the workspace/);
+  } finally {
+    await client.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 test('a plugin receives one invoke request and returns a bounded result', async () => {
   const file = script(`
     process.stdin.on('data', (chunk) => {

@@ -122,6 +122,44 @@ every queued task is re-admitted at once: without a bound, a burst opens one
 completion stream per task. Admission is per Runtime process, not a durable
 state, and never changes the task state machine.
 
+## Policy kernel
+
+`src/kernel/` answers "may this action run?" and "may this process start?".
+It holds no state, performs no IO, and imports nothing from `src/runtime`, so
+the dependency direction is `http → runtime → kernel` and never the reverse.
+
+### Permission levels
+
+One dimension, four values. A level changes *policy*; it never changes a
+boundary.
+
+| Level | Approval | Grant list | Boundary, secret, quotas |
+|---|---|---|---|
+| `strict` | every tool, including reads | enforced | always |
+| `standard` (default) | writes and external calls | enforced | always |
+| `trusted` | none | enforced | always |
+| `unbounded` | none | waived | always |
+
+`CONCHBASE_PERMISSION_LEVEL` selects the level at startup and is never read from
+a task, Agent revision, model output, or request. `CONCHBASE_EXECUTION_MODE`
+still works: `restricted` → `standard`, `unrestricted` → `trusted`. Only those
+two levels are selectable today; `strict` and `unbounded` land with the kernel
+rollout so a configuration value can never promise behaviour that does not
+exist yet.
+
+`decidePolicy` resolves in a fixed order, and the order is the contract:
+boundary → grants → approval. Reversing it would let a level waive a boundary
+it must not waive. An unknown side-effect class is treated as `external`, so a
+typo can never downgrade a tool to read-only.
+
+### Process specs
+
+`validateProcessSpec` is the single rule for spawning a child: absolute command,
+`cwd` inside the workspace, an environment allowlist, bounded arguments, and a
+bounded timeout. It validates; it does not spawn. Modules that already spawn
+(the plugin subprocess, git tools, isolated execution) pass through it, so a
+new spawn path inherits the rules instead of re-deriving them.
+
 ## Side effects
 
 A consequential tool records its intent in `side_effects` *before* it runs, and

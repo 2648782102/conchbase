@@ -20,7 +20,7 @@ import {
 import { OpenAiChatCompletionsProvider } from './magpie-provider.js';
 import { ReadResultCache } from './read-result-cache.js';
 import { resolveTaskCapabilities, type TaskCapabilities } from './task-capabilities.js';
-import { requiresApproval } from './tool-gate.js';
+import { decideToolAction, resolveLevel } from './tool-gate.js';
 import {
   defaultProviderId,
   isSupportedProvider,
@@ -95,6 +95,11 @@ export interface TaskServiceConfig {
    * `unrestricted` executes every granted tool immediately.
    */
   readonly executionMode?: ExecutionMode;
+  /**
+   * The resolved permission level. When absent, the level is derived from
+   * `executionMode` so existing callers keep their current behaviour.
+   */
+  readonly permissionLevel?: 'standard' | 'trusted';
   /**
    * the implementation. Operator-set Agent loop ceilings. Resolved once at process start
    * and never influenced by a task, client, Agent revision, or model.
@@ -281,12 +286,20 @@ export class TaskService {
   }
 
   /**
-   * A tool pauses for human approval only in restricted mode and only when it
-   * is consequential. Scope (`grantedCapabilities`) is decided elsewhere and is
-   * never widened by the execution mode.
+   * The kernel decides; this only supplies the facts it needs.
+   *
+   * A tool reaching the loop is already inside the Agent's pinned grant set
+   * (`resolveTaskCapabilities` projects the provider), so `granted` is true
+   * here. The kernel still owns the approval rule, which keeps one answer to
+   * "does this need a person" for every entry point.
    */
-  private requiresApproval(definition: { readonly sideEffect: string }): boolean {
-    return requiresApproval(this.executionMode, definition.sideEffect);
+  private requiresApproval(definition: { readonly id?: string; readonly sideEffect: string }): boolean {
+    return decideToolAction({
+      level: resolveLevel(this.config.permissionLevel, this.executionMode),
+      action: definition.id ?? 'tool',
+      sideEffect: definition.sideEffect,
+      granted: true,
+    }).requiresApproval;
   }
 
   getConfigurationState(): ConfigurationState {
@@ -1312,7 +1325,12 @@ export class TaskService {
       store: this.store,
       readResults: this.readResults,
       capabilities,
-      needsApproval: (sideEffect) => requiresApproval(this.executionMode, sideEffect),
+      needsApproval: (sideEffect) => decideToolAction({
+        level: resolveLevel(this.config.permissionLevel, this.executionMode),
+        action: 'tool',
+        sideEffect,
+        granted: true,
+      }).requiresApproval,
       writeAlreadyApplied: (task_, toolId, args) => this.writeAlreadyApplied(task_, toolId, args),
       eventInput: (task_, type, state, attempt) => this.eventInput(task_, type, state, attempt),
       requestApproval: (task_, iteration_, call, sideEffect) => {
