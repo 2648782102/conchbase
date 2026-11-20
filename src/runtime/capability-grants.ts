@@ -1,5 +1,6 @@
 import type { CapabilityGrant } from './agent-profile.js';
 import type { ToolDefinition, ToolProvider } from './tool-provider.js';
+import { scopeToolSet } from '../kernel/policy.js';
 
 export interface SkillGrantCandidate {
   readonly name: string;
@@ -17,8 +18,13 @@ export function projectToolProvider(
   grants: readonly CapabilityGrant[],
 ): ToolProvider | undefined {
   if (!provider) return undefined;
-  const granted = new Set(grants.filter((grant) => grant.kind === 'tool').map((grant) => grant.name));
-  if (granted.size === 0) return undefined;
+  // The narrowing rule lives in the kernel; this only applies its answer to a
+  // provider. Keeping the rule here as well is what let scope and approval
+  // drift apart in the first place.
+  const registered = provider.list().map((tool) => tool.id);
+  const { allowed } = scopeToolSet({ tools: registered }, grants);
+  if (allowed.length === 0) return undefined;
+  const granted = new Set(allowed);
   const definitions: readonly ToolDefinition[] = Object.freeze(
     provider.list().filter((tool) => granted.has(tool.id)),
   );
@@ -39,8 +45,14 @@ export function projectSkills<T extends SkillGrantCandidate>(
   grants: readonly CapabilityGrant[],
 ): readonly T[] {
   if (!skills || skills.length === 0) return Object.freeze([]);
-  const granted = new Set(grants.filter((grant) => grant.kind === 'skill').map((grant) => grant.name));
-  if (granted.size === 0) return Object.freeze([]);
+  // Same rule, same kernel call: a skill grant can only narrow the registered
+  // skills, and a tool grant with a matching name must not authorize one.
+  const { skills: allowed } = scopeToolSet(
+    { tools: [], skills: skills.map((skill) => skill.name) },
+    grants,
+  );
+  if (allowed.length === 0) return Object.freeze([]);
+  const granted = new Set(allowed);
   return Object.freeze(skills.filter((skill) => granted.has(skill.name)));
 }
 

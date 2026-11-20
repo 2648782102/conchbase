@@ -6,6 +6,7 @@ import {
   decidePolicy,
   grantEnforced,
   isPermissionLevel,
+  scopeToolSet,
   type ActionEffect,
   type PermissionLevel,
   type PolicyRequest,
@@ -107,4 +108,55 @@ test('permission level parsing rejects unknown strings', () => {
   for (const bad of ['', 'admin', 'UNBOUNDED', 'unbounded', null, 1, undefined]) {
     assert.equal(isPermissionLevel(bad), false);
   }
+});
+
+/**
+ * Scope belongs to the kernel too.
+ *
+ * "May this Agent use this tool" was answered in `capability-grants.ts` while
+ * "must a human approve it" was answered here, so permission had two owners —
+ * the same shape that produced the MCP default-to-read bug and the `unbounded`
+ * waiver.
+ */
+test('scope keeps only granted tools and cannot widen the registered set', () => {
+  const registered = ['workspace_read', 'workspace_write', 'git_status'];
+  assert.deepEqual(
+    scopeToolSet({ tools: registered }, [{ kind: 'tool', name: 'workspace_read' }]).allowed,
+    ['workspace_read'],
+  );
+  // A grant for something the Runtime does not register is inert, never an error.
+  assert.deepEqual(
+    scopeToolSet({ tools: registered }, [{ kind: 'tool', name: 'not_registered' }]).allowed,
+    [],
+  );
+  // Naming everything grants nothing beyond what exists.
+  assert.deepEqual(
+    scopeToolSet({ tools: registered }, registered.map((name) => ({ kind: 'tool' as const, name }))).allowed,
+    registered,
+  );
+});
+
+test('scope reports requested names that are unavailable, so a typo is visible', () => {
+  const result = scopeToolSet({ tools: ['workspace_read'] }, [
+    { kind: 'tool', name: 'workspace_read' },
+    { kind: 'tool', name: 'misspelled_tool' },
+  ]);
+  assert.deepEqual(result.unavailable, ['misspelled_tool']);
+});
+
+test('skills are scoped by the same rule as tools', () => {
+  const result = scopeToolSet({ tools: ['workspace_read'], skills: ['review'] }, [
+    { kind: 'skill', name: 'review' },
+  ]);
+  assert.deepEqual(result.allowed, []);
+  assert.deepEqual(result.skills, ['review']);
+});
+
+test('a grant of one kind never authorizes the other, even with the same name', () => {
+  // A skill called `review` and a tool called `review` are different things.
+  const result = scopeToolSet({ tools: ['review'], skills: ['review'] }, [
+    { kind: 'skill', name: 'review' },
+  ]);
+  assert.deepEqual(result.allowed, [], 'the skill grant must not authorize the tool');
+  assert.deepEqual(result.skills, ['review']);
 });

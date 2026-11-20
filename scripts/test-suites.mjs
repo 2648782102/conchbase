@@ -33,7 +33,7 @@ const SUITES = Object.freeze({
     'tool-request.test.ts', 'tool-capability.test.ts', 'agent-memory.test.ts', 'secret-filter.test.ts',
     'memory-types.test.ts', 'memory-promotion.test.ts', 'tool-request-preview.test.ts',
     'task-state-machine.test.ts',
-    'kernel-policy.test.ts', 'kernel-process-spec.test.ts', 'kernel-level-integration.test.ts',
+    'kernel-policy.test.ts', 'capability-scope.test.ts', 'kernel-process-spec.test.ts', 'kernel-level-integration.test.ts',
   ],
   'agent-loop': [
     'agent-loop.test.ts', 'agent-loop-tools.test.ts', 'agent-multi-tool.test.ts', 'agent-approval.test.ts',

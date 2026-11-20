@@ -149,3 +149,53 @@ export function approvalRequired(level: PermissionLevel, effect: ActionEffect): 
 export function isPermissionLevel(value: unknown): value is PermissionLevel {
   return typeof value === 'string' && (PERMISSION_LEVELS as readonly string[]).includes(value);
 }
+
+/** A grant as the kernel sees it: a kind and a name, nothing more. */
+export interface ScopedGrant {
+  readonly kind: 'tool' | 'skill';
+  readonly name: string;
+}
+
+export interface ScopeResult {
+  /** Registered tool names the tool grants cover, in registration order. */
+  readonly allowed: readonly string[];
+  /** Registered skill names the skill grants cover, in registration order. */
+  readonly skills: readonly string[];
+  /**
+   * Granted names that are not registered.
+   *
+   * Not an error — an inert grant is a normal state when a tool is removed —
+   * but it is reported so a typo in an Agent profile can be seen instead of
+   * silently doing nothing.
+   */
+  readonly unavailable: readonly string[];
+}
+
+/**
+ * Narrows a registered set to what an Agent revision was granted.
+ *
+ * The rule is one-directional by construction: the output is always a subset of
+ * `registered`, so no grant can name something into existence. This is the
+ * kernel's answer to "may this Agent use this?", which previously lived in
+ * `capability-grants.ts` and therefore had a second owner.
+ */
+export function scopeToolSet(
+  registered: { readonly tools: readonly string[]; readonly skills?: readonly string[] },
+  grants: readonly ScopedGrant[],
+): ScopeResult {
+  const tools = registered.tools;
+  const skills = registered.skills ?? [];
+  const available = new Set([...tools, ...skills]);
+  const toolGrants = new Set(grants.filter((grant) => grant.kind === 'tool').map((grant) => grant.name));
+  const skillGrants = new Set(grants.filter((grant) => grant.kind === 'skill').map((grant) => grant.name));
+  // Tools and skills are separate namespaces: a grant of one kind must never
+  // authorize the other, even when the names collide.
+  const allowed = tools.filter((name) => toolGrants.has(name));
+  const grantedSkills = skills.filter((name) => skillGrants.has(name));
+  const unavailable = [...new Set([...toolGrants, ...skillGrants])].filter((name) => !available.has(name));
+  return Object.freeze({
+    allowed: Object.freeze(allowed),
+    skills: Object.freeze(grantedSkills),
+    unavailable: Object.freeze(unavailable),
+  });
+}

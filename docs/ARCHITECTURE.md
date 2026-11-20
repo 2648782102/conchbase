@@ -174,6 +174,25 @@ boundary → grants → approval. Reversing it would let a level waive a boundar
 it must not waive. An unknown side-effect class is treated as `external`, so a
 typo can never downgrade a tool to read-only.
 
+### Scope
+
+`scopeToolSet` answers the other half of the same question: given what the
+Runtime registers and what an Agent revision was granted, which names survive.
+It lives here rather than in `capability-grants.ts` so that "may this Agent use
+this" and "must a human approve it" have one owner. While they were split, a
+change to one could not see the other — which is how `unbounded` came to waive
+a grant list `capability-grants.ts` believed was unconditional.
+
+Two properties are structural rather than enforced by convention:
+
+- the output is always a subset of the registered set, so no grant can conjure
+  a tool into existence;
+- tools and skills are separate namespaces, so a skill grant never authorizes a
+  tool that happens to share its name.
+
+`capability-grants.ts` now applies the kernel's answer to a provider; it no
+longer holds a copy of the rule.
+
 ### Process specs
 
 `validateProcessSpec` is the single rule for spawning a child: absolute command,

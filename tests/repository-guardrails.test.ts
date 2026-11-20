@@ -105,6 +105,26 @@ test('the policy kernel depends on nothing above it', () => {
   assert.doesNotMatch(read('src/config/runtime-config.ts'), /from '\.\.\/runtime\//);
 });
 
+/**
+ * Scope and approval must not split again.
+ *
+ * The rule "a grant can only narrow" used to live in `capability-grants.ts`
+ * while approval lived in the kernel. That split is what let `unbounded` waive
+ * a list the other module believed was unconditional. This guard fails if a
+ * runtime module starts re-deciding scope on its own.
+ */
+test('scope narrowing stays in the kernel', () => {
+  for (const file of listTypeScriptFiles('src/runtime')) {
+    const source = read(file);
+    assert.doesNotMatch(
+      source,
+      /grant\.kind === 'tool'\)\.map\(\(grant\) => grant\.name\)|new Set\(grants\s*\.filter/,
+      `${file} re-implements grant narrowing instead of calling scopeToolSet`,
+    );
+  }
+  assert.match(read('src/runtime/capability-grants.ts'), /scopeToolSet\(/);
+});
+
 test('dependency baseline stays consistent', () => {
   const manifest = JSON.parse(read('package.json')) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
   const lock = JSON.parse(read('package-lock.json')) as { packages?: Record<string, unknown> };
