@@ -43,6 +43,7 @@ const SUITES = Object.freeze({
     'tool-bounds.test.ts', 'tool-untrusted-output.test.ts', 'write-safety.test.ts',
     'no-arbitrary-shell.test.ts', 'capability-presets.test.ts',
     'worker-start-admission.test.ts', 'worker-slice-yield.test.ts',
+    'side-effect-ledger.test.ts',
   ],
   providers: [
     'magpie-provider.test.ts', 'streaming-provider.test.ts', 'model-catalog.test.ts',

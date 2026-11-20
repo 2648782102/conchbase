@@ -712,7 +712,19 @@ export class TaskService {
       const approved = checkpoint.pending[0];
       if (!approved) throw new Error('Approval checkpoint is empty.');
       if (!tools.has(approved.name)) throw new Error('Approved tool is no longer available.');
+      const definition = tools.list().find((tool) => tool.id === approved.name);
+      const effect = definition && definition.sideEffect !== 'read'
+        ? this.beginSideEffect(task, { id: approved.id, name: approved.name, arguments: approved.arguments })
+        : undefined;
+      if (effect && 'blocked' in effect) {
+        // Approval resumed a call whose earlier outcome is unknown, or whose
+        // effect already landed. Either way it must not run again.
+        throw new Error(effect.blocked === 'effect_outcome_unknown'
+          ? 'A previous run of this write may not have completed. It was not repeated; review the workspace and retry if needed.'
+          : 'This write already completed in this attempt; it was not repeated.');
+      }
       const result = await tools.invoke(approved.name, approved.arguments);
+      if (effect && !('blocked' in effect)) effect.commit(result.digest);
       this.recordToolExecuted(task, checkpoint.iteration, approved.name, approved.arguments, result);
       if (signal.aborted) return;
       const messages: ProviderMessage[] = [
@@ -744,7 +756,10 @@ export class TaskService {
       this.store.transitionTask(
         task.id,
         'failed',
-        this.eventInput(task, 'task.failed', 'failed', task.attempt),
+        {
+          ...this.eventInput(task, 'task.failed', 'failed', task.attempt),
+          data: { category: categorizeError(cause) },
+        },
         { error: cause instanceof Error ? cause.message.slice(0, 500) : 'Approved tool failed.' },
       );
     }
@@ -1216,6 +1231,38 @@ export class TaskService {
   }
 
   /**
+   * Registers a consequential tool call before it runs.
+   *
+   * The key is per attempt and per call: a retry is a new attempt, so it may
+   * legitimately perform the same effect again, while a resume inside one
+   * attempt must not. `unknown` is a hard stop — the process died inside the
+   * effect, so neither repeating it nor pretending it succeeded is safe.
+   */
+  private beginSideEffect(
+    task: TaskSnapshot,
+    call: ProviderToolCall,
+  ): { commit(resultDigest: string): void; abandon(): void } | { blocked: string } {
+    const key = `${task.id}:${task.attempt}:${call.name}:${digestArguments(call.arguments)}`;
+    const outcome = this.store.beginSideEffect({
+      idempotencyKey: key,
+      taskId: task.id,
+      attempt: task.attempt,
+      toolId: call.name,
+      argumentsDigest: digestArguments(call.arguments),
+    });
+    if (outcome === 'already-committed') {
+      return { blocked: 'effect_already_applied' };
+    }
+    if (outcome === 'unknown') {
+      return { blocked: 'effect_outcome_unknown' };
+    }
+    return {
+      commit: (resultDigest: string) => this.store.commitSideEffect({ idempotencyKey: key, resultDigest }),
+      abandon: () => this.store.abandonSideEffect(key),
+    };
+  }
+
+  /**
    * the implementation. Read results already produced in the current attempt, keyed by
    * `taskId:toolId:argumentsDigest`. Scoped to the process and cleared when the
    * attempt ends, so a retry always sees fresh data. Reads only: replaying one
@@ -1314,6 +1361,7 @@ export class TaskService {
       recordExecuted: (task_, iteration_, call, result) =>
         this.recordToolExecuted(task_, iteration_, call.name, call.arguments, result),
       recordFailed: (task_, iteration_, toolId, code) => this.recordToolFailed(task_, iteration_, toolId, code),
+      sideEffect: (task_, call) => this.beginSideEffect(task_, call),
     };
     const outcome = await drainToolCallsImpl(context, task, calls, iteration, messages, signal);
     if (outcome === 'paused') this.notifyChange(task.id);

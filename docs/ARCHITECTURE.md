@@ -122,6 +122,25 @@ every queued task is re-admitted at once: without a bound, a burst opens one
 completion stream per task. Admission is per Runtime process, not a durable
 state, and never changes the task state machine.
 
+## Side effects
+
+A consequential tool records its intent in `side_effects` *before* it runs, and
+marks it `committed` only after it returns. The key is
+`task:attempt:tool:argumentsDigest`, so:
+
+- a committed effect is never repeated within the same attempt;
+- an `intent` left behind by a crash becomes `unknown` — the Runtime cannot
+  prove whether the effect landed, so it refuses to run the call again and
+  fails the task with a readable reason;
+- a new attempt may legitimately perform the same effect again.
+
+This governs both ways into a tool: the normal loop and the approval-resume
+path. The resume path used to call the tool directly, so approving after a
+crashed write wrote the file a second time while the task reported success.
+
+`unknown` is a deliberate dead end rather than a retry: recovery is the
+explicit `retry` endpoint, which starts a fresh attempt with its own key.
+
 ## Operating model: one process per database
 
 Conchbase is a local, single-process runtime. One process owns one SQLite file

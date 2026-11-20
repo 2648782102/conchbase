@@ -104,6 +104,34 @@ test('an identical write that already succeeded is refused, not repeated', async
   assert.match(String(messages[0]?.content), /already completed/);
 });
 
+test('an effect whose outcome is unknown is refused, not replayed', async () => {
+  // A crash inside the write leaves no proof either way. Executing again could
+  // duplicate it, so the loop must stop and tell the model instead.
+  const h = harness({ tools: tool('workspace_write', 'write') });
+  const context = { ...h.context, sideEffect: () => ({ blocked: 'effect_outcome_unknown' as const }) };
+  const messages: ProviderMessage[] = [];
+  const outcome = await drainToolCalls(context, task, [call('workspace_write')], 0, messages, new AbortController().signal);
+  assert.equal(outcome, 'done');
+  assert.ok(!h.events.includes('executed:workspace_write'), 'the tool is never invoked');
+  assert.ok(h.events.includes('failed:workspace_write:effect_outcome_unknown'));
+  assert.match(String(messages[0]?.content), /effect_outcome_unknown/);
+});
+
+test('a successful effect is committed before it is reported', async () => {
+  const h = harness({ tools: tool('workspace_write', 'write') });
+  const order: string[] = [];
+  const context = {
+    ...h.context,
+    sideEffect: () => ({
+      commit: () => { order.push('commit'); },
+      abandon: () => { order.push('abandon'); },
+    }),
+    recordExecuted: (_t: TaskSnapshot, _i: number, c: ProviderToolCall) => { order.push(`executed:${c.name}`); },
+  };
+  await drainToolCalls(context, task, [call('workspace_write')], 0, [], new AbortController().signal);
+  assert.deepEqual(order, ['commit', 'executed:workspace_write']);
+});
+
 test('an identical read in the same attempt is reused', async () => {
   const cache = new ReadResultCache();
   const h = harness({ tools: tool('workspace_read', 'read'), cache });

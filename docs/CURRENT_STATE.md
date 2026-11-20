@@ -32,6 +32,10 @@ Updated: 2026-11-19
 - A task that was mid-request when the process died is `interrupted`, not
   auto-replayed: the crash window cannot prove a write did not run, so
   recovery stays an explicit `retry` that starts a new attempt.
+- Consequential tools record intent before they run, so a crash between the
+  write and its event leaves a durable `unknown` instead of a silent duplicate.
+  This covers both the normal loop and the approval-resume path; `unknown`
+  fails with a readable reason and recovery is an explicit `retry`.
 - User-facing capability presets: read-only, workspace-editing, local-commands,
   external-integrations. There is deliberately no arbitrary-shell tool; the
   only subprocess tools are fixed read-only git commands.

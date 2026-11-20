@@ -172,8 +172,29 @@ export interface TaskStore {
   readonly memory: AgentMemoryStore;
   saveLoopState(taskId: string, state: string | null): void;
   getLoopState(taskId: string): string | null;
+  /**
+   * Records the intent to perform a side effect, before it happens.
+   *
+   * Returns `already-committed` when this exact effect has already succeeded, so
+   * a resumed task must not perform it again. This is what makes a crash window
+   * decidable: a row that stays at `intent` means the effect may or may not have
+   * happened, and that ambiguity must be surfaced rather than guessed.
+   */
+  beginSideEffect(input: SideEffectIntent): 'new' | 'already-committed' | 'unknown';
+  commitSideEffect(input: { readonly idempotencyKey: string; readonly resultDigest: string }): void;
+  abandonSideEffect(idempotencyKey: string): void;
   close(): void;
 }
+
+export interface SideEffectIntent {
+  readonly idempotencyKey: string;
+  readonly taskId: string;
+  readonly attempt: number;
+  readonly toolId: string;
+  readonly argumentsDigest: string;
+}
+
+export type SideEffectState = 'intent' | 'committed' | 'unknown';
 
 export class TaskNotFoundError extends Error {
   constructor() {
@@ -438,6 +459,18 @@ export class SqliteTaskStore implements TaskStore {
           task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
           state TEXT NOT NULL
         ) STRICT;
+        CREATE TABLE IF NOT EXISTS side_effects (
+          idempotency_key TEXT PRIMARY KEY,
+          task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+          attempt INTEGER NOT NULL,
+          tool_id TEXT NOT NULL,
+          arguments_digest TEXT NOT NULL,
+          state TEXT NOT NULL CHECK (state IN ('intent', 'committed', 'unknown')),
+          result_digest TEXT,
+          created_at TEXT NOT NULL,
+          settled_at TEXT
+        ) STRICT;
+        CREATE INDEX IF NOT EXISTS side_effects_task ON side_effects (task_id);
       `);
       this.organization.initialize('primary_conversation');
       this.agentChat.initialize();
@@ -779,6 +812,51 @@ export class SqliteTaskStore implements TaskStore {
     const row = this.database.prepare('SELECT state FROM agent_loop_state WHERE task_id = ?')
       .get(taskId) as { readonly state: string } | undefined;
     return row?.state ?? null;
+  }
+
+  beginSideEffect(input: SideEffectIntent): 'new' | 'already-committed' | 'unknown' {
+    const existing = this.database.prepare(
+      'SELECT state FROM side_effects WHERE idempotency_key = ?',
+    ).get(input.idempotencyKey) as { readonly state: SideEffectState } | undefined;
+    if (existing) {
+      if (existing.state === 'committed') return 'already-committed';
+      if (existing.state === 'unknown') return 'unknown';
+      // A leftover `intent` means a previous attempt died inside the effect.
+      // Marking it `unknown` is honest: it is not safe to silently retry, but it
+      // is also not proven to have run.
+      this.database.prepare(
+        "UPDATE side_effects SET state = 'unknown', settled_at = ? WHERE idempotency_key = ?",
+      ).run(this.clock(), input.idempotencyKey);
+      return 'unknown';
+    }
+    this.database.prepare(`
+      INSERT INTO side_effects (
+        idempotency_key, task_id, attempt, tool_id, arguments_digest, state, created_at
+      ) VALUES (?, ?, ?, ?, ?, 'intent', ?)
+    `).run(
+      input.idempotencyKey,
+      input.taskId,
+      input.attempt,
+      input.toolId,
+      input.argumentsDigest,
+      this.clock(),
+    );
+    return 'new';
+  }
+
+  commitSideEffect(input: { readonly idempotencyKey: string; readonly resultDigest: string }): void {
+    this.database.prepare(`
+      UPDATE side_effects
+        SET state = 'committed', result_digest = ?, settled_at = ?
+      WHERE idempotency_key = ?
+    `).run(input.resultDigest, this.clock(), input.idempotencyKey);
+  }
+
+  abandonSideEffect(idempotencyKey: string): void {
+    // An effect that provably did not happen (for example the tool rejected its
+    // arguments before touching anything) is removed, so a corrected retry is
+    // not blocked by a stale intent.
+    this.database.prepare('DELETE FROM side_effects WHERE idempotency_key = ?').run(idempotencyKey);
   }
 
   getConfigurationState(): ConfigurationState {

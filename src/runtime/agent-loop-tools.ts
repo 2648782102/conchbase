@@ -35,6 +35,19 @@ export interface AgentLoopToolContext {
   recordReused(task: TaskSnapshot, iteration: number, call: ProviderToolCall, digest: string): void;
   recordExecuted(task: TaskSnapshot, iteration: number, call: ProviderToolCall, result: { readonly digest: string; readonly bytes: number }): void;
   recordFailed(task: TaskSnapshot, iteration: number, toolId: string, errorCode: string): void;
+  /**
+   * Durable bookkeeping for a consequential tool.
+   *
+   * `before` runs before the tool does; the returned handle commits the effect
+   * once it succeeded, or discards the record when the tool provably did
+   * nothing. A resumable task must consult this rather than trusting that a
+   * crashed process never wrote.
+   */
+  sideEffect?(
+    task: TaskSnapshot,
+    call: ProviderToolCall,
+    phase: 'before',
+  ): { commit(resultDigest: string): void; abandon(): void } | { blocked: string };
 }
 
 /**
@@ -101,8 +114,23 @@ export async function drainToolCalls(
       }
     }
 
+    // A consequential tool is registered before it runs, so a crash inside the
+    // effect leaves a durable `unknown` instead of a silent duplicate on retry.
+    const effect = definition.sideEffect === 'read'
+      ? undefined
+      : context.sideEffect?.(task, call, 'before');
+    if (effect && 'blocked' in effect) {
+      context.recordFailed(task, iteration, call.name, effect.blocked);
+      messages.push({
+        role: 'tool',
+        toolCallId: call.id,
+        content: `error: ${effect.blocked}`,
+      });
+      continue;
+    }
     try {
       const result = await tools!.invoke(call.name, call.arguments);
+      if (effect && !('blocked' in effect)) effect.commit(result.digest);
       context.recordExecuted(task, iteration, call, result);
       if (definition.sideEffect === 'read') {
         context.readResults.set(task.id, task.attempt, call.name, call.arguments, {
@@ -112,6 +140,10 @@ export async function drainToolCalls(
       }
       messages.push({ role: 'tool', toolCallId: call.id, content: result.summary });
     } catch (cause) {
+      // Be conservative: a throw does not prove the effect did not happen, so
+      // the intent stays recorded. Only an explicit rejection that happens
+      // before any work discards it.
+      if (cause instanceof ToolRejectedError && effect && !('blocked' in effect)) effect.abandon();
       const code = cause instanceof ToolRejectedError ? cause.code : 'tool_failed';
       context.recordFailed(task, iteration, call.name, code);
       messages.push({ role: 'tool', toolCallId: call.id, content: `error: ${code}` });
