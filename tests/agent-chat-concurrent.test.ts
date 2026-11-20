@@ -253,3 +253,81 @@ test('a queued turn is failed, not left pending, when the Runtime restarts', asy
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+/**
+ * A queued question is recorded on acceptance, so it is already in the record
+ * when an earlier turn is promoted. The prompt must stop at the turn being
+ * started: a reply cannot answer a question the reader has not had answered
+ * yet, and a model shown the later question will answer both at once.
+ */
+test('a later question does not leak into an earlier prompt', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-no-leak-'));
+  const prompts: string[] = [];
+  const gate: { release: (() => void) | null } = { release: null };
+  let completions = 0;
+
+  const providerFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).endsWith('/v1/models')) {
+      return new Response(JSON.stringify({ data: [{ id: 'fixture/chat-model' }] }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    }
+    completions += 1;
+    const body = JSON.parse(String(init?.body ?? '{}')) as {
+      messages?: readonly { role: string; content: string }[];
+    };
+    prompts.push((body.messages ?? [])
+      .filter((message) => message.role === 'user')
+      .map((message) => message.content)
+      .join('\n'));
+    if (completions === 1) await new Promise<void>((resolve) => { gate.release = resolve; });
+    return new Response(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: `A${completions}` }, finish_reason: null }] })}\n\ndata: [DONE]\n\n`,
+      { status: 200, headers: { 'content-type': 'text/event-stream' } },
+    );
+  }) as typeof globalThis.fetch;
+
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: providerFetch,
+  });
+  const chat = new AgentChatService(taskService);
+  try {
+    const agent = await taskService.createAgent({
+      name: '不泄漏',
+      instructions: '',
+      providerId: 'magpie',
+      modelId: 'fixture/chat-model',
+    });
+    const conversation = await chat.createConversation({ agentId: agent.id });
+
+    // Three questions in one burst; all but the first are queued.
+    for (let index = 0; index < 3; index += 1) {
+      await chat.postMessage(conversation.id, { text: `问题${index}`, idempotencyKey: `q${index}` });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    gate.release?.();
+    for (let attempt = 0; attempt < 250 && prompts.length < 3; attempt += 1) {
+      chat.view(conversation.id);
+      await new Promise((resolve) => setTimeout(resolve, 15));
+    }
+
+    assert.equal(prompts.length, 3, 'all three turns eventually run');
+    assert.equal(
+      (prompts[1] ?? '').includes('问题2'),
+      false,
+      'the second prompt must not contain the third question',
+    );
+    assert.equal(
+      (prompts[1] ?? '').includes('问题1'),
+      true,
+      'the second prompt must contain its own question',
+    );
+  } finally {
+    gate.release?.();
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

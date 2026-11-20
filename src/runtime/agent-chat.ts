@@ -364,12 +364,16 @@ export class AgentChatService {
     if (!userMessage || !assistantMessage) return;
 
     /*
-     * The queued question is already in the transcript — it was recorded when
-     * the turn was accepted — so the prompt is the history alone. Appending the
-     * text again here would put the same question in twice, once as a turn and
-     * once as the trailing message, and the model would read it as a repeat.
+     * The prompt is the transcript up to and including this turn.
+     *
+     * Not the whole record: a later question may already be queued behind this
+     * one, and it must not appear — the reply being written cannot answer a
+     * question the reader has not had answered yet, and a model that sees it
+     * will answer both. Not re-appended either: this question is already a turn
+     * in the transcript, so adding the text again would repeat it.
      */
-    const prompt = conversationalHistory(record.messages).map((message) =>
+    const upToThisTurn = record.messages.filter((message) => message.sequence <= assistantMessage.sequence);
+    const prompt = conversationalHistory(upToThisTurn).map((message) =>
       `${message.author === 'user' ? 'User' : 'Assistant'}: ${message.body}`).join('\n');
 
     this.promoting.add(record.id);
