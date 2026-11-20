@@ -8,17 +8,10 @@ import {
   type ToolExecutionResult,
   type ToolProvider,
 } from './tool-provider.js';
+import { requiredString } from './tool-parameter.js';
 
 const MAX_WRITE_BYTES = 16 * 1024;
 
-
-function asString(args: ToolArguments, key: string): string {
-  const value = args[key];
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new ToolRejectedError('invalid_arguments', `${key} must be a non-empty string.`);
-  }
-  return value;
-}
 
 function resolveTarget(root: string, relative: string): string {
   if (relative.includes('\0') || path.isAbsolute(relative) || relative.split(/[\\/]/).includes('..')) {
@@ -59,8 +52,8 @@ export function createBuiltinWriteTools(options: {
   ]);
 
   const write = (args: ToolArguments): ToolExecutionResult => {
-    const relative = asString(args, 'path');
-    const content = asString(args, 'content');
+    const relative = requiredString(args, 'path');
+    const content = requiredString(args, 'content');
     if (Buffer.byteLength(content, 'utf8') > maxBytes) {
       throw new ToolRejectedError('content_too_large');
     }

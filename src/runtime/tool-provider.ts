@@ -1,3 +1,4 @@
+import { optionalString } from './tool-parameter.js';
 import { contentDigest } from './digest.js';
 import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -94,13 +95,6 @@ const MAX_SEARCH_DEPTH = 8;
 const SEARCH_TIME_BUDGET_MS = 2_000;
 
 
-function asString(args: ToolArguments, key: string, fallback = ''): string {
-  const value = args[key];
-  if (value === undefined) return fallback;
-  if (typeof value !== 'string') throw new ToolRejectedError('invalid_arguments', `${key} must be a string.`);
-  return value;
-}
-
 function asInteger(
   args: ToolArguments,
   key: string,
@@ -196,7 +190,7 @@ export function createBuiltinReadTools(options: {
   ]);
 
   function list(args: ToolArguments): ToolExecutionResult {
-    const relative = asString(args, 'path', '.');
+    const relative = optionalString(args, 'path', '.');
     const target = resolveInsideRoot(root, relative);
     const offset = asInteger(args, 'offset', 0, MAX_ENTRIES, true);
     const limit = asInteger(args, 'limit', 50, MAX_ENTRIES);
@@ -242,7 +236,7 @@ export function createBuiltinReadTools(options: {
   }
 
   function read(args: ToolArguments): ToolExecutionResult {
-    const relative = asString(args, 'path');
+    const relative = optionalString(args, 'path');
     if (relative.length === 0) throw new ToolRejectedError('invalid_arguments', 'path is required.');
     const target = resolveInsideRoot(root, relative);
     const offset = asInteger(args, 'offset', 0, Number.MAX_SAFE_INTEGER, true);
@@ -288,9 +282,9 @@ export function createBuiltinReadTools(options: {
   }
 
   function search(args: ToolArguments): ToolExecutionResult {
-    const pattern = asString(args, 'pattern');
+    const pattern = optionalString(args, 'pattern');
     if (pattern.length === 0) throw new ToolRejectedError('invalid_arguments', 'pattern is required.');
-    const relative = asString(args, 'path', '.');
+    const relative = optionalString(args, 'path', '.');
     const start = resolveInsideRoot(root, relative);
     const matches: string[] = [];
     const deadline = Date.now() + SEARCH_TIME_BUDGET_MS;

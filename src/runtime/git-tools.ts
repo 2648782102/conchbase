@@ -4,6 +4,7 @@ import { accessSync, constants } from 'node:fs';
 import path from 'node:path';
 import { ProcessSpecError, resolveProgram, validateProcessSpec } from '../kernel/process-spec.js';
 import { ToolRejectedError, type ToolArguments, type ToolExecutionResult, type ToolProvider } from './tool-provider.js';
+import { requiredString } from './tool-parameter.js';
 
 /**
  * Read-only git tools.
@@ -123,14 +124,6 @@ function bounded(text: string, maxBytes: number): string {
   return `${text.slice(0, maxBytes)}\n[truncated at ${maxBytes} bytes]`;
 }
 
-function requireString(args: ToolArguments, key: string, label: string): string {
-  const value = args[key];
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new ToolRejectedError('invalid_arguments', `${label} must be a non-empty string.`);
-  }
-  return value;
-}
-
 /**
  * Builds the git tool provider.
  *
@@ -158,7 +151,7 @@ export function createGitReadTools(options: GitToolsOptions): ToolProvider {
   const run = options.run ?? ((args, cwd) => runGit(args, cwd, timeoutMs, maxBytes, gitBinary));
 
   const commit = async (args: ToolArguments): Promise<ToolExecutionResult> => {
-    const message = requireString(args, 'message', 'message');
+    const message = requiredString(args, 'message', 'message');
     if (message.length > 200) throw new ToolRejectedError('invalid_arguments', 'message must be at most 200 characters.');
     // Preview first: show what would be committed, so approval is informed.
     // An empty repository has no HEAD, so `diff --cached` can fail; treat that
@@ -266,7 +259,7 @@ export function createGitReadTools(options: GitToolsOptions): ToolProvider {
         case 'git_diff': {
           // A path is passed as a separate argv entry after `--`, so it cannot be
           // reinterpreted as a flag even if it starts with a dash.
-          const relative = args.path === undefined ? undefined : requireString(args, 'path', 'path');
+          const relative = args.path === undefined ? undefined : requiredString(args, 'path', 'path');
           if (relative !== undefined && (relative.startsWith('/') || relative.includes('..'))) {
             throw new ToolRejectedError('invalid_arguments', 'path must stay inside the workspace.');
           }
