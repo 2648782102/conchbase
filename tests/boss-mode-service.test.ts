@@ -799,7 +799,9 @@ test('workers in one plan are awaited concurrently and reported in dispatch orde
   // waiting should be close to the slower single task. The assertion is loose
   // enough for CI jitter but still fails on the old serial implementation.
   const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-concurrency-'));
-  const delays = new Map<string, number>();
+  // Start and end of each worker's model call, so concurrency can be decided by
+  // overlap rather than by an elapsed-time ceiling.
+  const spans = new Map<string, { readonly start: number; end: number }>();
   const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
     magpieBaseUrl: 'http://127.0.0.1:3425',
     defaultModel: 'fixture-model',
@@ -814,8 +816,12 @@ test('workers in one plan are awaited concurrently and reported in dispatch orde
       // Worker ids are converted to Chinese display names with a middle dot.
       const worker = prompt.includes('wrk·slow') ? 'wrk_slow' : prompt.includes('wrk·fast') ? 'wrk_fast' : null;
       const delay = worker === 'wrk_slow' ? 150 : worker === 'wrk_fast' ? 150 : 0;
-      if (worker) delays.set(worker, Date.now());
+      const span = worker ? { start: Date.now(), end: Number.POSITIVE_INFINITY } : null;
+      if (worker && span) spans.set(worker, span);
       await new Promise((resolve) => setTimeout(resolve, delay));
+      if (worker && span) {
+        spans.set(worker, { start: span.start, end: Date.now() });
+      }
       return new Response(
         `data: ${JSON.stringify({ choices: [{ delta: { content: worker ? `${worker} done` : 'done' } }] })}\n\ndata: [DONE]\n\n`,
         { status: 200, headers: { 'content-type': 'text/event-stream' } },
@@ -861,14 +867,21 @@ test('workers in one plan are awaited concurrently and reported in dispatch orde
       },
     };
     const service = new BossModeService(store, taskService, { parser, waitForTasks: true });
-    const started = Date.now();
     const result = await service.submit({ text: '并发做两件事', idempotencyKey: 'concurrency-1' });
-    const elapsed = Date.now() - started;
+    const fast = spans.get('wrk_fast');
+    const slow = spans.get('wrk_slow');
+    assert.ok(fast && slow, 'both workers reached the gateway');
 
-    const fastStart = delays.get('wrk_fast') ?? Number.POSITIVE_INFINITY;
-    const slowStart = delays.get('wrk_slow') ?? Number.POSITIVE_INFINITY;
-    assert.ok(Math.abs(fastStart - slowStart) < 80, `workers did not overlap: ${fastStart} vs ${slowStart}`);
-    assert.ok(elapsed < 450, `expected concurrent completion, took ${elapsed}ms`);
+    // Concurrency is decided by whether the two model calls were in flight at
+    // the same time — the definition itself, not a proxy. An elapsed-time
+    // ceiling (formerly `elapsed < 450`) fails on a loaded machine even when
+    // the behaviour is right, because a busy host adds real time to every hop
+    // between the scheduler and the gateway.
+    const overlapped = fast!.start < slow!.end && slow!.start < fast!.end;
+    assert.ok(
+      overlapped,
+      `workers were serialized: fast ${fast!.start}-${fast!.end}, slow ${slow!.start}-${slow!.end}`,
+    );
     // Outcome order is dispatch order, not completion order.
     assert.match(result.reply ?? '', /wrk_slow[\s\S]*wrk_fast/);
   } finally {

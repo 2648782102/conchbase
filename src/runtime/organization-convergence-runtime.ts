@@ -96,23 +96,26 @@ export function createConvergenceRuntime(
     // Announcements are only delivered when the user already has a Boss
     // conversation. Creating one on their behalf would put a message in a
     // place they never opened.
-    announce: (summary: string, projectId: string) => {
+    announce: async (summary: string, projectId: string): Promise<void> => {
       const agentChat = options.agentChat;
       if (!agentChat) return;
       // The sweep is synchronous, so the lookup is deferred: the project is
       // already archived and the announcement must not be able to undo that.
-      void latestBossConversation(agentChat).then((conversationId) => {
+      //
+      // Returning the promise (rather than fire-and-forget) lets `sweep()`
+      // report when the announcement has settled. Delivery is still
+      // best-effort — a failure here must not undo the archive.
+      try {
+        const conversationId = await latestBossConversation(agentChat);
         if (!conversationId) return;
-        try {
-          agentChat.announceBossNotice({
-            conversationId,
-            body: summary,
-            idempotencyKey: `converge:${projectId}:${hash(summary)}`,
-          });
-        } catch {
-          // The durable organization archive event remains the source of truth.
-        }
-      }).catch(() => undefined);
+        agentChat.announceBossNotice({
+          conversationId,
+          body: summary,
+          idempotencyKey: `converge:${projectId}:${hash(summary)}`,
+        });
+      } catch {
+        // The durable organization archive event remains the source of truth.
+      }
     },
   } satisfies ProjectConvergenceOptions);
   return service;

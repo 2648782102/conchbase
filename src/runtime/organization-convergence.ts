@@ -209,8 +209,14 @@ export interface ProjectConvergenceOptions {
   readonly hasActiveWork?: (projectId: string) => boolean;
   /** Archives the Agent behind an offboarded worker. Best-effort. */
   readonly onWorkerOffboarded?: (workerId: string) => void;
-  /** Publishes the short summary into the Boss conversation. */
-  readonly announce?: (summary: string, projectId: string) => void;
+  /**
+   * Publishes the short summary into the Boss conversation.
+   *
+   * Returning a promise lets `sweep()` await delivery. The announcement is
+   * best-effort, but a caller that needs to know it landed — a test, or a
+   * shutdown that wants a clean hand-off — should not have to poll for it.
+   */
+  readonly announce?: (summary: string, projectId: string) => void | Promise<void>;
   /**
    * Optional model-backed summary. Returning null (or throwing) falls back to
    * the deterministic summary: convergence must never be blocked by a provider
@@ -247,7 +253,7 @@ export class ProjectConvergenceService {
   private readonly now: () => number;
   private readonly hasActiveWork: (projectId: string) => boolean;
   private readonly onWorkerOffboarded: (workerId: string) => void;
-  private readonly announce: (summary: string, projectId: string) => void;
+  private readonly announce: (summary: string, projectId: string) => void | Promise<void>;
   private readonly summarize: ((facts: ProjectSummaryFacts) => Promise<ProjectSummaryDocument | null>) | undefined;
   private readonly projectPurpose: (projectId: string) => string | undefined;
   private readonly memory: AgentMemoryStore | undefined;
@@ -290,6 +296,7 @@ export class ProjectConvergenceService {
     const now = this.now();
     const activeIds = new Set<string>();
     const converged: { projectId: string; summary: string }[] = [];
+    const announcements: Promise<void>[] = [];
     for (const project of snapshot.projects) {
       activeIds.add(project.id);
       const fingerprint = this.fingerprint(snapshot, project.id);
@@ -323,11 +330,16 @@ export class ProjectConvergenceService {
       }
       this.observed.delete(project.id);
       converged.push({ projectId: project.id, summary });
-      this.announce(summary, project.id);
+      announcements.push(Promise.resolve(this.announce(summary, project.id)));
     }
     for (const projectId of [...this.observed.keys()]) {
       if (!activeIds.has(projectId)) this.observed.delete(projectId);
     }
+    // Delivery is best-effort: a failed announcement must not fail the sweep,
+    // because the archive is already durable and is the source of truth. It is
+    // awaited anyway so the caller knows the announcement chain has settled —
+    // otherwise "did it land?" is unanswerable without polling.
+    await Promise.allSettled(announcements);
     return Object.freeze({ converged: Object.freeze(converged) });
   }
 

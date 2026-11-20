@@ -118,19 +118,20 @@ test('an archived project reports itself into the Boss conversation once', async
     assert.equal(invoked, true);
     assert.equal(store.get().projects.find((project) => project.id === 'project_report')?.state, 'archived');
 
-    // The announcement is asynchronous; the durable archive already happened.
-    for (let attempt = 0; attempt < 50; attempt += 1) {
-      const view = agentChat.view(conversation.id);
-      const notices = view.messages.filter((message) => /项目 project_report：/.test(message.body));
-      if (notices.length > 0) {
-        assert.match(notices[0]!.body, /交付了测试报告/);
-        break;
-      }
+    // `sweep()` awaits the announcement chain, so the notice has settled by the
+    // time it resolves. Previously this polled for up to a second, which failed
+    // under parallel load — the behaviour was correct, the observation window
+    // was not. Polling remains only as a guard against a future regression that
+    // makes delivery fire-and-forget again.
+    const noticePattern = /项目 project_report：/;
+    let notices: readonly { readonly body: string }[] = [];
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      notices = agentChat.view(conversation.id).messages.filter((message) => noticePattern.test(message.body));
+      if (notices.length > 0) break;
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    const view = agentChat.view(conversation.id);
-    assert.equal(view.messages.filter((message) => /项目 project_report：/.test(message.body)).length, 1,
-      'a convergence announces exactly once');
+    assert.equal(notices.length, 1, 'a convergence announces exactly once');
+    assert.match(notices[0]!.body, /交付了测试报告/);
   } finally {
     await taskService.stop();
     rmSync(directory, { recursive: true, force: true });
