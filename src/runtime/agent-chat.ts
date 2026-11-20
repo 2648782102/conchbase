@@ -293,6 +293,18 @@ export class AgentChatService {
   /** Conversations with an in-flight promotion, so a settle cannot start two. */
   private readonly promoting = new Set<string>();
 
+  /**
+   * One task-change subscription per conversation that currently has a queue.
+   *
+   * A queue has to advance on its own: settling it only when a client reads
+   * means a conversation nobody is polling never runs its queued turn, and the
+   * Runtime would be depending on a reader to drive its own state machine. The
+   * subscription exists only while a queue does, so it cannot outlive the
+   * conversation or accumulate — a service instance that is discarded with an
+   * empty queue leaves no listener behind.
+   */
+  private readonly queueWatchers = new Map<string, () => void>();
+
   constructor(
     readonly taskService: TaskService,
     private readonly bossMode?: BossModeService,
@@ -347,7 +359,10 @@ export class AgentChatService {
   private startNextQueuedTurn(record: ConversationRecord): void {
     if (this.promoting.has(record.id)) return;
     const queue = this.queuedTurns.get(record.id);
-    if (!queue || queue.length === 0) return;
+    if (!queue || queue.length === 0) {
+      this.unwatchQueue(record.id);
+      return;
+    }
     const live = record.messages.some((message) => {
       if (message.author !== 'assistant' || message.taskId === null) return false;
       const task = this.taskService.store.getTask(message.taskId);
@@ -358,6 +373,7 @@ export class AgentChatService {
     const next = queue.shift();
     if (!next) return;
     if (queue.length === 0) this.queuedTurns.delete(record.id);
+    if (queue.length === 0) this.unwatchQueue(record.id);
 
     const userMessage = record.messages.find((message) => message.id === next.userMessageId);
     const assistantMessage = record.messages.find((message) => message.id === next.assistantMessageId);
@@ -379,6 +395,49 @@ export class AgentChatService {
     this.promoting.add(record.id);
     void this.launchQueuedTurn(record, next, userMessage, assistantMessage, prompt)
       .finally(() => { this.promoting.delete(record.id); });
+  }
+
+  /**
+   * Subscribes this conversation's queue to task transitions.
+   *
+   * Called when a turn is queued and released when the queue empties, so the
+   * listener's lifetime is the queue's. Subscribing in the constructor would be
+   * simpler but leaves one listener per service instance forever, which a test
+   * already guards against.
+   */
+  private watchQueue(record: ConversationRecord): void {
+    if (this.queueWatchers.has(record.id)) return;
+    const unsubscribe = this.taskService.onChange((taskId) => {
+      const queued = this.queuedTurns.get(record.id);
+      if (!queued || queued.length === 0) {
+        this.unwatchQueue(record.id);
+        return;
+      }
+      /*
+       * Only react to a task this conversation owns. A transition elsewhere is
+       * not a reason to touch this queue, and reacting to it would start a turn
+       * while its own predecessor is still running.
+       */
+      const owned = record.messages.some((message) => message.taskId === taskId);
+      if (!owned) return;
+      /*
+       * Settle first: the task carries its output the moment it finishes, but
+       * this conversation's assistant message only learns the body when it is
+       * projected. Promoting before that would build the next prompt from a
+       * transcript whose previous reply is still empty.
+       *
+       * `settleRecord` promotes on its own, so this does not call it again.
+       */
+      this.settleRecord(record);
+    });
+    this.queueWatchers.set(record.id, unsubscribe);
+  }
+
+  private unwatchQueue(conversationId: string): void {
+    const unsubscribe = this.queueWatchers.get(conversationId);
+    if (!unsubscribe) return;
+    unsubscribe();
+    this.queueWatchers.delete(conversationId);
   }
 
   private async launchQueuedTurn(
@@ -494,6 +553,7 @@ export class AgentChatService {
       idempotencyKey,
     });
     this.queuedTurns.set(record.id, queue);
+    this.watchQueue(record);
 
     return Object.freeze({
       version: AGENT_CHAT_CONTRACT_VERSION,
