@@ -79,7 +79,7 @@ const SUITES = Object.freeze({
     'operations-api.test.ts', 'support-bundle.test.ts',
   ],
   persistence: [
-    'persistence-conformance.test.ts', 'organization-persistence.test.ts',
+    'persistence-conformance.test.ts', 'single-instance.test.ts', 'organization-persistence.test.ts',
     'agent-migration.test.ts', 'configuration-store.test.ts',
     'backup.test.ts', 'automatic-backup.test.ts',
   ],

@@ -232,5 +232,9 @@ test('the single-owner error explains how to proceed', () => {
   const error = new DatabaseInstanceError();
   assert.match(error.message, /already owned/i);
   assert.match(error.message, /single-process/i);
-  assert.match(error.message, /stop the running Runtime|different CONCHBASE_DB/);
+  // The message names the constraint, how to inspect the owner, and two ways
+  // out — an operator should not have to search the docs from an error.
+  assert.match(error.message, /conchbase status/);
+  assert.match(error.message, /conchbase stop/);
+  assert.match(error.message, /CONCHBASE_DB/);
 });

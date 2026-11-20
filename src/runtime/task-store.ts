@@ -213,9 +213,18 @@ export class TaskConflictError extends Error {
 export class DatabaseInstanceError extends Error {
   constructor() {
     super(
-      'Runtime database is already owned by another Conchbase process or handle. '
-      + 'Conchbase is single-process per database file: stop the running Runtime, '
-      + 'or point this process at a different CONCHBASE_DB.',
+      'Runtime database is already owned by another Conchbase process.\n'
+      + '\n'
+      + 'Conchbase is single-process per database file: the running instance holds '
+      + 'live state (task cancellation, execution slots, the conversation queue) '
+      + 'that a second process would not share.\n'
+      + '\n'
+      + '  Check what is running:  conchbase status\n'
+      + '  Stop it:                conchbase stop\n'
+      + '  Or use another file:    CONCHBASE_DB=/path/to/other.sqlite\n'
+      + '\n'
+      + 'Running a second parallel session? Give each worktree its own database; '
+      + '`npm run dev` derives one from the branch automatically.',
     );
     this.name = 'DatabaseInstanceError';
   }

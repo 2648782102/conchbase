@@ -203,6 +203,12 @@ the rules instead of re-deriving them. `resolveProgram` turns a bare name such
 as `git` into an absolute path once, from an explicitly supplied `PATH`, so a
 conventional binary name does not force a caller to hard-code a machine path.
 
+One spawn deliberately does not go through it: `runtime-process.ts` starts the
+Runtime itself. Its working directory is the checkout being supervised, not the
+Agent workspace, so the workspace-bound rule would reject the correct call.
+Keeping that exception explicit — rather than widening the rule — is what lets
+every *tool* spawn be checked without a special case hiding in the code.
+
 ## Side effects
 
 A consequential tool records its intent in `side_effects` *before* it runs, and
@@ -232,6 +238,22 @@ with `discoverySideEffect: "read"`. Plugin manifests must declare a class —
 there is no default.
 
 ## Operating model: one process per database
+
+Two owners are worse than two processes failing: each would keep its own
+abort controllers, admission slots and conversation queue, so a cancel issued to
+one would be invisible to the other while both believed they were the sole
+writer. The second open therefore fails with a message that names the constraint
+and two ways out (`conchbase status`, `conchbase stop`, or a different
+`CONCHBASE_DB`), rather than surfacing a raw SQLite lock error.
+
+This is also why no lease or multi-writer mode is planned. Comparable local
+agent systems that store everything in one SQLite file converge on the same
+rule — a single writer, with expensive work done *before* the write lock is
+taken. The general form of that constraint, which every future write path
+should respect: do the slow part first, then hold the lock only for the part
+that must be atomic. `TaskService` admission and the side-effect ledger already
+follow it; treating it as a rule rather than a coincidence is what keeps a
+single-writer design fast enough to not need an alternative.
 
 ### Backups
 

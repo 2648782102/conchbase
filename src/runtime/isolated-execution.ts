@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { validateProcessSpec } from '../kernel/process-spec.js';
 
 export const EXECUTION_RUN_CONTRACT_VERSION = '1.3.0';
 export const EXECUTION_RUN_PUBLIC_PATHS = Object.freeze([
@@ -246,6 +247,13 @@ export interface IsolatedChildExecutor {
 }
 
 const workerScript = fileURLToPath(new URL('./isolated-executor-worker.mjs', import.meta.url));
+/**
+ * The directory the fixed worker script lives in.
+ *
+ * It is the process's boundary: the worker reads nothing from disk, so the
+ * narrowest correct cwd is next to itself rather than the operator's workspace.
+ */
+const workerDirectory = fileURLToPath(new URL('.', import.meta.url));
 
 export function createIsolatedChildExecutor(): IsolatedChildExecutor {
   return {
@@ -256,18 +264,27 @@ export function createIsolatedChildExecutor(): IsolatedChildExecutor {
         operation: input.operation,
         argumentsDigest: input.argumentsDigest,
       });
+      // Same kernel rule as every other spawn: absolute binary, bounded cwd,
+      // explicit env allowlist, bounded argv and timeout. The worker inherits an
+      // empty environment, so the allowlist has nothing to pass through and any
+      // accidental inheritance fails here rather than in the child.
+      const spec = validateProcessSpec({
+        command: process.execPath,
+        args: [workerScript, payload],
+        cwd: workerDirectory,
+        envAllowlist: [],
+        env: { PATH: '', NODE_OPTIONS: '', CONCHBASE_ISOLATED_WORKER: '1' },
+        timeoutMs: 2000,
+      }, workerDirectory, process.env as Record<string, string | undefined>);
       const child = execFile(
-        process.execPath,
-        [workerScript, payload],
+        spec.command,
+        [...spec.args],
         {
-          timeout: 2000,
+          cwd: spec.cwd,
+          timeout: spec.timeoutMs,
           killSignal: 'SIGKILL',
           maxBuffer: 64 * 1024,
-          env: {
-            PATH: '',
-            NODE_OPTIONS: '',
-            CONCHBASE_ISOLATED_WORKER: '1',
-          },
+          env: { ...spec.env },
         },
       );
       let stdout = '';
