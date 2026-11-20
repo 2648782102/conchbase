@@ -56,26 +56,29 @@ move toward the same public read paths as the console.
 For subsystem details, read the source and focused tests rather than a giant
 global design document.
 
-## Known limitation: concurrent Agent Chat turns do not see each other
+## Agent Chat turns run in order
 
 Agent Chat accepts a second message while an earlier reply is still being
-written. Each message starts its own task, and each task is given the
-transcript as it stood at the moment it was created. So:
+written — the composer says so, and the message is accepted immediately. What
+it does not do is start a second task alongside the first.
 
-- the second task cannot see the first task's reply (its body is still empty
-  and is excluded from context);
-- the first task never learns the second message exists;
-- the two replies land side by side in one conversation as if they were a
-  continuous exchange.
+Each task's prompt is built from the transcript as it stands when the task
+starts. Two tasks started together would each miss the other's reply and one
+question would be flattened into the other's prompt as text. So a turn accepted
+while the conversation is busy is **queued**: its message pair is recorded
+immediately, the assistant message reports `pending` with a null `taskId`, and
+the task is created when the preceding one finishes.
 
-The transcript is therefore honest about *what was said* but not about *who knew
-what*. Clients can recover which turns overlapped from published fields
-(`updatedAt`), and Pagurus labels them; that is presentation, not a fix.
+The visible behaviour is unchanged for a reader — the question appears at once,
+and the reply arrives when it is ready. What changes is that the later prompt
+sees the earlier reply, so the conversation the model is given is the one a
+reader believes they are having.
 
-The right fix is for a task to carry structured history — turns as turns, not a
-flattened `User:`/`Assistant:` string — so a concurrent task is given the same
-history it would have seen if it had been asked after the reply finished. That
-is a contract change and is deliberately not made yet.
+Promotion happens when the conversation is next settled (any read or stream
+tick) and is bounded: one turn per conversation is in flight, and a promotion
+in progress makes a concurrent settle a no-op rather than a second start. The
+queue is in-memory, so a restart drops it; a turn that had already started is
+handled by the normal interruption path.
 
 ## State machines
 

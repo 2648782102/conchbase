@@ -8,6 +8,7 @@ import type { TaskSnapshot } from './task-store.js';
 import { chineseAgentDisplayName } from './agent-name.js';
 import type { BossModeService } from './boss-mode-service.js';
 import { projectMessage } from './agent-chat-projection.js';
+import { isTerminalTaskState } from './task-lifecycle.js';
 import { containsSecretLike } from './secret-filter.js';
 import {
   NONTERMINAL_STATES,
@@ -156,6 +157,28 @@ interface ConversationRecord extends Omit<AgentChatConversationRecord, 'idempote
   readonly idempotency: Map<string, string>;
 }
 
+/**
+ * A turn that has been accepted but whose task has not been created yet.
+ *
+ * Queued rather than started, because a task's prompt is built from the
+ * transcript as it stands when the task is created. Two tasks created at once
+ * each see a transcript without the other's reply, so "what did you mean by
+ * that?" answered twice reads as one exchange in which neither reply knew of
+ * the other. Waiting for the previous task to finish gives the later prompt the
+ * earlier answer.
+ *
+ * The text is held here, not in the message body: the message a reader sees is
+ * the same either way, and keeping the raw prompt out of the transcript means a
+ * queued turn cannot reach a model before it starts.
+ */
+interface QueuedTurn {
+  readonly conversationId: string;
+  readonly userMessageId: string;
+  readonly assistantMessageId: string;
+  readonly text: string;
+  readonly idempotencyKey: string;
+}
+
 export class AgentChatServiceError extends Error {
   readonly statusCode: number;
   constructor(message: string, statusCode = 400) {
@@ -249,6 +272,18 @@ export class AgentChatService {
   private static readonly MAX_CACHED_CONVERSATIONS = 64;
   private readonly store: AgentChatStore;
 
+  /**
+   * Turns accepted while an earlier task is still running, per conversation.
+   *
+   * Ordered by arrival. `settleRecord` starts the head once the conversation has
+   * no live task, so a burst of messages becomes a sequence of turns rather than
+   * a set of concurrent ones.
+   */
+  private readonly queuedTurns = new Map<string, QueuedTurn[]>();
+
+  /** Conversations with an in-flight promotion, so a settle cannot start two. */
+  private readonly promoting = new Set<string>();
+
   constructor(
     readonly taskService: TaskService,
     private readonly bossMode?: BossModeService,
@@ -281,6 +316,173 @@ export class AgentChatService {
       changed = true;
     }
     if (changed) this.persist(record);
+    /*
+     * Promote a queued turn while the caller is already here.
+     *
+     * The promotion is not awaited: a read must not wait for a model call, and
+     * `promoting` makes a second read during the same window a no-op instead of
+     * a second start.
+     */
+    this.startNextQueuedTurn(record);
+  }
+
+  /**
+   * Starts the next queued turn once nothing in the conversation is running.
+   *
+   * Called from `settleRecord`, which every read and stream tick already runs,
+   * so a finished task promotes its successor without a subscription per
+   * conversation. Starting more than one would reintroduce the concurrency this
+   * queue exists to remove, so the head is only taken when the conversation is
+   * idle.
+   */
+  private startNextQueuedTurn(record: ConversationRecord): void {
+    if (this.promoting.has(record.id)) return;
+    const queue = this.queuedTurns.get(record.id);
+    if (!queue || queue.length === 0) return;
+    const live = record.messages.some((message) => {
+      if (message.author !== 'assistant' || message.taskId === null) return false;
+      const task = this.taskService.store.getTask(message.taskId);
+      return task !== null && !isTerminalTaskState(task.state);
+    });
+    if (live) return;
+
+    const next = queue.shift();
+    if (!next) return;
+    if (queue.length === 0) this.queuedTurns.delete(record.id);
+
+    const userMessage = record.messages.find((message) => message.id === next.userMessageId);
+    const assistantMessage = record.messages.find((message) => message.id === next.assistantMessageId);
+    if (!userMessage || !assistantMessage) return;
+
+    const context = conversationalHistory(record.messages).map((message) =>
+      `${message.author === 'user' ? 'User' : 'Assistant'}: ${message.body}`).join('\n');
+    const prompt = context.length > 0 ? `${context}\n\nUser: ${next.text}` : next.text;
+
+    this.promoting.add(record.id);
+    void this.launchQueuedTurn(record, next, userMessage, assistantMessage, prompt)
+      .finally(() => { this.promoting.delete(record.id); });
+  }
+
+  private async launchQueuedTurn(
+    record: ConversationRecord,
+    turn: QueuedTurn,
+    userMessage: AgentChatMessage,
+    assistantMessage: AgentChatMessage,
+    prompt: string,
+  ): Promise<void> {
+    try {
+      const task = await this.taskService.createAgentTaskWithEffort({
+        prompt,
+        agentId: record.agentId,
+        expectedAgentRevisionId: record.agentRevisionId,
+        modelOverride: { providerId: record.providerId, modelId: record.modelId },
+      }, record.reasoningEffort);
+      this.replaceMessage(record, assistantMessage.id, {
+        ...assistantMessage,
+        state: 'thinking',
+        taskId: task.id,
+        updatedAt: this.now(),
+      });
+      this.persist(record);
+      try {
+        this.taskService.startTask(task.id);
+      } catch (cause) {
+        this.replaceMessage(record, assistantMessage.id, {
+          ...assistantMessage,
+          body: 'Runtime 无法启动 Agent 任务。',
+          state: 'failed',
+          error: cause instanceof Error ? cause.message.slice(0, 240) : 'Task start failed.',
+          updatedAt: this.now(),
+        });
+        this.persist(record);
+      }
+    } catch (cause) {
+      const errorText = cause instanceof Error ? cause.message.slice(0, 240) : 'Agent task creation failed.';
+      this.replaceMessage(record, assistantMessage.id, {
+        ...assistantMessage,
+        body: unavailableError(errorText)
+          ? '模型目录暂不可用，请检查 Magpie 配置。'
+          : 'Agent 任务创建失败。',
+        state: unavailableError(errorText) ? 'unavailable' : 'failed',
+        error: errorText,
+        updatedAt: this.now(),
+      });
+      this.persist(record);
+    }
+    this.projectForRead(record);
+  }
+
+  /**
+   * Whether a turn is already running in this conversation.
+   *
+   * A queued turn is not live: it has no task yet, and the whole point of the
+   * queue is that the next head starts once this becomes false.
+   */
+  private hasLiveTurn(record: ConversationRecord): boolean {
+    if ((this.queuedTurns.get(record.id)?.length ?? 0) > 0) return true;
+    return record.messages.some((message) => {
+      if (message.author !== 'assistant' || message.taskId === null) return false;
+      const task = this.taskService.store.getTask(message.taskId);
+      return task !== null && !isTerminalTaskState(task.state);
+    });
+  }
+
+  /**
+   * Records a turn without starting it.
+   *
+   * The message pair exists immediately so the reader sees their own question
+   * and a "queued" reply; the task is created when the preceding one finishes.
+   * `taskId` stays null, which is also what `projectMessage` uses to leave a
+   * message alone until it has real task state behind it.
+   */
+  private enqueueTurn(
+    record: ConversationRecord,
+    text: string,
+    idempotencyKey: string,
+  ): AgentChatMessageResult {
+    const userMessage = message({
+      id: reference('amsg', `${record.id}:${idempotencyKey}:user`),
+      sequence: record.messages.length + 1,
+      author: 'user',
+      body: text,
+      state: 'published',
+      taskId: null,
+      error: null,
+      phase: 'accepted',
+      updatedAt: this.now(),
+    }, this.now);
+    const assistantMessage = message({
+      id: reference('amsg', `${record.id}:${idempotencyKey}:assistant`),
+      sequence: record.messages.length + 2,
+      author: 'assistant',
+      body: '',
+      state: 'pending',
+      taskId: null,
+      error: null,
+      phase: 'preparing',
+      replyToId: userMessage.id,
+      updatedAt: this.now(),
+    }, this.now);
+    record.messages.push(userMessage, assistantMessage);
+    record.idempotency.set(idempotencyKey, userMessage.id);
+    this.persist(record);
+
+    const queue = this.queuedTurns.get(record.id) ?? [];
+    queue.push({
+      conversationId: record.id,
+      userMessageId: userMessage.id,
+      assistantMessageId: assistantMessage.id,
+      text,
+      idempotencyKey,
+    });
+    this.queuedTurns.set(record.id, queue);
+
+    return Object.freeze({
+      version: AGENT_CHAT_CONTRACT_VERSION,
+      conversationId: record.id,
+      userMessage,
+      assistantMessage,
+    });
   }
 
   listAgents(): readonly AgentChatAgentView[] {
@@ -393,6 +595,18 @@ export class AgentChatService {
     }
 
     if (record.isBoss) return this.postBossMessage(record, text, idempotencyKey);
+
+    /*
+     * A turn waits for the one before it.
+     *
+     * The prompt is built from the transcript at the moment the task starts, so
+     * two tasks started together each miss the other's reply. The composer
+     * promises a reader can keep writing while a reply is generating; queueing
+     * keeps that promise and gives the later prompt the earlier answer, instead
+     * of flattening two questions into one user turn.
+     */
+    if (this.hasLiveTurn(record)) return this.enqueueTurn(record, text, idempotencyKey);
+
     const context = conversationalHistory(record.messages).map((message) =>
       `${message.author === 'user' ? 'User' : 'Assistant'}: ${message.body}`).join('\n');
     const prompt = context.length > 0 ? `${context}\n\nUser: ${text}` : text;

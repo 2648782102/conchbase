@@ -5785,6 +5785,13 @@ components:
 
         - In progress: `published`, `pending`, `thinking`, `streaming`, `organizing`.
           The Runtime may still change the message; a stalled stream may justify polling.
+
+          `pending` also covers a turn that is queued behind an earlier one. Turns in
+          one conversation run in order, so a question asked while a reply is still
+          generating waits, and its assistant message reports `pending` with a null
+          `taskId` until the earlier turn finishes. A reply written later in a
+          conversation has therefore seen the replies before it, which two concurrent
+          tasks could not guarantee.
         - Waiting on the user: `waiting_approval`, `waiting_attention`. The Runtime will
           not advance by itself. Stop polling, but do not present the message as finished.
         - Finished: `succeeded`, `failed`, `cancelled`, `unavailable`, `done`, `replied`.
