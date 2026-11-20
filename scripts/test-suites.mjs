@@ -29,7 +29,7 @@ const SUITES = Object.freeze({
     'organization-coordinator.test.ts', 'work-hold-projection.test.ts', 'work-hold-route.test.ts', 'organization-action-contract.test.ts', 'organization-validators.test.ts', 'composition-document.test.ts',
     'configuration-document.test.ts', 'configuration-revision.test.ts',
     'composition-execution.test.ts', 'work-contract.test.ts', 'platform-contract.test.ts',
-    'tool-request.test.ts', 'agent-memory.test.ts', 'secret-filter.test.ts',
+    'tool-request.test.ts', 'agent-memory.test.ts', 'secret-filter.test.ts', 'digest.test.ts',
     'memory-types.test.ts', 'memory-promotion.test.ts', 'tool-request-preview.test.ts',
     'task-state-machine.test.ts',
     'kernel-policy.test.ts', 'capability-scope.test.ts', 'kernel-process-spec.test.ts', 'kernel-level-integration.test.ts',
@@ -72,7 +72,7 @@ const SUITES = Object.freeze({
     'git-commit.test.ts',
   ],
   api: [
-    'http-api.test.ts', 'openapi-contract.test.ts', 'task-api.test.ts',
+    'http-api.test.ts', 'http-auth.test.ts', 'openapi-contract.test.ts', 'task-api.test.ts',
     'agent-api.test.ts', 'capability-audit.test.ts', 'configuration-api.test.ts', 'organization-api.test.ts',
     'platform-api.test.ts', 'tool-request-api.test.ts', 'memory-api.test.ts',
     'operations-api.test.ts', 'support-bundle.test.ts',

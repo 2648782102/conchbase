@@ -30,25 +30,32 @@ const EXEMPT = Object.freeze({
   'agent-chat-types.ts': 'type-only module; every runtime behaviour it types is asserted in agent-chat-state and agent-chat tests',
 });
 
-const runtimeDir = path.join('src', 'runtime');
-const modules = readdirSync(runtimeDir)
-  .filter((name) => name.endsWith('.ts') && !name.endsWith('.d.ts'))
-  .map((name) => path.basename(name, '.ts'));
+// Every source directory, not just `runtime`. The kernel was added after this
+// script was written and was therefore invisible to it — a blind spot in the
+// tool that is supposed to find blind spots.
+const sourceDirectories = readdirSync('src', { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => path.join('src', entry.name));
+const modules = sourceDirectories.flatMap((directory) =>
+  readdirSync(directory)
+    .filter((name) => name.endsWith('.ts') && !name.endsWith('.d.ts'))
+    .map((name) => ({ file: path.join(directory, name), label: `${path.basename(directory)}/${name}` })));
 
 const testFiles = readdirSync('tests').filter((name) => name.endsWith('.test.ts'));
 const testSource = testFiles.map((name) => readFileSync(path.join('tests', name), 'utf8')).join('\n');
 
 const untested = [];
-for (const moduleName of modules) {
-  if (EXEMPT[`${moduleName}.ts`]) continue;
+for (const { file, label } of modules) {
+  if (EXEMPT[label] || EXEMPT[path.basename(file)]) continue;
   // Count a module as covered when a test imports it directly, or when a test
   // imports a module that re-exports it from the same file path.
-  const direct = new RegExp(`runtime/${moduleName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.js`).test(testSource);
-  if (!direct) untested.push(moduleName);
+  const importPath = file.replace(/^src\//, '').replace(/\.ts$/, '.js');
+  const escaped = importPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (!new RegExp(escaped).test(testSource)) untested.push(label);
 }
 
 const lines = [];
-lines.push(`runtime modules: ${modules.length}`);
+lines.push(`source modules:  ${modules.length}`);
 lines.push(`test files:      ${testFiles.length}`);
 lines.push(`exempt:          ${Object.keys(EXEMPT).length}`);
 for (const [name, reason] of Object.entries(EXEMPT)) lines.push(`  - ${name}: ${reason}`);
@@ -56,7 +63,7 @@ if (untested.length === 0) {
   lines.push('untested:        (none)');
 } else {
   lines.push(`untested:        ${untested.length}`);
-  for (const name of untested.sort()) lines.push(`  ! src/runtime/${name}.ts`);
+  for (const name of untested.sort()) lines.push(`  ! src/${name}`);
 }
 process.stdout.write(`${lines.join('\n')}\n`);
 
