@@ -19,7 +19,16 @@ import type { TaskSnapshot } from './task-store.js';
 /** What a single call did, as one value rather than a set of booleans. */
 export type ToolOutcome =
   /** The tool ran; `summary` is what the model is told. */
-  | { readonly kind: 'executed'; readonly summary: string; readonly digest: string; readonly bytes: number }
+  | {
+    readonly kind: 'executed';
+    readonly summary: string;
+    readonly digest: string;
+    readonly bytes: number;
+    /** Whether the summary was a bounded slice of a larger result. */
+    readonly truncated?: boolean;
+    /** Bounded, checkable facts the tool is asserting. */
+    readonly evidence?: { readonly facts: Readonly<Record<string, string | number | boolean>> };
+  }
   /** An identical read in this attempt already produced this result. */
   | { readonly kind: 'reused'; readonly summary: string; readonly digest: string }
   /** An identical write already succeeded; repeating it would double the effect. */
@@ -56,7 +65,13 @@ export interface ToolExecutionPorts {
 export interface ToolInvocation {
   readonly toolId: string;
   readonly sideEffect: ToolSideEffect;
-  invoke(args: ProviderToolCall['arguments']): Promise<{ readonly summary: string; readonly digest: string; readonly bytes: number }>;
+  invoke(args: ProviderToolCall['arguments']): Promise<{
+    readonly summary: string;
+    readonly digest: string;
+    readonly bytes: number;
+    readonly truncated?: boolean;
+    readonly evidence?: { readonly facts: Readonly<Record<string, string | number | boolean>> };
+  }>;
 }
 
 /**
@@ -115,6 +130,8 @@ export async function executeToolCall(
       summary: result.summary,
       digest: result.digest,
       bytes: result.bytes,
+      ...(result.truncated === undefined ? {} : { truncated: result.truncated }),
+      ...(result.evidence === undefined ? {} : { evidence: result.evidence }),
     });
   } catch (cause) {
     // A throw does not prove the effect did not happen, so the intent stays

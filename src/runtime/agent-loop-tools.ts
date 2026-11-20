@@ -34,7 +34,12 @@ export interface AgentLoopToolContext {
   /** Records approval metadata and moves the task to waiting_approval. */
   requestApproval(task: TaskSnapshot, iteration: number, call: ProviderToolCall, sideEffect: ToolSideEffect): void;
   recordReused(task: TaskSnapshot, iteration: number, call: ProviderToolCall, digest: string): void;
-  recordExecuted(task: TaskSnapshot, iteration: number, call: ProviderToolCall, result: { readonly digest: string; readonly bytes: number }): void;
+  recordExecuted(task: TaskSnapshot, iteration: number, call: ProviderToolCall, result: {
+    readonly digest: string;
+    readonly bytes: number;
+    readonly truncated?: boolean;
+    readonly evidence?: { readonly facts: Readonly<Record<string, string | number | boolean>> };
+  }): void;
   recordFailed(task: TaskSnapshot, iteration: number, toolId: string, errorCode: string): void;
   /**
    * Durable bookkeeping for a consequential tool.

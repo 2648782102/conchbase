@@ -138,6 +138,33 @@ test('a rejection that provably did nothing discards its intent', async () => {
   assert.equal(r.abandonCount, 1, 'the intent is removed so a corrected call is not blocked');
 });
 
+/**
+ * The outcome must carry everything the caller records.
+ *
+ * When this pipeline was extracted from the loop, the executed outcome kept
+ * only summary/digest/bytes and silently dropped `truncated` and `evidence` —
+ * so every tool result lost its evidence and the audit showed `evidenceFacts:
+ * 0` for tools that reported plenty. Nothing failed, because no test asserted
+ * the fields survived the hop.
+ */
+test('an executed outcome carries truncation and evidence through', async () => {
+  const r = recorder({ sideEffect: 'read' });
+  const outcome = await executeToolCall(r.ports, task, call, {
+    toolId: 'workspace_list', sideEffect: 'read',
+    invoke: async () => ({
+      summary: 'three entries',
+      digest: 'sha256:x',
+      bytes: 12,
+      truncated: true,
+      evidence: { facts: { path: '.', totalEntries: 3 } },
+    }),
+  });
+  assert.equal(outcome.kind, 'executed');
+  if (outcome.kind !== 'executed') return;
+  assert.equal(outcome.truncated, true);
+  assert.deepEqual(outcome.evidence?.facts, { path: '.', totalEntries: 3 });
+});
+
 test('an unexpected throw keeps the intent and reports tool_failed', async () => {
   const r = recorder({ sideEffect: 'write' });
   const outcome = await executeToolCall(r.ports, task, call, {

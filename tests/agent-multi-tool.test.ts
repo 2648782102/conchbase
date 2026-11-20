@@ -94,6 +94,42 @@ async function waitFor(
   return state;
 }
 
+/**
+ * A tool's evidence has to survive into durable state.
+ *
+ * The tool contract promises each result carries bounded facts — counts, paths,
+ * sizes — that make its claim checkable later. The event used to record only
+ * how many facts there were, so an audit could see that a tool claimed
+ * something without seeing what.
+ */
+test('a tool result carries its evidence facts into the executed event', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-evidence-'));
+  const service = createService(directory, scripted([
+    () => calls([{ name: 'workspace_list', args: { path: '.' } }]),
+    () => text('listed'),
+  ]));
+  try {
+    const agent = await service.createAgent({
+      name: '证据员', instructions: 'Use tools.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_list' }],
+    });
+    const created = await service.createAgentTask({ prompt: 'list', agentId: agent.id });
+    service.startTask(created.id);
+    const task = await service.waitForTask(created.id);
+    assert.equal(task.state, 'succeeded');
+    const executed = service.store.listEvents(null)
+      .find((event) => event.taskId === task.id && event.type === ('agent_loop.tool_executed' as never));
+    assert.ok(executed, 'the tool executed');
+    // `workspace_list` reports path/totalEntries/returned/hasMore as evidence.
+    assert.equal(typeof executed.data['evidence.path'], 'string');
+    assert.equal(typeof executed.data['evidence.totalEntries'], 'number');
+    assert.ok(Number(executed.data.evidenceFacts) > 0, 'the count agrees with the facts present');
+  } finally {
+    service.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('multiple read tools execute in one turn', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-multi-read-'));
   mkdirSync(path.join(directory, 'sub'));

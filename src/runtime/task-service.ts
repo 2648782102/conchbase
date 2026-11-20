@@ -80,6 +80,7 @@ import {
   createBuiltinReadTools, ToolRejectedError, type ToolProvider, type ToolSideEffect,
 } from './tool-provider.js';
 import { categorizeError } from './error-categories.js';
+import { contentDigest } from './digest.js';
 import type { ProviderMessage } from './model-adapter.js';
 import type { ProviderToolCall } from './model-adapter.js';
 
@@ -1316,6 +1317,22 @@ export class TaskService {
     args: Readonly<Record<string, string | number | boolean | null>>,
     result: { readonly digest: string; readonly bytes: number; readonly truncated?: boolean; readonly evidence?: { readonly facts: Readonly<Record<string, string | number | boolean>> } },
   ): void {
+    // Evidence used to be reduced to a count of its keys, so an audit could see
+    // that a tool claimed facts without seeing any. The facts are bounded
+    // scalars by construction — the tool contract only allows
+    // string/number/boolean with a key limit — and they are what makes a claim
+    // checkable later, so they belong in the event.
+    //
+    // Long strings are replaced by their digest: a fact is evidence, not a
+    // place to smuggle file contents or model output into durable state.
+    const evidence = result.evidence?.facts ?? {};
+    const evidenceData: Record<string, string | number | boolean | null> = {};
+    for (const [key, value] of Object.entries(evidence)) {
+      if (key.length > 48) continue;
+      evidenceData[`evidence.${key}`] = typeof value === 'string' && value.length > 120
+        ? contentDigest(value)
+        : value;
+    }
     this.recordLoopEvent(task, 'agent_loop.tool_executed', 'running', {
       iteration,
       toolId,
@@ -1326,7 +1343,8 @@ export class TaskService {
       // A model and a human can both use this: it says whether the tool
       // returned a full result or a bounded slice, without dumping the body.
       truncated: result.truncated ?? false,
-      evidenceFacts: result.evidence ? Object.keys(result.evidence.facts).length : 0,
+      evidenceFacts: Object.keys(evidence).length,
+      ...evidenceData,
     });
   }
 
