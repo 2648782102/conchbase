@@ -462,3 +462,56 @@ test('a conversation with no queue holds no task-change listener', async () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+/**
+ * Eviction takes the queue with it.
+ *
+ * A queue is stored beside its conversation, and its subscription lives in
+ * `TaskService`. Dropping only the conversation would leave a watcher holding a
+ * record nothing references, and a re-loaded conversation would promote turns
+ * against a stale queue. The cache is bounded, so the listener count is too.
+ */
+test('evicting a conversation releases its queue and listener', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-evict-'));
+  const providerFetch = (async (input: RequestInfo | URL) => {
+    if (String(input).endsWith('/v1/models')) {
+      return new Response(JSON.stringify({ data: [{ id: 'fixture/chat-model' }] }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    }
+    // Hold every completion so each conversation keeps a non-empty queue.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return new Response(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: 'ok' }, finish_reason: null }] })}\n\ndata: [DONE]\n\n`,
+      { status: 200, headers: { 'content-type': 'text/event-stream' } },
+    );
+  }) as typeof globalThis.fetch;
+
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: providerFetch,
+  });
+  const chat = new AgentChatService(taskService);
+  try {
+    const agent = await taskService.createAgent({
+      name: '淘汰',
+      instructions: '',
+      providerId: 'magpie',
+      modelId: 'fixture/chat-model',
+    });
+    // More conversations than the cache holds, each with one queued turn.
+    for (let index = 0; index < 70; index += 1) {
+      const conversation = await chat.createConversation({ agentId: agent.id });
+      await chat.postMessage(conversation.id, { text: 'A', idempotencyKey: `a${index}` });
+      await chat.postMessage(conversation.id, { text: 'B', idempotencyKey: `b${index}` });
+    }
+    assert.ok(
+      taskService.changeListenerCount <= 64,
+      `listeners must be bounded by the cache, got ${taskService.changeListenerCount}`,
+    );
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
