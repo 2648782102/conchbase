@@ -345,3 +345,120 @@ test('a later question does not leak into an earlier prompt', async () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+/**
+ * A queue has to advance without a reader.
+ *
+ * Promotion used to run only from `settleRecord`, which a client drives by
+ * reading. A conversation nobody polls therefore never ran its queued turn —
+ * the Runtime was depending on a reader to advance its own state machine. The
+ * queue now subscribes to task transitions for as long as it exists.
+ *
+ * No `view()` call appears in this test, by design.
+ */
+test('a queued turn starts without anyone reading the conversation', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-unread-queue-'));
+  const prompts: string[] = [];
+  let completions = 0;
+
+  const providerFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).endsWith('/v1/models')) {
+      return new Response(JSON.stringify({ data: [{ id: 'fixture/chat-model' }] }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    }
+    completions += 1;
+    const body = JSON.parse(String(init?.body ?? '{}')) as {
+      messages?: readonly { role: string; content: string }[];
+    };
+    prompts.push((body.messages ?? [])
+      .filter((message) => message.role === 'user')
+      .map((message) => message.content)
+      .join('\n'));
+    return new Response(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: `A${completions}` }, finish_reason: null }] })}\n\ndata: [DONE]\n\n`,
+      { status: 200, headers: { 'content-type': 'text/event-stream' } },
+    );
+  }) as typeof globalThis.fetch;
+
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: providerFetch,
+  });
+  const chat = new AgentChatService(taskService);
+  try {
+    const agent = await taskService.createAgent({
+      name: '无读者',
+      instructions: '',
+      providerId: 'magpie',
+      modelId: 'fixture/chat-model',
+    });
+    const conversation = await chat.createConversation({ agentId: agent.id });
+
+    await chat.postMessage(conversation.id, { text: 'Q0', idempotencyKey: 'q0' });
+    await chat.postMessage(conversation.id, { text: 'Q1', idempotencyKey: 'q1' });
+
+    for (let attempt = 0; attempt < 200 && prompts.length < 2; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    assert.equal(prompts.length, 2, 'the queued turn must run without a read');
+    assert.match(prompts[1] ?? '', /A1/, 'and it must see the reply before it');
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The subscription lasts exactly as long as the queue does.
+ *
+ * Subscribing in the constructor would be simpler and would leak one listener
+ * per service instance — a property `agent-chat-stream.test.ts` already guards
+ * for the SSE path.
+ */
+test('a conversation with no queue holds no task-change listener', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-listener-'));
+  const providerFetch = (async (input: RequestInfo | URL) => {
+    if (String(input).endsWith('/v1/models')) {
+      return new Response(JSON.stringify({ data: [{ id: 'fixture/chat-model' }] }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    }
+    return new Response(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: 'ok' }, finish_reason: null }] })}\n\ndata: [DONE]\n\n`,
+      { status: 200, headers: { 'content-type': 'text/event-stream' } },
+    );
+  }) as typeof globalThis.fetch;
+
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: providerFetch,
+  });
+  const chat = new AgentChatService(taskService);
+  try {
+    const agent = await taskService.createAgent({
+      name: '监听器',
+      instructions: '',
+      providerId: 'magpie',
+      modelId: 'fixture/chat-model',
+    });
+    const conversation = await chat.createConversation({ agentId: agent.id });
+    assert.equal(taskService.changeListenerCount, 0, 'an idle service subscribes to nothing');
+
+    await chat.postMessage(conversation.id, { text: 'Q0', idempotencyKey: 'q0' });
+    await chat.postMessage(conversation.id, { text: 'Q1', idempotencyKey: 'q1' });
+    assert.equal(taskService.changeListenerCount, 1, 'a queued conversation subscribes once');
+
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      if (taskService.changeListenerCount === 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(taskService.changeListenerCount, 0, 'the listener leaves with the queue');
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
