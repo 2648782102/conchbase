@@ -301,7 +301,12 @@ function withTimeout<T>(operation: Promise<T>, timeoutMs: number, code: string):
   });
 }
 
-function summarize(result: unknown, maxBytes: number): { summary: string; bytes: number } {
+function summarize(result: unknown, maxBytes: number): {
+  summary: string;
+  bytes: number;
+  truncated: boolean;
+  parts: number;
+} {
   if (!isRecord(result) || !Array.isArray(result.content)) {
     throw new ToolRejectedError('mcp_invalid_response');
   }
@@ -315,7 +320,14 @@ function summarize(result: unknown, maxBytes: number): { summary: string; bytes:
   }
   const joined = parts.join('\n');
   const bounded = Buffer.from(joined, 'utf8').subarray(0, maxBytes).toString('utf8');
-  return { summary: bounded, bytes: Buffer.byteLength(bounded) };
+  return {
+    summary: bounded,
+    bytes: Buffer.byteLength(bounded),
+    // Truncation is a fact about the result the caller should be able to see,
+    // the same way the built-in read tools report it.
+    truncated: Buffer.byteLength(joined) > Buffer.byteLength(bounded),
+    parts: parts.length,
+  };
 }
 
 export async function createMcpToolProvider(input: unknown): Promise<McpToolProvider> {
@@ -372,8 +384,18 @@ export async function createMcpToolProvider(input: unknown): Promise<McpToolProv
       if (!entry) return Promise.reject(new ToolRejectedError('unknown_tool'));
       return (async () => {
         const result = await entry.connection.callTool(entry.remoteName, args, entry.server.callTimeoutMs ?? CALL_TIMEOUT_MS);
-        const { summary, bytes } = summarize(result, entry.server.maxResultBytes ?? MAX_RESULT_BYTES);
-        return Object.freeze({ ok: true, summary, digest: contentDigest(summary), bytes });
+        const { summary, bytes, truncated, parts } = summarize(result, entry.server.maxResultBytes ?? MAX_RESULT_BYTES);
+        return Object.freeze({
+          ok: true,
+          summary,
+          digest: contentDigest(summary),
+          bytes,
+          truncated,
+          // A remote tool's evidence is structural, not semantic: the Runtime
+          // cannot know what the result means, but it can say how much arrived
+          // and whether it was cut. That is the same guarantee the built-ins give.
+          evidence: { facts: { server: entry.server.id, parts, bytes, truncated } },
+        });
       })();
     },
     async close() {

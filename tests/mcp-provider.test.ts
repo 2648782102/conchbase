@@ -142,6 +142,12 @@ test('MCP provider truncates oversized text results', async () => {
   try {
     const result = await provider.invoke('mcp_fixture_echo', { text: 'x'.repeat(200) });
     assert.ok(result.bytes <= 8);
+    // A remote result must give the same structural evidence a built-in does:
+    // how much arrived and whether it was cut. Without this an MCP tool's
+    // truncation was invisible to both the model and an audit.
+    assert.equal(result.truncated, true);
+    assert.equal(result.evidence?.facts.truncated, true);
+    assert.equal(result.evidence?.facts.server, 'fixture');
   } finally {
     await provider.close();
   }
