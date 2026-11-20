@@ -129,3 +129,69 @@ test('the user and assistant turns still reach the model', async () => {
     assert.match(last, /好的。/, 'the earlier assistant reply is still context');
   });
 });
+
+/**
+ * The window is trimmed forward to a question, so a replayed transcript never
+ * opens on an answer whose question was cut off.
+ *
+ * A plain `slice(-8)` looks safe because a healthy conversation alternates by
+ * two. It stops being safe as soon as the newest exchange has no reply yet —
+ * the state a chat is in most of the time — because the missing assistant turn
+ * shifts the parity and the window starts one message late.
+ */
+test('the replayed prompt opens on a question, not on an orphaned answer', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-window-'));
+  const prompts: string[] = [];
+  const providerFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith('/v1/models')) {
+      return new Response(JSON.stringify({ data: [{ id: 'fixture/chat-model' }] }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    }
+    const body = JSON.parse(String(init?.body ?? '{}')) as { messages?: readonly { role: string; content: string }[] };
+    const userTurn = (body.messages ?? []).filter((message) => message.role === 'user').map((message) => message.content).join('\n');
+    if (userTurn.length > 0) prompts.push(userTurn);
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: '好的。' }, finish_reason: 'stop' }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }) as typeof globalThis.fetch;
+
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: providerFetch,
+  });
+  try {
+    const agent = await taskService.createAgent({
+      name: '窗口',
+      instructions: '',
+      providerId: 'magpie',
+      modelId: 'fixture/chat-model',
+    });
+    const chat = new AgentChatService(taskService);
+    const conversation = await chat.createConversation({ agentId: agent.id });
+
+    // Five complete exchanges, then a sixth question whose reply is still
+    // outstanding when the window is taken.
+    for (let index = 1; index <= 6; index += 1) {
+      await chat.postMessage(conversation.id, { text: `Q${index}`, idempotencyKey: `q${index}` });
+      for (let attempt = 0; attempt < 200 && prompts.length < index; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    }
+
+    const last = prompts.at(-1) ?? '';
+    const turns = last.split('\n').filter((line) => /^(User|Assistant): /.test(line));
+    assert.ok(turns.length > 0, `no replayed turns found in:\n${last}`);
+    assert.equal(
+      turns[0]!.startsWith('User: '),
+      true,
+      `the transcript must open on a question, got:\n${turns.join('\n')}`,
+    );
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+

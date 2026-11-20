@@ -201,6 +201,9 @@ function message(
 
 const MAX_ACTIVITY = 8;
 
+/** The most recent turns the Runtime replays to a model. */
+const CONVERSATION_WINDOW = 8;
+
 /**
  * The messages that may be replayed to a model as its own conversation.
  *
@@ -213,12 +216,19 @@ const MAX_ACTIVITY = 8;
  *
  * Written this way so a future author value is excluded by default instead of
  * leaking until someone remembers to add a case.
+ *
+ * The window is taken from the end, then trimmed forward to the first user
+ * turn. A plain `slice(-8)` can start mid-exchange — one question still in
+ * flight shifts the parity — and the model would open on an answer to a
+ * question it cannot see. `Q a Q a Q a Q a` is a conversation; `a Q a Q a Q a`
+ * is not, and a model reading it has to guess what the first answer replied to.
  */
 function conversationalHistory(messages: readonly AgentChatMessage[]): readonly AgentChatMessage[] {
-  return messages
-    .filter((message) => message.author === 'user'
-      || (message.author === 'assistant' && message.body.trim().length > 0))
-    .slice(-8);
+  const turns = messages.filter((message) => message.author === 'user'
+    || (message.author === 'assistant' && message.body.trim().length > 0));
+  const window = turns.slice(-CONVERSATION_WINDOW);
+  const firstUser = window.findIndex((message) => message.author === 'user');
+  return firstUser > 0 ? window.slice(firstUser) : window;
 }
 
 function toolLabel(toolId: string): string {

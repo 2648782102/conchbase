@@ -104,7 +104,7 @@ test('the reason never carries arguments or file contents', () => {
 
 test('permission level parsing rejects unknown strings', () => {
   for (const level of PERMISSION_LEVELS) assert.equal(isPermissionLevel(level), true);
-  for (const bad of ['', 'admin', 'UNBOUNDED', null, 1, undefined]) {
+  for (const bad of ['', 'admin', 'UNBOUNDED', 'unbounded', null, 1, undefined]) {
     assert.equal(isPermissionLevel(bad), false);
   }
 });

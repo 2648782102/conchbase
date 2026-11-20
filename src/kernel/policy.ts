@@ -38,8 +38,9 @@ export interface PolicyRequest {
   /**
    * Whether the pinned Agent revision granted this action.
    *
-   * Still meaningful under `unbounded`: the level waives the requirement, it
-   * does not pretend the grant existed.
+   * Enforced at every level. An ungranted action is denied, and there is no
+   * level that waives it: a config value must not be able to switch off the
+   * revision pin that `capability-grants.ts` maintains.
    */
   readonly granted: boolean;
   /**

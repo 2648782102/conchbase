@@ -151,7 +151,7 @@ the dependency direction is `http → runtime → kernel` and never the reverse.
 
 ### Permission levels
 
-One dimension, four values. A level changes *policy*; it never changes a
+One dimension, three values. A level changes *policy*; it never changes a
 boundary.
 
 | Level | Approval | Grant list | Boundary, secret, quotas |
