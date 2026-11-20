@@ -302,11 +302,25 @@ test('a later question does not leak into an earlier prompt', async () => {
     });
     const conversation = await chat.createConversation({ agentId: agent.id });
 
-    // Three questions in one burst; all but the first are queued.
-    for (let index = 0; index < 3; index += 1) {
-      await chat.postMessage(conversation.id, { text: `问题${index}`, idempotencyKey: `q${index}` });
-      await new Promise((resolve) => setTimeout(resolve, 50));
+    /*
+     * The ordering has to be deterministic, not a race.
+     *
+     * The first turn is started and held open; the next two are then accepted
+     * while it is still running, so both are queued in the record before any of
+     * them is promoted. A probe that spaces the posts out can miss the leak
+     * entirely, because a later question may not be recorded until after the
+     * earlier prompt was already built.
+     */
+    const first = await chat.postMessage(conversation.id, { text: '问题0', idempotencyKey: 'q0' });
+    assert.notEqual(first.assistantMessage.taskId, null, 'the first turn starts immediately');
+    for (let attempt = 0; attempt < 200 && prompts.length < 1; attempt += 1) {
+      chat.view(conversation.id);
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
+    assert.equal(prompts.length, 1, 'the first turn reached the model before the others were sent');
+
+    await chat.postMessage(conversation.id, { text: '问题1', idempotencyKey: 'q1' });
+    await chat.postMessage(conversation.id, { text: '问题2', idempotencyKey: 'q2' });
 
     gate.release?.();
     for (let attempt = 0; attempt < 250 && prompts.length < 3; attempt += 1) {
