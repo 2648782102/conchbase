@@ -160,6 +160,28 @@ every queued task is re-admitted at once: without a bound, a burst opens one
 completion stream per task. Admission is per Runtime process, not a durable
 state, and never changes the task state machine.
 
+### Two gates, one capacity
+
+There are two admission gates, counting different things:
+
+| Gate | Counts | Enforced in |
+|---|---|---|
+| work scheduler | running WorkItems | `global-work-scheduler.ts` |
+| task admission | held model calls | `task-service.ts` |
+
+Each was correct alone and neither could see the other, so the scheduler could
+admit eight work items while the task layer delivered four — a WorkItem in
+`running` whose task waited in `queued`, a disagreement that never resolved on
+its own. Measured before the fix: promised 8, delivered 4.
+
+`TaskService.availableModelSlots` publishes the missing number, and
+`admitWorkerStart` requires both gates. A worker held for the second gate
+reports `model-slot-limit`, distinct from `global-limit`, because "too much
+work" and "the gateway is saturated" call for different responses.
+
+Not a shared ledger: the scheduler already reads a live snapshot of work items,
+so it needed one more number rather than a second state to keep in sync.
+
 ## Policy kernel
 
 `src/kernel/` answers "may this action run?" and "may this process start?".
