@@ -177,6 +177,16 @@ test('a queued turn is written after the reply it follows, and sees it', async (
       /回复1/,
       'the queued turn must be written with the earlier reply in view',
     );
+    /*
+     * The queued question is already a turn in the transcript, so it must not
+     * also be appended as the trailing message. Doing both put the same
+     * question in twice and the model read it as a repeat.
+     */
+    assert.equal(
+      (prompts[1] ?? '').split('第二个问题').length - 1,
+      1,
+      'the queued question must appear once, not twice',
+    );
   } finally {
     gate.release?.();
     await taskService.stop();
