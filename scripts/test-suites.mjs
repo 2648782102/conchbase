@@ -64,7 +64,7 @@ const SUITES = Object.freeze({
   'agent-chat': [
     'agent-chat.test.ts', 'agent-chat-output.test.ts', 'boss-reply-formatting.test.ts', 'agent-chat-state.test.ts', 'agent-chat-projection.test.ts', 'agent-chat-history.test.ts', 'agent-chat-store.test.ts',
     'agent-chat-stream.test.ts', 'agent-chat-tools.test.ts', 'agent-done-idle.test.ts', 'primary-conversation.test.ts',
-    'agent-chat-concurrent.test.ts',
+    'agent-chat-concurrent.test.ts', 'agent-chat-runtime-notice.test.ts',
   ],
   capabilities: [
     'mcp-provider.test.ts', 'skill-provider.test.ts', 'tool-runtime.test.ts', 'git-tools.test.ts', 'plugin-loader.test.ts', 'subprocess-plugin.test.ts', 'isolated-execution.test.ts',

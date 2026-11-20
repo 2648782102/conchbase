@@ -17,6 +17,10 @@ Updated: 2026-11-19
   inline approval for the supported tool path. A waiting approval carries the
   Runtime-computed summary, risk, and bounded preview, so the client can show
   the change without a second lookup.
+- Runtime notices are authored `runtime`, not `assistant`, and are excluded from
+  model context: they are the Runtime speaking and must not be replayed as one
+  of the Agent's own turns. Only user turns and non-empty assistant turns reach
+  the model.
 - Built-in workspace read/search tools with a depth cap, a search-time budget,
   UTF-8-safe truncation, and structured evidence on every result.
 - Safe workspace writes: an existing file needs an explicit `overwrite: true`,

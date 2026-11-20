@@ -201,6 +201,26 @@ function message(
 
 const MAX_ACTIVITY = 8;
 
+/**
+ * The messages that may be replayed to a model as its own conversation.
+ *
+ * A whitelist, not a filter of what to drop. Two things must never appear:
+ *
+ * - a Runtime notice (`author: 'runtime'`): it is the Runtime speaking, and
+ *   presenting it as an assistant turn makes the model believe it said it;
+ * - an in-flight assistant placeholder, whose empty body is not yet a turn (the
+ *   Boss submission validator rejects empty bodies too).
+ *
+ * Written this way so a future author value is excluded by default instead of
+ * leaking until someone remembers to add a case.
+ */
+function conversationalHistory(messages: readonly AgentChatMessage[]): readonly AgentChatMessage[] {
+  return messages
+    .filter((message) => message.author === 'user'
+      || (message.author === 'assistant' && message.body.trim().length > 0))
+    .slice(-8);
+}
+
 function toolLabel(toolId: string): string {
   const known: Readonly<Record<string, string>> = Object.freeze({
     workspace_list: '查看工作区',
@@ -363,8 +383,7 @@ export class AgentChatService {
     }
 
     if (record.isBoss) return this.postBossMessage(record, text, idempotencyKey);
-    const context = record.messages.filter((message) =>
-      message.author === 'user' || (message.body ?? '').trim().length > 0).slice(-8).map((message) =>
+    const context = conversationalHistory(record.messages).map((message) =>
       `${message.author === 'user' ? 'User' : 'Assistant'}: ${message.body}`).join('\n');
     const prompt = context.length > 0 ? `${context}\n\nUser: ${text}` : text;
     let task: TaskSnapshot;
@@ -580,10 +599,14 @@ export class AgentChatService {
     const text = input.body.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 4_000);
     if (text.length === 0) throw new AgentChatServiceError('Runtime notice must not be empty.');
     if (containsSecretLike(text)) throw new AgentChatServiceError('Runtime notice contains secret-like content.');
+    // A notice is the Runtime speaking, not the Agent. Labelling it
+    // `assistant` made the transcript claim the model had said something it
+    // never said, and — because the context builders keep any non-empty body —
+    // replayed the notice back to the model as one of its own turns.
     const notice = message({
       id: reference('amsg', `${record.id}:${key}`),
       sequence: record.messages.length + 1,
-      author: 'assistant',
+      author: 'runtime',
       body: text,
       state: 'done',
       taskId: null,
@@ -695,11 +718,7 @@ export class AgentChatService {
   ): Promise<AgentChatMessageResult> {
     const bossMode = this.bossMode;
     if (!bossMode) throw new AgentChatServiceError('Boss Agent is not configured.', 503);
-    // In-flight assistant placeholders have an empty body. They are not a
-    // model turn yet and must not be fed back as conversation context (the
-    // Boss submission validator rejects empty bodies).
-    const conversation = record.messages.filter((message) =>
-      message.author === 'user' || (message.body ?? '').trim().length > 0).slice(-8).map((message) => ({
+    const conversation = conversationalHistory(record.messages).map((message) => ({
       author: message.author === 'user' ? 'user' as const : 'assistant' as const,
       body: message.body,
     }));

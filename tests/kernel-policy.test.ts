@@ -34,17 +34,25 @@ test('a boundary violation is denied at every level', () => {
   }
 });
 
-test('a missing grant is denied below unbounded, and allowed-to-run at unbounded', () => {
-  for (const level of ['strict', 'standard', 'trusted'] as PermissionLevel[]) {
+/**
+ * Parameterised on purpose: this is the invariant a level must never be able to
+ * break, so a level added later is covered automatically instead of needing
+ * someone to remember to extend the test.
+ */
+test('no level can waive the pinned grant list', () => {
+  for (const level of PERMISSION_LEVELS) {
     for (const effect of EFFECTS) {
       const outcome = decidePolicy(request({ level, effect, granted: false }));
       assert.equal(outcome.decision, 'deny', `${level}/${effect} must deny an ungranted action`);
       assert.match(outcome.reason, /not granted/);
     }
   }
-  // unbounded waives the grant list, but approval still follows the matrix.
-  const unbounded = decidePolicy(request({ level: 'unbounded', effect: 'write', granted: false }));
-  assert.equal(unbounded.decision, 'allow');
+});
+
+test('every level enforces grants', () => {
+  for (const level of PERMISSION_LEVELS) {
+    assert.equal(grantEnforced(level), true, `${level} must enforce the grant list`);
+  }
 });
 
 test('strict asks a human even for reads', () => {
@@ -61,13 +69,11 @@ test('standard confirms writes and external calls but not reads', () => {
   assert.equal(decidePolicy(request({ effect: 'external' })).decision, 'approve');
 });
 
-test('trusted and unbounded run without approval', () => {
-  for (const level of ['trusted', 'unbounded'] as PermissionLevel[]) {
-    for (const effect of EFFECTS) {
-      const outcome = decidePolicy(request({ level, effect }));
-      assert.equal(outcome.decision, 'allow', `${level}/${effect} should not require approval`);
-      assert.equal(outcome.requiresApproval, false);
-    }
+test('trusted runs without approval', () => {
+  for (const effect of EFFECTS) {
+    const outcome = decidePolicy(request({ level: 'trusted', effect }));
+    assert.equal(outcome.decision, 'allow', `trusted/${effect} should not require approval`);
+    assert.equal(outcome.requiresApproval, false);
   }
 });
 
@@ -76,7 +82,7 @@ test('every level and effect maps to exactly one decision', () => {
     for (const effect of EFFECTS) {
       const decision = decidePolicy(request({ level, effect })).decision;
       assert.ok(['allow', 'approve', 'deny'].includes(decision));
-      assert.equal(grantEnforced(level), level !== 'unbounded');
+      assert.equal(grantEnforced(level), true);
       assert.equal(
         approvalRequired(level, effect),
         decision === 'approve',
@@ -86,11 +92,8 @@ test('every level and effect maps to exactly one decision', () => {
   }
 });
 
-test('only unbounded waives the grant list', () => {
-  assert.deepEqual(
-    PERMISSION_LEVELS.filter((level) => !grantEnforced(level)),
-    ['unbounded'],
-  );
+test('the level list has exactly three values', () => {
+  assert.deepEqual([...PERMISSION_LEVELS], ['strict', 'standard', 'trusted']);
 });
 
 test('the reason never carries arguments or file contents', () => {

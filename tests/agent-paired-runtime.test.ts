@@ -209,7 +209,9 @@ async function startFakeGateway(options: FakeGatewayOptions = {}): Promise<FakeG
         const prompt = body.messages[0]?.content ?? '';
         requests.push({ model: body.model, prompt });
         response.writeHead(200, { 'content-type': 'text/event-stream' });
-        const delayKey = prompt.split('\n\n').at(-1) ?? '';
+        // Instructions now travel in their own system turn, so the user's text
+        // is the last message rather than the tail of the first one.
+        const delayKey = body.messages.at(-1)?.content ?? '';
         if (delayedPrompts.delete(delayKey)) {
           response.write(sseFrame({ choices: [{ delta: { content: 'partial' }, finish_reason: null }] }));
           await new Promise<void>((resolve) => setTimeout(resolve, 5_000));

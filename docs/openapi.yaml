@@ -5777,9 +5777,20 @@ components:
     AgentChatMessageState:
       type: string
       enum: [published, pending, succeeded, failed, cancelled, thinking, streaming, organizing, waiting_approval, waiting_attention, done, replied, unavailable]
-      description: >-
-        `done` means the agent finished and the user has not read the conversation yet. Reading it
-        transitions the message to `replied`. A task list should surface `done` and ignore `replied`.
+      description: |
+        Grouped by what a consumer should do with the message. A client that assumes a
+        binary pending/terminal split will get `waiting_*` wrong: those states never
+        advance on their own, so polling them spins forever, yet they are not finished
+        either.
+
+        - In progress: `published`, `pending`, `thinking`, `streaming`, `organizing`.
+          The Runtime may still change the message; a stalled stream may justify polling.
+        - Waiting on the user: `waiting_approval`, `waiting_attention`. The Runtime will
+          not advance by itself. Stop polling, but do not present the message as finished.
+        - Finished: `succeeded`, `failed`, `cancelled`, `unavailable`, `done`, `replied`.
+          No further change is expected, with one exception: `done` becomes `replied`
+          once the conversation is read. A task list should surface `done` and ignore
+          `replied`.
     AgentChatMessagePhase:
       type: string
       enum: [accepted, preparing, model, organization, human, terminal]
@@ -5797,6 +5808,11 @@ components:
         author:
           type: string
           enum: [user, assistant, runtime]
+          description: >-
+            Who produced the message. `assistant` is the Agent speaking and may be replayed to a model
+            as its own turn. `runtime` is the Runtime itself (for example a close-out notice): it is not
+            the Agent, must not be replayed as an assistant turn, and has `taskId: null` and
+            `replyToId: null`. Clients should render `runtime` distinctly instead of styling it as a reply.
         body:
           type: string
           maxLength: 12000

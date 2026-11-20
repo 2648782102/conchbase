@@ -56,6 +56,27 @@ move toward the same public read paths as the console.
 For subsystem details, read the source and focused tests rather than a giant
 global design document.
 
+## Known limitation: concurrent Agent Chat turns do not see each other
+
+Agent Chat accepts a second message while an earlier reply is still being
+written. Each message starts its own task, and each task is given the
+transcript as it stood at the moment it was created. So:
+
+- the second task cannot see the first task's reply (its body is still empty
+  and is excluded from context);
+- the first task never learns the second message exists;
+- the two replies land side by side in one conversation as if they were a
+  continuous exchange.
+
+The transcript is therefore honest about *what was said* but not about *who knew
+what*. Clients can recover which turns overlapped from published fields
+(`updatedAt`), and Pagurus labels them; that is presentation, not a fix.
+
+The right fix is for a task to carry structured history — turns as turns, not a
+flattened `User:`/`Assistant:` string — so a concurrent task is given the same
+history it would have seen if it had been asked after the reply finished. That
+is a contract change and is deliberately not made yet.
+
 ## State machines
 
 Each durable resource has one small table. Transitions outside the table are

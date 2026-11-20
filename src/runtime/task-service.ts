@@ -1053,14 +1053,26 @@ export class TaskService {
       );
       return;
     }
-    const provider = this.taskProvider(task);
+    const capabilities = this.taskCapabilities(task);
+    const messages = this.providerMessagesFor(task, capabilities);
+    await this.runAgentLoop(task, messages, 0, signal, capabilities);
+  }
 
+  /**
+   * The initial messages for one task, in the one shape every path must use.
+   *
+   * Instructions belong in a `system` turn: that is what gives them precedence
+   * over anything the user or a tool says. An earlier single-turn path
+   * concatenated them into the user turn instead, so a task that took that
+   * route silently demoted its own instructions. Both paths call this now, so
+   * the shape cannot diverge again.
+   */
+  private providerMessagesFor(task: TaskSnapshot, capabilities: TaskCapabilities): ProviderMessage[] {
     const instructions = task.agentId
       ? this.store.getAgentRevision(task.agentId, task.agentRevisionId!)?.instructions ?? ''
       : '';
-    const capabilities = this.taskCapabilities(task);
     const tools = capabilities.tools;
-    const messages: ProviderMessage[] = [
+    return [
       ...(instructions.length > 0 ? [{ role: 'system' as const, content: instructions }] : []),
       ...(tools
         ? [{
@@ -1074,7 +1086,7 @@ export class TaskService {
           ].join('\n'),
         }]
         : []),
-      ...((capabilities.skills.length ?? 0) > 0
+      ...(capabilities.skills.length > 0
         ? [{
           role: 'system' as const,
           content: [
@@ -1087,7 +1099,6 @@ export class TaskService {
         : []),
       { role: 'user' as const, content: task.prompt },
     ];
-    await this.runAgentLoop(task, messages, 0, signal, capabilities);
   }
 
   private async runAgentLoop(
@@ -1405,9 +1416,10 @@ export class TaskService {
     try {
       turn = await provider.streamTurn({
       taskId: task.id,
-      prompt: task.agentId
-        ? `${this.store.getAgentRevision(task.agentId, task.agentRevisionId!)?.instructions ?? ''}\n\n${task.prompt}`
-        : task.prompt,
+      // Same messages the loop path builds, so instructions keep their system
+      // role instead of being demoted into the user turn.
+      prompt: task.prompt,
+      messages: this.providerMessagesFor(task, this.taskCapabilities(task)),
       turnIndex: 0,
       signal: turnSignal,
       onOutputDelta: (delta) => {

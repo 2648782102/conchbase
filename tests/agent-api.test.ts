@@ -22,13 +22,15 @@ function fixtureCatalog(): ModelCatalogClient {
 test('Agent API preserves independent revisions and binds task and event identity', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-agent-api-'));
   const prompts: string[] = [];
+  const requestMessages: { role: string; content: string }[][] = [];
   const requestedModels: string[] = [];
   const service = new TaskService(new SqliteTaskStore(path.join(directory, 'runtime.sqlite')), {
     magpieBaseUrl: 'http://127.0.0.1:3425',
     defaultModel: 'fixture/model-a',
     fetch: async (_input, init) => {
-      const body = JSON.parse(String(init?.body)) as { model: string; messages: { content: string }[] };
+      const body = JSON.parse(String(init?.body)) as { model: string; messages: { role: string; content: string }[] };
       prompts.push(body.messages[0]?.content ?? '');
+      requestMessages.push(body.messages);
       requestedModels.push(body.model);
       return new Response('data: ' + JSON.stringify({
         choices: [{ delta: { content: 'answer' }, finish_reason: 'stop' }],
@@ -99,8 +101,10 @@ test('Agent API preserves independent revisions and binds task and event identit
     assert.equal(task.providerId, 'magpie');
     assert.equal(task.modelId, 'fixture/model-b');
     assert.equal(task.configurationRevisionId, service.activeConfigurationRevisionId);
-    assert.match(prompts[0] ?? '', /Use concise wording/);
-    assert.match(prompts[0] ?? '', /Answer this\./);
+    // Instructions keep their system role; the prompt stays in its own user turn.
+    assert.deepEqual(requestMessages[0]?.map((entry) => entry.role), ['system', 'user']);
+    assert.match(requestMessages[0]?.[0]?.content ?? '', /Use concise wording/);
+    assert.match(requestMessages[0]?.[1]?.content ?? '', /Answer this\./);
     assert.equal(requestedModels[0], 'fixture/model-b');
 
     const secondTaskResponse = await app.inject({
@@ -117,8 +121,9 @@ test('Agent API preserves independent revisions and binds task and event identit
     assert.equal(secondTask.agentRevisionId, second.currentRevisionId);
     assert.equal(secondTask.providerId, 'magpie');
     assert.equal(secondTask.modelId, 'fixture/model-b');
-    assert.match(prompts[1] ?? '', /Explain every step/);
-    assert.match(prompts[1] ?? '', /Explain this\./);
+    assert.deepEqual(requestMessages[1]?.map((entry) => entry.role), ['system', 'user']);
+    assert.match(requestMessages[1]?.[0]?.content ?? '', /Explain every step/);
+    assert.match(requestMessages[1]?.[1]?.content ?? '', /Explain this\./);
     assert.equal(requestedModels[1], 'fixture/model-b');
 
     const queued = service.store.listEvents(null).find((event) => event.taskId === task.id);
@@ -188,7 +193,7 @@ test('Agent API preserves independent revisions and binds task and event identit
     assert.equal(retried.agentRevisionId, first.currentRevisionId);
     assert.equal(retried.providerId, 'magpie');
     assert.equal(retried.modelId, 'fixture/model-b');
-    assert.match(prompts.at(-1) ?? '', /Use concise wording/);
+    assert.match(requestMessages.at(-1)?.[0]?.content ?? '', /Use concise wording/);
 
     const v2Document = {
       schemaVersion: 2,

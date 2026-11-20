@@ -20,10 +20,10 @@
  */
 
 /** How much the operator trusts this Runtime. */
-export type PermissionLevel = 'strict' | 'standard' | 'trusted' | 'unbounded';
+export type PermissionLevel = 'strict' | 'standard' | 'trusted';
 
 export const PERMISSION_LEVELS: readonly PermissionLevel[] = Object.freeze([
-  'strict', 'standard', 'trusted', 'unbounded',
+  'strict', 'standard', 'trusted',
 ]);
 
 /** The kind of effect an action has, independent of which tool implements it. */
@@ -60,18 +60,18 @@ export interface PolicyOutcome {
 }
 
 /**
- * Level → whether the grant list is enforced.
+ * No level waives the pinned grant list.
  *
- * `unbounded` is the only level that waives it. Everything else requires the
- * pinned revision to have granted the action, because "the Agent was allowed to
- * use this" and "the user approved this one call" are different questions.
+ * A level answers "how much ceremony surrounds an allowed action", never "what
+ * is this Agent allowed to touch". `capability-grants.ts` promises that grants
+ * can only narrow, and `resolveTaskCapabilities` is a tested security boundary;
+ * a configuration value able to switch it off would make both decorative.
+ *
+ * This is kept as a named constant rather than deleted so the reason survives
+ * where the old rule was, and so a future attempt to add a waiver has to argue
+ * with it explicitly.
  */
-const GRANT_ENFORCED: Readonly<Record<PermissionLevel, boolean>> = Object.freeze({
-  strict: true,
-  standard: true,
-  trusted: true,
-  unbounded: false,
-});
+const GRANT_ENFORCED = Object.freeze(true);
 
 /**
  * Level → which effects need a human before running.
@@ -83,7 +83,6 @@ const APPROVAL_MATRIX: Readonly<Record<PermissionLevel, Readonly<Record<ActionEf
   strict: Object.freeze({ read: true, write: true, external: true }),
   standard: Object.freeze({ read: false, write: true, external: true }),
   trusted: Object.freeze({ read: false, write: false, external: false }),
-  unbounded: Object.freeze({ read: false, write: false, external: false }),
 });
 
 const REASON: Readonly<Record<PolicyDecision, string>> = Object.freeze({
@@ -108,7 +107,7 @@ export function decidePolicy(request: PolicyRequest): PolicyOutcome {
     });
   }
 
-  if (GRANT_ENFORCED[request.level] && !request.granted) {
+  if (!request.granted) {
     return Object.freeze({
       decision: 'deny',
       reason: 'not granted to this Agent revision',
@@ -131,9 +130,14 @@ export function decidePolicy(request: PolicyRequest): PolicyOutcome {
   });
 }
 
-/** Whether a level enforces the pinned grant list. Exposed for docs and tests. */
-export function grantEnforced(level: PermissionLevel): boolean {
-  return GRANT_ENFORCED[level];
+/**
+ * Whether a level enforces the pinned grant list.
+ *
+ * Always true. Kept so a caller can ask the question in code without knowing
+ * the rule is unconditional, and so the answer is documented in one place.
+ */
+export function grantEnforced(_level: PermissionLevel): boolean {
+  return GRANT_ENFORCED;
 }
 
 /** Whether a level requires approval for an effect. Exposed for docs and tests. */
