@@ -130,6 +130,24 @@ function toOpenAiMessages(
         })),
       };
     }
+    /*
+     * A user turn with images becomes a content-part array, which is the shape
+     * every OpenAI-compatible vision endpoint accepts. Text stays a string when
+     * there are no images, so a text-only provider sees exactly what it saw
+     * before.
+     */
+    if (message.role === 'user' && message.images && message.images.length > 0) {
+      return {
+        role: 'user',
+        content: [
+          ...(message.content.length > 0 ? [{ type: 'text', text: message.content }] : []),
+          ...message.images.map((image) => ({
+            type: 'image_url',
+            image_url: { url: image.dataUrl },
+          })),
+        ],
+      };
+    }
     return { role: message.role, content: message.content };
   });
 }

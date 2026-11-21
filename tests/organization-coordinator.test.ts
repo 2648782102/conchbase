@@ -97,7 +97,13 @@ test('coordinator has no HTTP, Agent store, model, tool, or public contract depe
   );
   assert.doesNotMatch(source, /fastify|createAgent\(|fetch\(|spawn|exec\(|readFile/);
   const spec = readFileSync(path.join(repositoryRoot, 'docs/openapi.yaml'), 'utf8');
-  assert.equal([...spec.matchAll(/^  (\/v1\/[^:]+):$/gm)].length, 97);
+  /*
+   * The surface must keep growing deliberately, not by accident. The number is
+   * asserted against the published paths so adding a route is a one-line edit
+   * here rather than a silent change to what the coordinator is measured against.
+   */
+  const publishedPaths = [...spec.matchAll(/^  (\/v1\/[^:]+):$/gm)].length;
+  assert.equal(publishedPaths, 100, `expected 100 published paths, found ${publishedPaths}`);
   assert.doesNotMatch(source, /organization\/session/);
 });
 

@@ -182,6 +182,54 @@ A listener releases its own subscription when nothing is left to follow. It must
 not call the wider resync from inside the callback: that both removes and
 re-adds the subscription, and the pair oscillates on every notification.
 
+## Prompt budget
+
+`context-budget.ts` is the one place that decides whether a prompt fits. It is
+pure: an estimate, a budget, and a trim, with no IO and no provider.
+
+The estimate is deliberately pessimistic — CJK at one token per character,
+latin at one per four — because under-counting spends the user's turn and
+over-counting spends a few tokens of their window. The budget reserves a share
+of the window for the reply, so a prompt that exactly fills it cannot leave the
+model with nowhere to answer.
+
+The loop refits every iteration. Each tool call appends its assistant turn and
+its result, so a prompt grows during a run; fitting only the first one would
+leave exactly the case that overflows. System turns are never dropped — they are
+the Agent's instructions, its tool list, and its Skill guidance — and a tool
+result is dropped together with the assistant turn that requested it, because a
+`tool` message whose call is missing is a protocol error in every chat template.
+
+## Provider retry
+
+`provider-retry.ts` retries only what the adapter marked retryable. The
+classification already existed and nothing read it; a single 429 failed the whole
+task. The policy is attempts-bounded and backoff is capped, the caller's signal
+wins over any wait, and both the retry and the recovery are recorded as events so
+a slow run has a stated reason.
+
+## Recurring work
+
+`schedule.ts` holds the data; `schedule-runner.ts` fires it. A schedule is pinned
+to an Agent and produces an ordinary Agent task, so every grant and approval
+rule still applies. Three deliberate behaviours: an overlapping firing is
+skipped rather than queued, a missed run is not replayed after downtime, and a
+schedule whose Agent no longer exists disables itself — the causes are permanent
+until a person acts, and retrying every tick would only write events.
+
+## Plugins and attachments
+
+`plugin-loader.ts` turns a directory of `plugin.json` manifests into tool
+providers. Tool ids are namespaced by plugin id: two plugins declaring `echo`
+would otherwise collide, and `combineToolProviders` refuses the whole surface —
+so installing a second plugin would have broken every built-in tool.
+
+`attachments.ts` accepts only base64 image data URLs. A path would let a message
+name a host file and a remote URL would make the provider fetch an arbitrary
+address, so both are refused rather than resolved. Images live in memory for the
+life of one task and are released when it reaches a terminal state; they never
+enter the event log or a backup.
+
 ### Rule of thumb
 
 A client never invents a transition. If a UI needs a new state, it is a Runtime

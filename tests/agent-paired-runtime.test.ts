@@ -343,7 +343,9 @@ test('Pagurus clients and Conchbase close the two-Agent loop over live loopback 
       ['magpie', 'fixture/model-a'],
       ['magpie', 'fixture/model-b'],
     ]);
-    assert.deepEqual(catalog[0]?.capabilities, ['chat', 'streaming-output']);
+    // Capabilities now describe what the model can actually do, so a client can
+    // tell a tool-capable model from a text-only one instead of assuming.
+    assert.deepEqual(catalog[0]?.capabilities, ['chat', 'streaming-output', 'tool-calls']);
 
     const first = await agentApi.createAgent({
       name: 'Agent A',

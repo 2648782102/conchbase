@@ -25,6 +25,10 @@ import {
   MEMORY_PUBLIC_PATHS,
   MEMORY_PUBLIC_CONTRACT_VERSION,
 } from './memory.js';
+import {
+  SCHEDULE_PUBLIC_PATHS,
+  SCHEDULE_CONTRACT_VERSION,
+} from './schedules.js';
 
 export function registerRuntimeRoute(
   app: FastifyInstance,
@@ -39,6 +43,7 @@ export function registerRuntimeRoute(
   loopBudget?: LoopBudget,
   projectIdleMs?: number,
   memoryEnabled = false,
+  schedulesEnabled = false,
   scheduler?: { readonly globalActiveWork: number; readonly perProjectActiveWork: number },
 ): void {
   /*
@@ -90,6 +95,10 @@ export function registerRuntimeRoute(
     ...(memoryEnabled ? {
       memoryContract: MEMORY_PUBLIC_CONTRACT_VERSION,
       memoryPaths: MEMORY_PUBLIC_PATHS.length,
+    } : {}),
+    ...(schedulesEnabled ? {
+      scheduleContract: SCHEDULE_CONTRACT_VERSION,
+      schedulePaths: SCHEDULE_PUBLIC_PATHS.length,
     } : {}),
     ...(scheduler ? {
       globalWorkScheduler: {

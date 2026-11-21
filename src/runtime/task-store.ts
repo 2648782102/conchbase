@@ -48,6 +48,7 @@ import type {
   ToolRequestRow,
 } from './task-store-rows.js';
 import { SqliteAgentMemoryStore, type AgentMemoryStore } from './agent-memory.js';
+import { SqliteScheduleStore, type ScheduleStore } from './schedule.js';
 
 export interface TaskSnapshot {
   readonly id: string;
@@ -170,6 +171,7 @@ export interface TaskStore {
   readonly organization: OrganizationStore;
   readonly agentChat: AgentChatStore;
   readonly memory: AgentMemoryStore;
+  readonly schedules: ScheduleStore;
   saveLoopState(taskId: string, state: string | null): void;
   getLoopState(taskId: string): string | null;
   /**
@@ -362,6 +364,7 @@ export class SqliteTaskStore implements TaskStore {
   readonly organization: OrganizationStore;
   readonly agentChat: AgentChatStore;
   readonly memory: AgentMemoryStore;
+  readonly schedules: ScheduleStore;
   private readonly database: DatabaseSync;
   private readonly clock: () => string;
   private isOrganizationBootstrapTransaction = false;
@@ -374,6 +377,7 @@ export class SqliteTaskStore implements TaskStore {
     this.organization = new SqliteOrganizationStore(this.database, () => this.isOrganizationBootstrapTransaction);
     this.agentChat = new SqliteAgentChatStore(this.database);
     this.memory = new SqliteAgentMemoryStore(this.database);
+    this.schedules = new SqliteScheduleStore(this.database);
     try {
       this.database.exec('PRAGMA busy_timeout = 0;');
       this.database.exec('PRAGMA foreign_keys = ON;');
@@ -483,6 +487,7 @@ export class SqliteTaskStore implements TaskStore {
       `);
       this.organization.initialize('primary_conversation');
       this.agentChat.initialize();
+      this.schedules.initialize();
       this.database.exec('INSERT OR IGNORE INTO agent_state (singleton, default_agent_id) VALUES (1, NULL)');
       this.database.exec('PRAGMA user_version = 9; COMMIT;');
       this.isOrganizationBootstrapTransaction = false;

@@ -79,6 +79,7 @@ export const AGENT_CHAT_PATHS_FIXTURE = Object.freeze([
   '/v1/agent-chat/conversations/{conversationId}',
   '/v1/agent-chat/conversations/{conversationId}/messages',
   '/v1/agent-chat/conversations/{conversationId}/approval',
+  '/v1/agent-chat/conversations/{conversationId}/cancel',
   '/v1/agent-chat/conversations/{conversationId}/events',
 ] as const);
 

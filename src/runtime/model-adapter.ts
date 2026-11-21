@@ -52,9 +52,25 @@ export interface ProviderToolDefinition {
 
 export type ProviderMessage =
   | { readonly role: 'system'; readonly content: string }
-  | { readonly role: 'user'; readonly content: string }
+  | {
+    readonly role: 'user';
+    readonly content: string;
+    /**
+     * Inline images for this turn.
+     *
+     * Additive and optional: a provider that cannot take images simply ignores
+     * it, and every existing caller keeps producing the text-only shape.
+     */
+    readonly images?: readonly ProviderImage[];
+  }
   | { readonly role: 'assistant'; readonly content: string; readonly toolCalls?: readonly ProviderToolCall[] }
   | { readonly role: 'tool'; readonly toolCallId: string; readonly content: string };
+
+export interface ProviderImage {
+  readonly mediaType: string;
+  /** A `data:` URL, already validated by the attachment layer. */
+  readonly dataUrl: string;
+}
 
 export interface ProviderToolCall {
   readonly id: string;

@@ -27,6 +27,7 @@ import { registerTaskRoutes } from './routes/v1/tasks.js';
 import { registerToolRequestRoutes } from './routes/v1/tool-requests.js';
 import { registerAgentRoutes } from './routes/v1/agents.js';
 import { registerWorkRoutes } from './routes/v1/work.js';
+import { registerScheduleRoutes } from './routes/v1/schedules.js';
 
 export interface CreateAppOptions {
   logger?: boolean;
@@ -120,6 +121,7 @@ export function createApp(options: CreateAppOptions = {}) {
     options.config?.loopBudget,
     options.config?.projectIdleMs,
     Boolean(options.taskService?.store?.memory),
+    Boolean(options.taskService?.store?.schedules),
     options.config
       ? {
         globalActiveWork: options.config.globalActiveWork,
@@ -148,6 +150,7 @@ export function createApp(options: CreateAppOptions = {}) {
   registerOperationsRoutes(app, options.taskService, options.config);
   registerExecutionRoutes(app, execution);
   registerExecutionRunRoutes(app, executionRuns);
+  registerScheduleRoutes(app, options.taskService);
 
   // Service discovery for a human or agent arriving at the Runtime without
   // prior knowledge of the route surface. This is a non-versioned convenience

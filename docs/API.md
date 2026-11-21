@@ -94,7 +94,13 @@ Conchbase owns this contract; Pagurus and other clients consume it.
 | `GET /v1/agent-chat/conversations/{conversationId}` | Read one Agent Chat conversation with bounded user, assistant, pending, and terminal state. |
 | `POST /v1/agent-chat/conversations/{conversationId}/messages` | Send one bounded user message and start a real Agent-backed model task; `202`. |
 | `POST /v1/agent-chat/conversations/{conversationId}/approval` | Resolve the conversation's pending tool approval; the decision is applied to the waiting task. |
+| `POST /v1/agent-chat/conversations/{conversationId}/cancel` | Stop the running turn, or drop a turn that is still queued; `409` when nothing is running. |
 | `GET /v1/agent-chat/conversations/{conversationId}/events` | Server-Sent Events projection of one conversation; see the Agent Chat `1.8.0` notes below. |
+| `GET /v1/schedules` | List recurring Agent tasks ordered by next firing. |
+| `POST /v1/schedules` | Create a schedule (`name`, `agentId`, `prompt`, `intervalMs`, optional `enabled`/`startAt`); `201`. The Agent must exist now. |
+| `GET /v1/schedules/{scheduleId}` | Read one schedule; `404` when absent. |
+| `PATCH /v1/schedules/{scheduleId}` | Enable or disable a schedule. |
+| `DELETE /v1/schedules/{scheduleId}` | Remove a schedule. Tasks it already created are unaffected. |
 | `GET /v1/memory` | Read reviewable memory entries filtered by scope; bounded `limit` up to 200. |
 | `DELETE /v1/memory/{memoryId}` | Retract one memory entry; `404` when absent. This is the only client-side mutation — there is no write route. |
 | `GET /v1/operations/data` | Report the database path, size, existence, and schema version. Never its contents. |

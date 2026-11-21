@@ -61,7 +61,10 @@ export type TaskEventType =
   | 'agent_loop.tool_reused'
   | 'agent_loop.tool_failed'
   | 'agent_loop.approval_requested'
-  | 'agent_loop.approval_decided';
+  | 'agent_loop.approval_decided'
+  | 'agent_loop.context_trimmed'
+  | 'agent_loop.provider_retry'
+  | 'agent_loop.provider_recovered';
 
 const TRANSITIONS: Readonly<Record<TaskState, readonly TaskState[]>> = Object.freeze({
   queued: Object.freeze<TaskState[]>([
@@ -154,6 +157,9 @@ export const TASK_TRANSITIONS: Readonly<Record<TaskEventType, TaskTransition>> =
   'agent_loop.tool_failed': { state: 'running', eventType: 'agent_loop.tool_failed' },
   'agent_loop.approval_requested': { state: 'waiting_approval', eventType: 'agent_loop.approval_requested' },
   'agent_loop.approval_decided': { state: 'running', eventType: 'agent_loop.approval_decided' },
+  'agent_loop.context_trimmed': { state: 'running', eventType: 'agent_loop.context_trimmed' },
+  'agent_loop.provider_retry': { state: 'running', eventType: 'agent_loop.provider_retry' },
+  'agent_loop.provider_recovered': { state: 'running', eventType: 'agent_loop.provider_recovered' },
 });
 
 export function canTransition(from: TaskState, to: TaskState): boolean {

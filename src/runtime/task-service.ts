@@ -54,6 +54,13 @@ import {
 } from './agent-profile.js';
 import { isTerminalTaskState, type TaskEventType } from './task-lifecycle.js';
 import {
+  contextBudget,
+  describeFit,
+  fitPrompt,
+  type ContextBudget,
+} from './context-budget.js';
+import { DEFAULT_RETRY_POLICY, withProviderRetry } from './provider-retry.js';
+import {
   ConfigurationRevisionNotFoundError as StoreRevisionNotFoundError,
   SqliteTaskStore,
   TaskConflictError,
@@ -165,6 +172,8 @@ export interface ProviderModelCatalogEntry extends ModelReference {
   readonly reference: string;
   readonly displayName: string;
   readonly capabilities: readonly string[];
+  /** Total context window when the provider publishes one. */
+  readonly contextTokens?: number;
 }
 
 export class TaskValidationError extends Error {
@@ -220,6 +229,15 @@ export class TaskService {
   private readonly catalog: ModelCatalogClient;
   private readonly loopOptions: AgentLoopOptions;
   private readonly effortByTaskId = new Map<string, 'low' | 'medium' | 'high'>();
+  /**
+   * Images for a task that has been created but not started yet.
+   *
+   * Held in memory on purpose: an attachment is user content with no audit
+   * value once the turn is answered, and writing megabytes of base64 into the
+   * event log would bloat every backup and every export. A restart drops them,
+   * which is correct — the task it belonged to is `interrupted` anyway.
+   */
+  private readonly imagesByTaskId = new Map<string, readonly { mediaType: string; dataUrl: string }[]>();
   private readonly sliceBudgetByTaskId = new Map<string, number>();
   /**
    * Bounded, renderable previews computed when a tool request is created.
@@ -540,6 +558,21 @@ export class TaskService {
     const task = await this.createAgentTask(input);
     if (reasoningEffort) this.effortByTaskId.set(task.id, reasoningEffort);
     return task;
+  }
+
+  /**
+   * Attaches images to a task that has not started.
+   *
+   * Separate from `createAgentTask` so the persisted task shape stays small and
+   * the images never reach the database.
+   */
+  attachImages(taskId: string, images: readonly { mediaType: string; dataUrl: string }[]): void {
+    if (!this.store.getTask(taskId)) throw new TaskNotFoundError();
+    if (images.length === 0) {
+      this.imagesByTaskId.delete(taskId);
+      return;
+    }
+    this.imagesByTaskId.set(taskId, Object.freeze([...images]));
   }
 
   async createAgentTask(input: unknown): Promise<TaskSnapshot> {
@@ -907,7 +940,15 @@ export class TaskService {
         modelId: model.id,
         reference: `${providerId}:${model.id}`,
         displayName: model.displayName,
-        capabilities: Object.freeze(['chat', 'streaming-output']),
+        capabilities: Object.freeze([
+          'chat',
+          ...(model.supportsStreaming === false ? [] : ['streaming-output']),
+          ...(model.supportsTools === false ? [] : ['tool-calls']),
+          ...(model.supportsReasoning ? ['reasoning'] : []),
+        ]),
+        // Published so a client (and the budget) can tell a small window from a
+        // large one instead of assuming every model behaves the same.
+        ...(model.contextTokens ? { contextTokens: model.contextTokens } : {}),
       }));
     }));
     return Object.freeze(perProvider.flat());
@@ -982,6 +1023,15 @@ export class TaskService {
   }
 
   private notifyChange(taskId: string): void {
+    /*
+     * Every terminal transition reaches here, so this is the one place that can
+     * release an attachment buffer without adding a case to each path.
+     */
+    const current = this.store.getTask(taskId);
+    if (!current || isTerminalTaskState(current.state)) {
+      this.imagesByTaskId.delete(taskId);
+      this.effortByTaskId.delete(taskId);
+    }
     for (const listener of this.eventListeners) {
       try {
         listener(taskId);
@@ -991,12 +1041,44 @@ export class TaskService {
     }
   }
 
-  async stop(): Promise<void> {
+  /**
+   * Stops every in-flight task and closes the store.
+   *
+   * The wait is bounded. Aborting a controller only *asks* the loop to stop: a
+   * provider call that never resolves, or a tool subprocess that ignores the
+   * signal, would otherwise make shutdown hang forever — and a Runtime that
+   * cannot exit is worse than one that exits with a task still recorded as
+   * interrupted, because the next start recovers that task anyway.
+   */
+  async stop(options: { readonly timeoutMs?: number } = {}): Promise<void> {
     this.stopping = true;
     for (const controller of this.active.values()) controller.abort();
-    await Promise.allSettled([...this.inFlight]);
+    const timeoutMs = Math.max(1_000, options.timeoutMs ?? 5_000);
+    let timer: NodeJS.Timeout | null = null;
+    const drained = await Promise.race([
+      Promise.allSettled([...this.inFlight]).then(() => true),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), timeoutMs);
+        timer.unref?.();
+      }),
+    ]);
+    if (timer) clearTimeout(timer);
+    if (!drained) {
+      /*
+       * Record what happened rather than pretending it did not.
+       *
+       * The store is closed immediately after, so this is the last chance to
+       * leave an explanation. `shutdownTimedOut` is read by `diagnose` and by
+       * the tests, so "the process exited but one task never drained" is
+       * observable instead of silent.
+       */
+      this.shutdownTimedOut = true;
+    }
     this.close();
   }
+
+  /** True when the last `stop()` gave up waiting for tasks to drain. */
+  shutdownTimedOut = false;
 
   private async execute(task: TaskSnapshot, signal: AbortSignal): Promise<void> {
     try {
@@ -1122,7 +1204,11 @@ export class TaskService {
           ].join('\n'),
         }]
         : []),
-      { role: 'user' as const, content: task.prompt },
+      {
+        role: 'user' as const,
+        content: task.prompt,
+        ...(this.imagesByTaskId.has(task.id) ? { images: this.imagesByTaskId.get(task.id)! } : {}),
+      },
     ];
   }
 
@@ -1137,6 +1223,14 @@ export class TaskService {
     const tools = capabilities.tools;
     const maxIterations = this.loopBudget.maxIterations;
     const deadline = Date.now() + this.loopBudget.deadlineMs;
+    /*
+     * The window belongs to the model the task is pinned to, not to the Runtime.
+     *
+     * It is resolved once per loop: a model's window does not change mid-task,
+     * and a catalog failure must not cost the user their turn — an unknown
+     * window falls back to a conservative default rather than to "unlimited".
+     */
+    const budget = await this.contextBudgetFor(task);
     let partialOutput = '';
     let turn: Awaited<ReturnType<typeof provider.streamTurn>> = Object.freeze({ kind: 'final', output: '' });
     let completed = false;
@@ -1157,35 +1251,92 @@ export class TaskService {
       this.recordLoopEvent(task, 'agent_loop.turn_started', 'running', { iteration });
       partialOutput = '';
       let deltaIndex = 0;
-      try {
-        turn = await provider.streamTurn({
-        taskId: task.id,
-        prompt: task.prompt,
-        turnIndex: iteration,
-        messages,
-        ...((this.effortByTaskId.get(task.id) ?? this.loopOptions.reasoningEffort)
-          ? { reasoningEffort: this.effortByTaskId.get(task.id) ?? this.loopOptions.reasoningEffort }
-          : {}),
-        ...(tools
-          ? {
-            tools: tools.list().map((tool) => ({
-              id: tool.id,
-              description: tool.description,
-              parameters: tool.parameters ?? { type: 'object', additionalProperties: true },
-            })),
-          }
-          : {}),
-        signal: turnSignal,
-        onOutputDelta: (delta) => {
-          partialOutput += delta;
-          this.store.recordOutputDelta(task.id, {
-            ...this.eventInput(task, 'task.output_delta', 'running', task.attempt),
-            data: { delta, index: deltaIndex, outputLength: partialOutput.length },
-          }, partialOutput);
-          deltaIndex += 1;
-          this.notifyChange(task.id);
-        },
+      /*
+       * Refit every iteration, not once at the start.
+       *
+       * Each tool call appends its assistant turn and its result, so the prompt
+       * grows during a run. Fitting only the initial prompt would leave exactly
+       * the case that overflows — a long tool chain — unprotected.
+       */
+      const fitted = fitPrompt(messages, budget);
+      if (fitted.fit.kind === 'overflow') {
+        throw new Error(describeFit(fitted.fit) ?? 'Prompt exceeds the model context window.');
+      }
+      if (fitted.fit.kind === 'trimmed') {
+        // Visible, not silent: a reply that "forgot" earlier turns must be
+        // explainable to the person reading the conversation.
+        this.recordLoopEvent(task, 'agent_loop.context_trimmed', 'running', {
+          iteration,
+          droppedMessages: fitted.fit.droppedMessages,
+          droppedTokens: fitted.fit.droppedTokens,
+          promptTokens: fitted.fit.tokens,
+          budgetTokens: fitted.fit.budget.promptTokens,
         });
+      }
+      const promptMessages = fitted.messages;
+      try {
+        /*
+         * Each turn is retried on a transient provider failure.
+         *
+         * A 429 or a timeout used to fail the whole task, even though the
+         * adapter had already classified it as retryable. The attempt is bounded
+         * by `turnSignal`, so the run's deadline still holds and a retry cannot
+         * outlive it.
+         */
+        const retried = await withProviderRetry(
+          () => provider.streamTurn({
+            taskId: task.id,
+            prompt: task.prompt,
+            turnIndex: iteration,
+            messages: promptMessages,
+            ...((this.effortByTaskId.get(task.id) ?? this.loopOptions.reasoningEffort)
+              ? { reasoningEffort: this.effortByTaskId.get(task.id) ?? this.loopOptions.reasoningEffort }
+              : {}),
+            ...(tools
+              ? {
+                tools: tools.list().map((tool) => ({
+                  id: tool.id,
+                  description: tool.description,
+                  parameters: tool.parameters ?? { type: 'object', additionalProperties: true },
+                })),
+              }
+              : {}),
+            signal: turnSignal,
+            onOutputDelta: (delta) => {
+              partialOutput += delta;
+              this.store.recordOutputDelta(task.id, {
+                ...this.eventInput(task, 'task.output_delta', 'running', task.attempt),
+                data: { delta, index: deltaIndex, outputLength: partialOutput.length },
+              }, partialOutput);
+              deltaIndex += 1;
+              this.notifyChange(task.id);
+            },
+          }),
+          {
+            policy: DEFAULT_RETRY_POLICY,
+            signal: turnSignal,
+            onRetry: ({ attempt, kind, delayMs }) => {
+              // Visible, so a slow run has a stated reason instead of looking
+              // like an unexplained pause.
+              this.recordLoopEvent(task, 'agent_loop.provider_retry', 'running', {
+                iteration,
+                attempt,
+                kind,
+                delayMs,
+              });
+              partialOutput = '';
+              deltaIndex = 0;
+            },
+          },
+        );
+        turn = retried.value;
+        if (retried.recovered.length > 0) {
+          this.recordLoopEvent(task, 'agent_loop.provider_recovered', 'running', {
+            iteration,
+            attempts: retried.attempts,
+            recovered: retried.recovered.join(','),
+          });
+        }
       } catch (cause) {
         if (timedOut && !signal.aborted) {
           throw new Error('Agent loop exceeded its time budget while waiting for the model.');
@@ -1256,6 +1407,29 @@ export class TaskService {
 
   private maxToolCallsPerTurn(): number {
     return this.loopBudget.maxToolCallsPerTurn;
+  }
+
+  /**
+   * The context budget for the model this task is pinned to.
+   *
+   * Resolution order: the task's own provider/model, then the catalog. A
+   * catalog failure is not fatal — the conservative default keeps the run safe
+   * and the user still gets an answer, where failing here would turn a provider
+   * outage into a task failure before any model call is made.
+   */
+  private async contextBudgetFor(task: TaskSnapshot): Promise<ContextBudget> {
+    const providerId = task.providerId ?? defaultProviderId();
+    const modelId = task.modelId;
+    if (!modelId) return contextBudget(undefined);
+    try {
+      const models = providerId === defaultProviderId() && this.catalog !== undefined
+        ? await this.catalog.listModels()
+        : await this.providerCatalog(providerId).listModels();
+      const model = models.find((entry) => entry.id === modelId);
+      return contextBudget(model?.contextTokens);
+    } catch {
+      return contextBudget(undefined);
+    }
   }
 
   /**
@@ -1455,25 +1629,69 @@ export class TaskService {
       if (!signal.aborted) timedOut = true;
     }, { once: true });
     let turn: Awaited<ReturnType<typeof provider.streamTurn>>;
-    try {
-      turn = await provider.streamTurn({
-      taskId: task.id,
-      // Same messages the loop path builds, so instructions keep their system
-      // role instead of being demoted into the user turn.
-      prompt: task.prompt,
-      messages: this.providerMessagesFor(task, this.taskCapabilities(task)),
-      turnIndex: 0,
-      signal: turnSignal,
-      onOutputDelta: (delta) => {
-        partialOutput += delta;
-        this.store.recordOutputDelta(task.id, {
-          ...this.eventInput(task, 'task.output_delta', 'running', task.attempt),
-          data: { delta, index: deltaIndex, outputLength: partialOutput.length },
-        }, partialOutput);
-        deltaIndex += 1;
-        this.notifyChange(task.id);
-      },
+    /*
+     * The single-turn path needs the same two protections as the loop.
+     *
+     * It is the path a plain `POST /v1/tasks` takes, so leaving the budget or
+     * the retry out here would mean the most common request shape still fails on
+     * a 429 and still overflows a small window.
+     */
+    const fitted = fitPrompt(this.providerMessagesFor(task, this.taskCapabilities(task)), await this.contextBudgetFor(task));
+    if (fitted.fit.kind === 'overflow') {
+      throw new Error(describeFit(fitted.fit) ?? 'Prompt exceeds the model context window.');
+    }
+    if (fitted.fit.kind === 'trimmed') {
+      this.store.recordEvent(task.id, {
+        ...this.eventInput(task, 'agent_loop.context_trimmed', 'running', task.attempt),
+        data: {
+          iteration: 0,
+          droppedMessages: fitted.fit.droppedMessages,
+          droppedTokens: fitted.fit.droppedTokens,
+          promptTokens: fitted.fit.tokens,
+          budgetTokens: fitted.fit.budget.promptTokens,
+        },
       });
+    }
+    try {
+      const retried = await withProviderRetry(
+        () => provider.streamTurn({
+          taskId: task.id,
+          // Same messages the loop path builds, so instructions keep their system
+          // role instead of being demoted into the user turn.
+          prompt: task.prompt,
+          messages: fitted.messages,
+          turnIndex: 0,
+          signal: turnSignal,
+          onOutputDelta: (delta) => {
+            partialOutput += delta;
+            this.store.recordOutputDelta(task.id, {
+              ...this.eventInput(task, 'task.output_delta', 'running', task.attempt),
+              data: { delta, index: deltaIndex, outputLength: partialOutput.length },
+            }, partialOutput);
+            deltaIndex += 1;
+            this.notifyChange(task.id);
+          },
+        }),
+        {
+          policy: DEFAULT_RETRY_POLICY,
+          signal: turnSignal,
+          onRetry: ({ attempt, kind, delayMs }) => {
+            this.store.recordEvent(task.id, {
+              ...this.eventInput(task, 'agent_loop.provider_retry', 'running', task.attempt),
+              data: { iteration: 0, attempt, kind, delayMs },
+            });
+            partialOutput = '';
+            deltaIndex = 0;
+          },
+        },
+      );
+      turn = retried.value;
+      if (retried.recovered.length > 0) {
+        this.store.recordEvent(task.id, {
+          ...this.eventInput(task, 'agent_loop.provider_recovered', 'running', task.attempt),
+          data: { iteration: 0, attempts: retried.attempts, recovered: retried.recovered.join(',') },
+        });
+      }
     } catch (cause) {
       if (timedOut && !signal.aborted) {
         throw new Error('Task exceeded its time budget while waiting for the model.');

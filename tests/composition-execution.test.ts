@@ -163,6 +163,8 @@ class CancelOnFirstNodeStore implements TaskStore {
 
   get memory() { return this.inner.memory; }
 
+  get schedules() { return this.inner.schedules; }
+
   saveLoopState(taskId: string, state: string | null) { return this.inner.saveLoopState(taskId, state); }
   getLoopState(taskId: string) { return this.inner.getLoopState(taskId); }
   beginSideEffect(input: Parameters<TaskStore['beginSideEffect']>[0]) { return this.inner.beginSideEffect(input); }

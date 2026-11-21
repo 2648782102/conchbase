@@ -118,6 +118,8 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
       ...AGENT_CHAT_PATHS_FIXTURE,
       ...EXECUTION_PATHS_FIXTURE,
       ...EXECUTION_RUN_PATHS_FIXTURE,
+      '/v1/schedules',
+      '/v1/schedules/{scheduleId}',
       '/v1/memory',
       '/v1/memory/{memoryId}',
     ],

@@ -47,6 +47,15 @@ export interface PluginInvocationGuard {
 
 export class PluginRegistry {
   private readonly plugins = new Map<string, LoadedPlugin>();
+  /**
+   * Child processes started for `process` plugins.
+   *
+   * Kept so `close()` can stop them. Without this a Runtime that shut down
+   * cleanly still left one orphan process per installed plugin — which is what
+   * made the plugin tests hang: the test process never exited because a child
+   * still held the event loop open.
+   */
+  private readonly clients: SubprocessPluginClient[] = [];
 
   constructor(definitions: readonly PluginDefinition[] = []) {
     for (const definition of definitions) this.register(definition);
@@ -77,6 +86,7 @@ export class PluginRegistry {
         ...(manifest.process.maxResultBytes !== undefined ? { maxResultBytes: manifest.process.maxResultBytes } : {}),
       });
       void client.start();
+      this.clients.push(client);
       implementation = Object.freeze({
         list: () => definition.implementation.list(),
         has: (id: string) => definition.implementation.has(id),
@@ -108,6 +118,17 @@ export class PluginRegistry {
         sideEffect: tool.sideEffect,
         ...(tool.parameters ? { parameters: tool.parameters } : {}),
       }))));
+  }
+
+  /** Stops every subprocess this registry started. Idempotent. */
+  close(): void {
+    for (const client of this.clients.splice(0)) {
+      try {
+        client.close();
+      } catch {
+        // A plugin that already exited needs no shutdown.
+      }
+    }
   }
 }
 

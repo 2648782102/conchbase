@@ -18,6 +18,8 @@ import { defaultWorkerGrants } from './runtime/capability-grants.js';
 import { createConvergenceRuntime } from './runtime/organization-convergence-runtime.js';
 import { AgentChatService } from './runtime/agent-chat.js';
 import { createOpenAiCompatibleMemoryReviewer } from './runtime/memory-review.js';
+import { AgentChatMemory, createOpenAiCompatibleMemoryProposer } from './runtime/agent-chat-memory.js';
+import { createScheduleRunner } from './runtime/schedule-runner.js';
 import { createAutomaticBackup } from './runtime/automatic-backup.js';
 import { assertSupportedNode } from './runtime/node-version.js';
 
@@ -62,6 +64,7 @@ Configuration:
   CONCHBASE_BACKUP_INTERVAL_MS   Automatic snapshot interval (default 86400000; 0 disables)
   CONCHBASE_BACKUP_KEEP          Snapshots to retain (default 7)
   CONCHBASE_BACKUP_DIR           Snapshot directory (default backups/ beside the database)
+  CONCHBASE_PLUGINS_DIR          Directory of installed plugins (one plugin.json per subdirectory)
   CONCHBASE_MAX_ITERATIONS       Agent loop iteration ceiling (default 6, max 64)
   CONCHBASE_MAX_TOOL_CALLS_PER_TURN   Tool calls per turn (default 4, max 16)
   CONCHBASE_LOOP_DEADLINE_MS     Agent loop wall-clock budget (default 120000)
@@ -198,6 +201,7 @@ async function main(argv: readonly string[]): Promise<void> {
       root: config.workspaceRoot,
       ...(config.mcpConfigPath ? { mcpConfigPath: config.mcpConfigPath } : {}),
   ...(config.skillsDirectory ? { skillsDirectory: config.skillsDirectory } : {}),
+  ...(config.pluginsDirectory ? { pluginsDirectory: config.pluginsDirectory } : {}),
   ...(config.allowToolWrites ? { allowWrites: true } : {}),
   ...(config.enableGitTools ? { enableGit: true } : {}),
     });
@@ -221,7 +225,33 @@ async function main(argv: readonly string[]): Promise<void> {
     // AgentChatService caches conversations in memory; the API and the
     // convergence sweeper must share one instance or a Runtime notice is
     // written into a cache the user never reads.
-    const agentChat = new AgentChatService(service, bossMode);
+    /*
+     * Direct conversations get the same memory the Boss had.
+     *
+     * The reviewer is the same independent check; the proposer is a separate
+     * bounded call so the reply itself stays a reply. Both are optional at the
+     * service level, so a Runtime without a gateway still starts.
+     */
+    const agentChatMemory = new AgentChatMemory({
+      ...(service.store.memory ? { memory: service.store.memory } : {}),
+      reviewer: createOpenAiCompatibleMemoryReviewer({
+        baseUrl: config.magpieBaseUrl,
+        model: config.bossModel ?? config.defaultModel,
+        ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
+      }),
+    });
+    const agentChat = new AgentChatService(
+      service,
+      bossMode,
+      () => new Date().toISOString(),
+      undefined,
+      agentChatMemory,
+      createOpenAiCompatibleMemoryProposer({
+        baseUrl: config.magpieBaseUrl,
+        model: config.bossModel ?? config.defaultModel,
+        ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
+      }),
+    );
     const convergence = createConvergenceRuntime({
       store: service.store.organization,
       taskService: service,
@@ -264,12 +294,25 @@ async function main(argv: readonly string[]): Promise<void> {
       })
       : null;
     automaticBackup?.start();
+    /*
+     * Recurring tasks fire on their own clock.
+     *
+     * Started after the listener is bound, so a schedule cannot create work
+     * against a Runtime that failed to start. The runner only creates an Agent
+     * task; every policy check the manual path applies still applies.
+     */
+    const scheduleRunner = createScheduleRunner({
+      store: service.store.schedules,
+      taskService: service,
+    });
+    scheduleRunner.start();
     for (const signal of ['SIGINT', 'SIGTERM'] as const) {
       process.once(signal, () => {
         void (async () => {
           // Await an in-flight snapshot before exiting; a shutdown that lands
           // mid-backup would otherwise leave a half-written file behind.
           await automaticBackup?.stop();
+          scheduleRunner.stop();
           convergence.stop();
           // SSE streams can hold the listener open, and a tool call can be
           // mid-flight. Both are bounded so a stuck client cannot turn a stop
@@ -279,8 +322,8 @@ async function main(argv: readonly string[]): Promise<void> {
             new Promise((resolve) => setTimeout(resolve, 2_000)),
           ]);
           await Promise.race([
-            service.stop(),
-            new Promise((resolve) => setTimeout(resolve, 2_000)),
+            service.stop({ timeoutMs: 5_000 }),
+            new Promise((resolve) => setTimeout(resolve, 7_000)),
           ]);
           process.exit(0);
         })();
@@ -311,6 +354,7 @@ async function main(argv: readonly string[]): Promise<void> {
     root: config.workspaceRoot,
     ...(config.mcpConfigPath ? { mcpConfigPath: config.mcpConfigPath } : {}),
   ...(config.skillsDirectory ? { skillsDirectory: config.skillsDirectory } : {}),
+  ...(config.pluginsDirectory ? { pluginsDirectory: config.pluginsDirectory } : {}),
   ...(config.allowToolWrites ? { allowWrites: true } : {}),
   ...(config.enableGitTools ? { enableGit: true } : {}),
   });

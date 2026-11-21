@@ -1852,6 +1852,34 @@ paths:
           $ref: '#/components/responses/OrganizationConflictError'
         '503':
           $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/agent-chat/conversations/{conversationId}/cancel:
+    post:
+      operationId: cancelAgentChatTurn
+      summary: Stop the reply a conversation is currently waiting on, whether it is running or still queued.
+      description: >-
+        Cancels the live task behind the newest assistant message, or drops a turn
+        that has not started yet. No request body: the target is the conversation's
+        one in-flight turn. Returns 409 when nothing is running.
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^chat_[0-9a-f]{24}$'
+      responses:
+        '200':
+          description: The turn was cancelled; the returned message reports the terminal state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentChatCancelResult'
+        '404':
+          $ref: '#/components/responses/OrganizationNotFoundError'
+        '409':
+          $ref: '#/components/responses/OrganizationConflictError'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
   /v1/agent-chat/conversations/{conversationId}/events:
     get:
       operationId: streamAgentChatConversation
@@ -2291,6 +2319,139 @@ paths:
           $ref: '#/components/responses/ExecutionRunValidationError'
         '404':
           $ref: '#/components/responses/ExecutionRunNotFoundError'
+  /v1/schedules:
+    get:
+      operationId: listSchedules
+      summary: List recurring Agent tasks with their next firing time.
+      responses:
+        '200':
+          description: All schedules, ordered by next firing.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [version, schedules]
+                properties:
+                  version:
+                    type: integer
+                    const: 1
+                  schedules:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Schedule'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+    post:
+      operationId: createSchedule
+      summary: Create a recurring Agent task.
+      description: >-
+        A schedule is data: it names an Agent, a prompt, and an interval. It
+        cannot grant a tool or change policy. The Agent must exist when the
+        schedule is created, so a typo fails immediately rather than days later.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateScheduleRequest'
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [version, schedule]
+                properties:
+                  version:
+                    type: integer
+                    const: 1
+                  schedule:
+                    $ref: '#/components/schemas/Schedule'
+        '400':
+          $ref: '#/components/responses/OrganizationValidationError'
+        '503':
+          $ref: '#/components/responses/OrganizationUnavailableError'
+  /v1/schedules/{scheduleId}:
+    get:
+      operationId: getSchedule
+      summary: Read one schedule.
+      parameters:
+        - name: scheduleId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The schedule.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [version, schedule]
+                properties:
+                  version:
+                    type: integer
+                    const: 1
+                  schedule:
+                    $ref: '#/components/schemas/Schedule'
+        '404':
+          $ref: '#/components/responses/OrganizationNotFoundError'
+    patch:
+      operationId: updateSchedule
+      summary: Enable or disable a schedule.
+      parameters:
+        - name: scheduleId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [enabled]
+              properties:
+                enabled:
+                  type: boolean
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [version, schedule]
+                properties:
+                  version:
+                    type: integer
+                    const: 1
+                  schedule:
+                    $ref: '#/components/schemas/Schedule'
+        '404':
+          $ref: '#/components/responses/OrganizationNotFoundError'
+    delete:
+      operationId: deleteSchedule
+      summary: Remove a schedule. Already-created tasks are unaffected.
+      parameters:
+        - name: scheduleId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Removed.
+        '404':
+          $ref: '#/components/responses/OrganizationNotFoundError'
   /v1/memory:
     get:
       operationId: listMemory
@@ -5968,6 +6129,68 @@ components:
           type: string
         assistantMessage:
           $ref: '#/components/schemas/AgentChatMessage'
+    AgentChatCancelResult:
+      type: object
+      additionalProperties: false
+      required: [version, conversationId, assistantMessage, cancelled]
+      properties:
+        version:
+          $ref: '#/components/schemas/AgentChatVersion'
+        conversationId:
+          type: string
+        assistantMessage:
+          $ref: '#/components/schemas/AgentChatMessage'
+        cancelled:
+          type: boolean
+          const: true
+    Schedule:
+      type: object
+      additionalProperties: false
+      required: [id, name, agentId, prompt, intervalMs, enabled, lastRunAt, lastTaskId, nextRunAt, createdAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        agentId:
+          type: string
+        prompt:
+          type: string
+        intervalMs:
+          type: integer
+          minimum: 60000
+          maximum: 2592000000
+        enabled:
+          type: boolean
+        lastRunAt:
+          type: [string, 'null']
+        lastTaskId:
+          type: [string, 'null']
+        nextRunAt:
+          type: string
+        createdAt:
+          type: string
+    CreateScheduleRequest:
+      type: object
+      additionalProperties: false
+      required: [name, agentId, prompt, intervalMs]
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        agentId:
+          type: string
+        prompt:
+          type: string
+          maxLength: 6000
+        intervalMs:
+          type: integer
+          minimum: 60000
+          maximum: 2592000000
+        enabled:
+          type: boolean
+        startAt:
+          type: string
     AgentChatStreamFrame:
       type: object
       additionalProperties: false

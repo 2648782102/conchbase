@@ -121,6 +121,13 @@ export interface RuntimeConfig {
   bossModel?: string;
   mcpConfigPath?: string;
   skillsDirectory?: string;
+  /**
+   * Directory of installed plugins, one subdirectory per plugin.
+   *
+   * Data only: a manifest declares tools and their side-effect class. An Agent
+   * still needs the grant, and a consequential tool still needs approval.
+   */
+  pluginsDirectory?: string;
   allowToolWrites?: boolean;
   /**
    * Read-only git tools. Opt-in because they execute a subprocess;
@@ -304,6 +311,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     ...(env.CONCHBASE_BOSS_MODEL ? { bossModel: env.CONCHBASE_BOSS_MODEL } : {}),
     ...(env.CONCHBASE_MCP_CONFIG ? { mcpConfigPath: env.CONCHBASE_MCP_CONFIG } : {}),
     ...(env.CONCHBASE_SKILLS_DIR ? { skillsDirectory: env.CONCHBASE_SKILLS_DIR } : {}),
+    ...(env.CONCHBASE_PLUGINS_DIR ? { pluginsDirectory: env.CONCHBASE_PLUGINS_DIR } : {}),
     ...(allowToolWrites ? { allowToolWrites: true } : {}),
     ...(enableGitTools ? { enableGitTools: true } : {}),
     workspaceRoot,

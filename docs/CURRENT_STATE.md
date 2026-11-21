@@ -21,12 +21,24 @@ Updated: 2026-11-21
   retry: an interrupted reply shows as failed, and once the retried attempt
   succeeds the same message is re-projected to the real output. A message with
   no task (a queued turn) is the only one a restart marks failed on its own.
-- The Runtime publishes one effective approval policy, `permissionLevel`, next
-  to the legacy `executionMode` it was configured with and
-  `executionModeIsLegacy: true`. The two could disagree — `strict` with the
-  default mode published `restricted`, which reads like the opposite of what
-  was enforced — so a client should read the level, never infer policy from the
-  mode.
+- One effective policy is published: `permissionLevel`, beside the legacy
+  `executionMode` marked `executionModeIsLegacy`. They could disagree, so read
+  the level.
+- Prompts are fitted to the model's window (`context-budget.ts`): catalog
+  window, 32k fallback, reserved reply room, and a visible
+  `agent_loop.context_trimmed`. Instructions are never dropped.
+- Transient provider failures retry with capped backoff (`provider-retry.ts`);
+  auth, malformed requests, and context overflow still fail immediately.
+- Agent Chat cancels via `POST …/cancel`, for a running turn and a queued one.
+- Direct Agent conversations use memory: injected index plus reviewed
+  proposals, agent scope only, fail-closed reviewer.
+- `CONCHBASE_PLUGINS_DIR` installs plugins; ids are namespaced by plugin, a
+  broken plugin is skipped, and `close()` stops every subprocess.
+- Recurring tasks via `/v1/schedules`; overlapping and missed runs are skipped,
+  and a schedule with a missing Agent disables itself.
+- Image attachments (validated data URLs only) reach the provider as content
+  parts.
+- `TaskService.stop()` is bounded (5 s) and records `shutdownTimedOut`.
 - Runtime notices are authored `runtime`, not `assistant`, and are excluded from
   model context: they are the Runtime speaking and must not be replayed as one
   of the Agent's own turns. Only user turns and non-empty assistant turns reach

@@ -116,6 +116,18 @@ export function registerAgentChatRoutes(
     },
   );
 
+  app.post<{ Params: { conversationId: string } }>(
+    '/v1/agent-chat/conversations/:conversationId/cancel',
+    async (request, reply) => {
+      if (!service) return unavailable(reply);
+      try {
+        return reply.send(service.cancelTurn(request.params.conversationId));
+      } catch (cause) {
+        return errorResponse(reply, cause);
+      }
+    },
+  );
+
   app.get<{ Params: { conversationId: string }; Querystring: { after?: string } }>(
     '/v1/agent-chat/conversations/:conversationId/events',
     async (request, reply) => {

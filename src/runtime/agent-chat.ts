@@ -8,6 +8,11 @@ import { TaskConflictError, TaskNotFoundError } from './task-store.js';
 import type { TaskSnapshot } from './task-store.js';
 import { chineseAgentDisplayName } from './agent-name.js';
 import type { BossModeService } from './boss-mode-service.js';
+import {
+  AgentChatMemory,
+  type MemoryProposer,
+} from './agent-chat-memory.js';
+import { AttachmentError, parseAttachments, type ImageAttachment } from './attachments.js';
 import { projectMessage } from './agent-chat-projection.js';
 import { isTerminalTaskState } from './task-lifecycle.js';
 import { containsSecretLike } from './secret-filter.js';
@@ -52,6 +57,7 @@ export const AGENT_CHAT_PUBLIC_PATHS = Object.freeze([
   '/v1/agent-chat/conversations/{conversationId}',
   '/v1/agent-chat/conversations/{conversationId}/messages',
   '/v1/agent-chat/conversations/{conversationId}/approval',
+  '/v1/agent-chat/conversations/{conversationId}/cancel',
   '/v1/agent-chat/conversations/{conversationId}/events',
 ] as const);
 
@@ -128,6 +134,14 @@ export interface AgentChatApprovalResult {
   readonly version: typeof AGENT_CHAT_CONTRACT_VERSION;
   readonly conversationId: string;
   readonly assistantMessage: AgentChatMessage;
+}
+
+export interface AgentChatCancelResult {
+  readonly version: typeof AGENT_CHAT_CONTRACT_VERSION;
+  readonly conversationId: string;
+  readonly assistantMessage: AgentChatMessage;
+  /** True when a turn was actually stopped; false when nothing was running. */
+  readonly cancelled: boolean;
 }
 
 export interface AgentChatStreamFrame {
@@ -214,7 +228,14 @@ function message(
 
 const MAX_ACTIVITY = 8;
 
-/** The most recent turns the Runtime replays to a model. */
+/**
+ * The most recent turns the Runtime replays to a model.
+ *
+ * A fixed turn count, not a token budget: the transcript is flattened into one
+ * prompt string, so the only place that can measure and trim it is the task's
+ * agent loop — which does, per iteration, against the model's own window. This
+ * constant bounds how much is *offered*; the budget decides what is *sent*.
+ */
 const CONVERSATION_WINDOW = 8;
 
 /**
@@ -320,6 +341,15 @@ export class AgentChatService {
     private readonly bossMode?: BossModeService,
     private readonly now: () => string = () => new Date().toISOString(),
     store?: AgentChatStore,
+    /**
+     * Memory for direct conversations.
+     *
+     * Optional so existing callers keep working, but when absent a configured
+     * Agent simply remembers nothing — which is the state this project was in
+     * while memory appeared to exist for everyone.
+     */
+    private readonly memory?: AgentChatMemory,
+    private readonly memoryProposer?: MemoryProposer,
   ) {
     this.store = store ?? taskService.store?.agentChat ?? new InMemoryAgentChatStore();
     this.store.initialize();
@@ -358,6 +388,18 @@ export class AgentChatService {
       if (settledOnly && projected.state === message.state && projected.error === message.error) continue;
       this.replaceMessage(record, message.id, projected);
       changed = true;
+      /*
+       * A reply that has just succeeded is the only moment worth mining.
+       *
+       * `done` is reached once per turn: re-projecting an already-settled
+       * message returns early above, so this cannot propose twice. A failed or
+       * cancelled turn is skipped — there is no exchange to remember, and
+       * proposing from a partial answer is how a correction gets stored as a
+       * fact.
+       */
+      if (projected.state === 'done' && message.state !== 'done' && message.state !== 'replied') {
+        this.proposeMemory(record, projected);
+      }
     }
     if (changed) this.persist(record);
     /*
@@ -398,6 +440,40 @@ export class AgentChatService {
       if (queued || this.hasRetryableTask(record)) this.watchQueue(record);
       else this.unwatchQueue(record.id);
     }
+  }
+
+  /**
+   * Asks for memory proposals after a successful turn, without blocking it.
+   *
+   * Deliberately fire-and-forget: the reply has already been written, and
+   * making the reader wait for a second model call would double the latency of
+   * every message. A proposal failure is silent because the conversation
+   * succeeded — memory is an enhancement, not part of the answer.
+   */
+  private proposeMemory(record: ConversationRecord, assistantMessage: AgentChatMessage): void {
+    const proposer = this.memoryProposer;
+    if (!proposer || record.isBoss) return;
+    const userMessage = record.messages.find((message) => message.id === assistantMessage.replyToId);
+    if (!userMessage || userMessage.author !== 'user') return;
+    if (assistantMessage.body.trim().length === 0) return;
+    const agent = this.taskService.listAgents().find((entry) => entry.id === record.agentId);
+    void proposer({
+      agentId: record.agentId,
+      agentName: agent?.current.name ?? record.agentId,
+      userText: userMessage.body,
+      assistantReply: assistantMessage.body,
+      existingTitles: [],
+    }).then((proposals) => {
+      if (proposals.length === 0) return;
+      return this.memory?.recordProposals(proposals, {
+        agentId: record.agentId,
+        userText: userMessage.body,
+        assistantReply: assistantMessage.body,
+        sourceIntentId: `chat:${record.id}:${assistantMessage.id}`,
+      });
+    }).catch(() => {
+      // Never surfaced: the reply already landed.
+    });
   }
 
   /**
@@ -783,11 +859,20 @@ export class AgentChatService {
     const record = this.load(conversationId);
     if (!record) throw new AgentChatServiceError('Agent Chat conversation not found.', 404);
     if (!isRecord(input)) throw new AgentChatServiceError('Message input must be an object.');
-    const allowed = new Set(['text', 'idempotencyKey']);
+    const allowed = new Set(['text', 'idempotencyKey', 'attachments']);
     const unknown = Object.keys(input).filter((key) => !allowed.has(key));
     if (unknown.length > 0) throw new AgentChatServiceError(`Unknown fields: ${unknown.sort().join(', ')}.`);
     const text = boundedText(input.text, 'text').slice(0, 6000);
     const idempotencyKey = boundedText(input.idempotencyKey, 'idempotencyKey').slice(0, 200);
+    let attachments: readonly ImageAttachment[];
+    try {
+      attachments = parseAttachments(input.attachments);
+    } catch (cause) {
+      throw new AgentChatServiceError(
+        cause instanceof AttachmentError ? cause.message : 'Attachments are invalid.',
+        400,
+      );
+    }
     const replayKey = record.idempotency.get(idempotencyKey);
     if (replayKey) {
       const replayedUser = record.messages.find((message) => message.id === replayKey);
@@ -816,11 +901,39 @@ export class AgentChatService {
      * keeps that promise and gives the later prompt the earlier answer, instead
      * of flattening two questions into one user turn.
      */
-    if (this.hasLiveTurn(record)) return this.enqueueTurn(record, text, idempotencyKey);
+    if (this.hasLiveTurn(record)) {
+      /*
+       * A queued turn cannot carry images yet.
+       *
+       * The queue stores text only, and accepting the attachment here would drop
+       * it silently — the user would see their screenshot uploaded and the model
+       * would answer about nothing. Refusing is the honest behaviour until the
+       * queue carries bytes too.
+       */
+      if (attachments.length > 0) {
+        throw new AgentChatServiceError(
+          '这段对话还在回复中，暂时不能附带图片；请等上一条回复结束后再发送。',
+          409,
+        );
+      }
+      return this.enqueueTurn(record, text, idempotencyKey);
+    }
 
     const context = conversationalHistory(record.messages).map((message) =>
       `${message.author === 'user' ? 'User' : 'Assistant'}: ${message.body}`).join('\n');
-    const prompt = context.length > 0 ? `${context}\n\nUser: ${text}` : text;
+    /*
+     * Memory is prepended, never appended.
+     *
+     * It is recollection, not a turn: putting it after the transcript would read
+     * as something the assistant just said, and the model would answer it. The
+     * block is bounded by `renderMemoryIndex`, and it states its own limits so a
+     * model does not treat a one-line index as full knowledge.
+     */
+    const memory = this.memory?.index(record.agentId) ?? '';
+    const withMemory = memory.length > 0
+      ? `以下是关于这位用户的已知信息（仅作参考，如与本轮要求冲突以本轮为准）：\n${memory}\n\n`
+      : '';
+    const prompt = `${withMemory}${context.length > 0 ? `${context}\n\nUser: ${text}` : text}`;
     let task: TaskSnapshot;
     try {
       task = await this.taskService.createAgentTaskWithEffort({
@@ -829,6 +942,12 @@ export class AgentChatService {
         expectedAgentRevisionId: record.agentRevisionId,
         modelOverride: { providerId: record.providerId, modelId: record.modelId },
       }, record.reasoningEffort);
+      if (attachments.length > 0) {
+        this.taskService.attachImages(task.id, attachments.map((image) => ({
+          mediaType: image.mediaType,
+          dataUrl: image.dataUrl,
+        })));
+      }
     } catch (cause) {
       const errorText = cause instanceof Error ? cause.message.slice(0, 240) : 'Agent task creation failed.';
       if (cause instanceof Error && cause.name.includes('NotFound')) {
@@ -956,6 +1075,100 @@ export class AgentChatService {
       version: AGENT_CHAT_CONTRACT_VERSION,
       conversationId,
       assistantMessage: this.getMessage(record, assistant.id)!,
+    });
+  }
+
+  /**
+   * Stops the turn a conversation is currently waiting on.
+   *
+   * Two different things count as "running" from a reader's point of view: a
+   * task the model is working through, and a turn still queued behind an earlier
+   * one. A queued turn has no task to abort, so it is dropped from the queue and
+   * settled directly — otherwise cancelling the newest message would do nothing
+   * and the reply would arrive anyway.
+   */
+  cancelTurn(conversationId: string): AgentChatCancelResult {
+    const record = this.load(conversationId);
+    if (!record) throw new AgentChatServiceError('Agent Chat conversation not found.', 404);
+
+    const queued = this.queuedTurns.get(conversationId) ?? [];
+    const queuedAssistantId = queued.at(-1)?.assistantMessageId ?? null;
+    const live = [...record.messages].reverse().find((message) => message.author === 'assistant'
+      && message.taskId !== null && !terminalMessageState(message.state));
+    const targetId = queuedAssistantId ?? live?.id ?? null;
+    if (targetId === null) {
+      throw new AgentChatServiceError('This conversation has no running reply to cancel.', 409);
+    }
+
+    if (queuedAssistantId !== null) {
+      const remaining = queued.filter((turn) => turn.assistantMessageId !== queuedAssistantId);
+      if (remaining.length === 0) {
+        this.queuedTurns.delete(conversationId);
+        this.unwatchQueue(conversationId);
+      } else {
+        this.queuedTurns.set(conversationId, remaining);
+      }
+      const message = this.getMessage(record, queuedAssistantId);
+      if (message) {
+        this.replaceMessage(record, queuedAssistantId, Object.freeze({
+          ...message,
+          state: 'cancelled',
+          phase: 'terminal',
+          progress: null,
+          error: null,
+          body: '这条回复在开始前已被取消。',
+          updatedAt: this.now(),
+        }));
+        this.persist(record);
+      }
+      return Object.freeze({
+        version: AGENT_CHAT_CONTRACT_VERSION,
+        conversationId,
+        assistantMessage: this.getMessage(record, queuedAssistantId)!,
+        cancelled: true,
+      });
+    }
+
+    const taskId = live!.taskId!;
+    try {
+      this.taskService.cancelTask(taskId);
+    } catch (cause) {
+      if (cause instanceof TaskNotFoundError) {
+        throw new AgentChatServiceError('Agent task not found.', 404);
+      }
+      if (cause instanceof TaskConflictError) {
+        throw new AgentChatServiceError(cause.message, 409);
+      }
+      throw cause instanceof Error
+        ? new AgentChatServiceError(cause.message.slice(0, 240), 400)
+        : new AgentChatServiceError('Cancel failed.');
+    }
+    /*
+     * Settle the message here rather than waiting for the projection.
+     *
+     * `cancelTask` moves the task to `cancelling`, which is not terminal, so a
+     * projection still reports "thinking". The user pressed stop: the reply has
+     * to look stopped immediately, and the later task notification will confirm
+     * it when the abort lands.
+     */
+    const current = this.getMessage(record, live!.id);
+    if (current) {
+      this.replaceMessage(record, live!.id, Object.freeze({
+        ...current,
+        state: 'cancelled',
+        phase: 'terminal',
+        progress: null,
+        error: null,
+        body: current.body.trim().length > 0 ? current.body : '这条回复已取消。',
+        updatedAt: this.now(),
+      }));
+      this.persist(record);
+    }
+    return Object.freeze({
+      version: AGENT_CHAT_CONTRACT_VERSION,
+      conversationId,
+      assistantMessage: this.getMessage(record, live!.id)!,
+      cancelled: true,
     });
   }
 

@@ -316,6 +316,20 @@ coding model does not redo finished work.
 
 ## Current next task
 
+## Hardening added after Phases 0–6
+
+The following landed as one pass because each was a structural gap rather than a
+missing feature. They are recorded here so a coding model does not treat them as
+future work:
+
+- context budget and trimming (`docs/ARCHITECTURE.md#prompt-budget`);
+- provider retry with capped backoff (`#provider-retry`);
+- Agent Chat cancel (`POST …/cancel`);
+- memory for direct Agent conversations, not only the Boss;
+- plugin installation from `CONCHBASE_PLUGINS_DIR`;
+- recurring tasks (`/v1/schedules`) and image attachments;
+- a bounded `TaskService.stop()`.
+
 Phases 0–6 are complete. The approval slice is done on both sides: the Runtime
 publishes the pending change and its bounded preview on the `waiting_approval`
 message, and Pagurus renders it as one decision card.

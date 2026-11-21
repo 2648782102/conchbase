@@ -192,7 +192,7 @@ test('report text survives reopen and projects into Boss facts', () => {
 
 test('organization persistence keeps the published contract frozen', () => {
   const spec = readFileSync(path.join(repositoryRoot, 'docs/openapi.yaml'), 'utf8');
-  assert.equal([...spec.matchAll(/^  (\/v1\/[^:]+):$/gm)].length, 97);
+  assert.equal([...spec.matchAll(/^  (\/v1\/[^:]+):$/gm)].length, 100);
   assert.match(spec, /^  version: 1\.1\.0$/m);
   assert.match(spec, /\/v1\/organization\/session/);
 });
