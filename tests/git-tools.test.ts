@@ -25,20 +25,31 @@ function recorder(reply: (args: readonly string[]) => { code: number; stdout: st
   return { provider, calls };
 }
 
-test('three read-only tools plus one approval-gated commit are exposed', () => {
+test('read tools, an approval-gated commit, and an external push are exposed', () => {
   const { provider } = recorder(() => ({ code: 0, stdout: '', stderr: '' }));
   const ids = provider.list().map((tool) => tool.id).sort();
-  assert.deepEqual(ids, ['git_commit', 'git_diff', 'git_log', 'git_status']);
+  assert.deepEqual(ids, ['git_commit', 'git_diff', 'git_log', 'git_push', 'git_status']);
   const read = provider.list().filter((tool) => tool.sideEffect === 'read').map((tool) => tool.id).sort();
   assert.deepEqual(read, ['git_diff', 'git_log', 'git_status'], 'the read tools stay read-only');
   const write = provider.list().filter((tool) => tool.sideEffect === 'write').map((tool) => tool.id);
   assert.deepEqual(write, ['git_commit'], 'only commit is a write, and it goes through approval');
+  /*
+   * `external`, not `write`: a push at the `standard` level would otherwise need
+   * no approval, which is the wrong default for something that leaves the
+   * machine and cannot be undone remotely.
+   */
+  const external = provider.list().filter((tool) => tool.sideEffect === 'external').map((tool) => tool.id);
+  assert.deepEqual(external, ['git_push']);
 });
 
-test('no write subcommand is reachable through the provider', async () => {
+test('no arbitrary git subcommand is reachable through the provider', async () => {
   const { provider, calls } = recorder(() => ({ code: 0, stdout: '', stderr: '' }));
-  // `git_commit` is the one deliberate write; everything destructive stays absent.
-  for (const id of ['git_push', 'git_checkout', 'git_reset', 'git_clean', 'git', 'git_merge', 'git_rebase']) {
+  /*
+   * `git_commit` and `git_push` are the deliberate effects. Everything that can
+   * discard work or rewrite history stays absent, and there is still no way to
+   * name a subcommand.
+   */
+  for (const id of ['git_checkout', 'git_reset', 'git_clean', 'git', 'git_merge', 'git_rebase', 'git_revert', 'git_force_push']) {
     assert.equal(provider.has(id), false, `${id} must not exist`);
     await assert.rejects(async () => provider.invoke(id, {}), ToolRejectedError);
   }

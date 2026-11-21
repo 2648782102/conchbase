@@ -5955,6 +5955,14 @@ components:
             GET /v1/model-catalog `reasoningLevels` is accepted; a token the
             model does not publish is refused with 400 rather than silently
             ignored. Omit it to use the middle of what the model publishes.
+        permissionLevel:
+          type: string
+          enum: [strict, standard, trusted]
+          description: >-
+            The approval level this conversation should run under. It may be stricter than the
+            Runtime's configured level and is silently clamped if it is looser — a conversation can
+            never turn approval off. The level is pinned when the conversation is created and
+            cannot change later, so it cannot be loosened while an approval is pending.
         modelOverride:
           type: object
           additionalProperties: false
@@ -6065,7 +6073,7 @@ components:
     AgentChatConversationView:
       type: object
       additionalProperties: false
-      required: [version, id, agentId, agentRevisionId, providerId, modelId, configurationRevisionId, reasoningEffort, messages]
+      required: [version, id, agentId, agentRevisionId, providerId, modelId, configurationRevisionId, reasoningEffort, permissionLevel, messages]
       description: |
         One conversation and its full message history.
 
@@ -6096,6 +6104,13 @@ components:
           description: |
             The level the next turn runs at, or null when this conversation's
             model publishes no levels.
+        permissionLevel:
+          type: string
+          enum: [strict, standard, trusted]
+          description: >-
+            The level actually in force, which is the operator's level unless this conversation
+            chose a stricter one. Published so a client that asked for something else can show what
+            applied instead of what it requested.
         messages:
           type: array
           items:

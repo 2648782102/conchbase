@@ -7,6 +7,7 @@ import { boundedOutput } from './agent-chat-output.js';
 import { TaskConflictError, TaskNotFoundError } from './task-store.js';
 import type { TaskSnapshot } from './task-store.js';
 import { chineseAgentDisplayName } from './agent-name.js';
+import { isPermissionLevel, narrowPermissionLevel, type PermissionLevel } from '../kernel/policy.js';
 import type { BossModeService } from './boss-mode-service.js';
 import {
   AgentChatMemory,
@@ -100,6 +101,13 @@ export interface AgentChatConversationView {
    * model publishes no levels at all.
    */
   readonly reasoningEffort: AgentChatReasoningEffort | null;
+  /**
+   * The approval level actually in force for this conversation.
+   *
+   * Published rather than inferred: a client that sent `trusted` against a
+   * `standard` Runtime must be able to show what it got, not what it asked for.
+   */
+  readonly permissionLevel: PermissionLevel;
   readonly messages: readonly AgentChatMessage[];
 }
 
@@ -133,8 +141,51 @@ function withApprovalExplanation(message: AgentChatMessage): AgentChatMessage {
   if (message.state !== 'waiting_approval' || message.body.trim().length > 0) return message;
   return Object.freeze({
     ...message,
-    body: '【需要你的批准】这一步会修改工作区。请查看上面的改动预览，然后选择批准或拒绝。',
+    body: approvalHintFor(message),
   });
+}
+
+/**
+ * Says what the pending action actually is.
+ *
+ * The old text said "this will modify the workspace" for every approval,
+ * including an outbound HTTP request and a git push. A reader deciding whether
+ * to approve has to know which of those they are allowing, so the wording comes
+ * from the tool named in the message and falls back to the neutral form.
+ */
+function approvalHintFor(message: AgentChatMessage): string {
+  /*
+   * The tool name lives in different fields depending on the frame: the approval
+   * entry carries it in `label` ("等待审批：http_fetch"), the tool entry in
+   * `detail`. Reading only one of them is why the first version of this fell
+   * through to the generic wording for every external tool.
+   */
+  const detail = message.activity
+    .filter((entry) => entry.kind === 'approval' || entry.kind === 'tool')
+    .map((entry) => `${entry.label} ${entry.detail ?? ''}`)
+    .join(' ');
+  if (/git_push/.test(detail)) {
+    return '【需要你的批准】这一步会把本机提交推送到远程仓库，远程无法撤销。请确认分支与提交，然后选择批准或拒绝。';
+  }
+  if (/http_fetch/.test(detail)) {
+    return '【需要你的批准】这一步会向外部地址发起网络请求。请确认目标地址，然后选择批准或拒绝。';
+  }
+  if (/workspace_delete/.test(detail)) {
+    return '【需要你的批准】这一步会删除工作区中的内容，且无法撤销。请确认目标路径，然后选择批准或拒绝。';
+  }
+  if (/workspace_move|workspace_copy/.test(detail)) {
+    return '【需要你的批准】这一步会移动或复制工作区中的内容。请确认来源与目标，然后选择批准或拒绝。';
+  }
+  /*
+   * At `strict` even reads need approval, so the fallback cannot assume a
+   * write. Those are the only cases that reach here without a matched tool, and
+   * telling the reader "this will modify the workspace" about a file read is
+   * exactly the kind of misleading prompt this function exists to remove.
+   */
+  if (/workspace_read|workspace_list|text_search|git_status|git_diff|git_log/.test(detail)) {
+    return '【需要你的批准】当前权限等级下，读取操作也需要确认。请查看目标，然后选择批准或拒绝。';
+  }
+  return '【需要你的批准】这一步会修改工作区。请查看上面的改动预览，然后选择批准或拒绝。';
 }
 
 export interface AgentChatMessageResult {
@@ -680,6 +731,11 @@ export class AgentChatService {
         expectedAgentRevisionId: record.agentRevisionId,
         modelOverride: { providerId: record.providerId, modelId: record.modelId },
       }, turn.effort);
+      // Sending a message while the conversation is busy queues a turn; that
+      // turn still runs under the level the conversation was created with.
+      if (record.permissionLevel !== null) {
+        this.taskService.setTaskPermissionLevel(task.id, record.permissionLevel);
+      }
       this.replaceMessage(record, assistantMessage.id, {
         ...assistantMessage,
         state: 'thinking',
@@ -819,7 +875,7 @@ export class AgentChatService {
 
   async createConversation(input: unknown): Promise<AgentChatConversationView> {
     if (!isRecord(input)) throw new AgentChatServiceError('Conversation input must be an object.');
-    const allowed = new Set(['agentId', 'modelOverride', 'reasoningEffort']);
+    const allowed = new Set(['agentId', 'modelOverride', 'reasoningEffort', 'permissionLevel']);
     const unknown = Object.keys(input).filter((key) => !allowed.has(key));
     if (unknown.length > 0) throw new AgentChatServiceError(`Unknown fields: ${unknown.sort().join(', ')}.`);
     const agentId = input.agentId === undefined
@@ -873,6 +929,22 @@ export class AgentChatService {
       providerId: modelOverride?.providerId ?? bossModel?.providerId ?? agent.providerId,
       modelId: modelOverride?.modelId ?? bossModel?.modelId ?? agent.modelId,
     }, requestedEffort, true);
+    /*
+     * A conversation may ask to be more cautious than the Runtime, never less.
+     *
+     * The narrowing happens once, here, and the result is pinned on the
+     * conversation. Re-reading it per message would let a conversation loosen
+     * while an approval was pending — which is the one moment the choice
+     * matters.
+     */
+    const requestedLevel = input.permissionLevel;
+    if (requestedLevel !== undefined && !isPermissionLevel(requestedLevel)) {
+      throw new AgentChatServiceError('permissionLevel must be strict, standard, or trusted.', 400);
+    }
+    const operatorLevel = this.taskService.effectivePermissionLevel;
+    const permissionLevel = requestedLevel === undefined
+      ? null
+      : narrowPermissionLevel(operatorLevel, requestedLevel);
     const id = referenceDigest('chat', `${agent.id}:${agent.currentRevisionId}:${randomUUID()}`);
     const record: ConversationRecord = {
       id,
@@ -889,6 +961,7 @@ export class AgentChatService {
        * inventing a level the model would ignore.
        */
       reasoningEffort: reasoningEffort ?? '',
+      permissionLevel,
       createdAt: this.now(),
       lastReadAt: null,
       messages: [],
@@ -1163,6 +1236,16 @@ export class AgentChatService {
           })));
         }
       }
+      /*
+       * Carry the conversation's pinned level onto the task.
+       *
+       * The task is what the loop consults when it decides whether a tool needs
+       * approval, so the choice has to travel with it — including for a queued
+       * turn that starts minutes later.
+       */
+      if (record.permissionLevel !== null) {
+        this.taskService.setTaskPermissionLevel(task.id, record.permissionLevel);
+      }
     } catch (cause) {
       const errorText = cause instanceof Error ? cause.message.slice(0, 240) : 'Agent task creation failed.';
       if (cause instanceof Error && cause.name.includes('NotFound')) {
@@ -1409,6 +1492,7 @@ export class AgentChatService {
       modelId: record.modelId,
       configurationRevisionId: record.configurationRevisionId,
       reasoningEffort: this.publishedEffort(record),
+      permissionLevel: record.permissionLevel ?? this.taskService.effectivePermissionLevel,
       messages: Object.freeze(seen.map((message) => Object.freeze({ ...message }))),
     });
   }

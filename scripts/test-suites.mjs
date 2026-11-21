@@ -61,12 +61,12 @@ const SUITES = Object.freeze({
     'boss-memory-write.test.ts', 'boss-memory.test.ts', 'organization-intent-input.test.ts', 'worker-outcome-report.test.ts',
   ],
   'agent-chat': [
-    'agent-chat.test.ts', 'agent-chat-cancel.test.ts', 'agent-chat-memory.test.ts', 'agent-chat-output.test.ts', 'boss-reply-formatting.test.ts', 'agent-chat-state.test.ts', 'agent-chat-projection.test.ts', 'agent-chat-history.test.ts', 'agent-chat-store.test.ts',
+    'agent-chat.test.ts', 'conversation-permission.test.ts', 'conversation-permission-runtime.test.ts', 'agent-chat-cancel.test.ts', 'agent-chat-memory.test.ts', 'agent-chat-output.test.ts', 'boss-reply-formatting.test.ts', 'agent-chat-state.test.ts', 'agent-chat-projection.test.ts', 'agent-chat-history.test.ts', 'agent-chat-store.test.ts',
     'agent-chat-stream.test.ts', 'agent-chat-tools.test.ts', 'agent-done-idle.test.ts', 'primary-conversation.test.ts',
     'agent-chat-concurrent.test.ts', 'agent-chat-runtime-notice.test.ts',
   ],
   capabilities: [
-    'mcp-provider.test.ts', 'skill-provider.test.ts', 'tool-runtime.test.ts', 'tool-execution.test.ts', 'tool-parameter.test.ts', 'git-tools.test.ts', 'plugin-loader.test.ts', 'plugin-loader-directory.test.ts', 'subprocess-plugin.test.ts', 'isolated-execution.test.ts',
+    'mcp-provider.test.ts', 'skill-provider.test.ts', 'tool-runtime.test.ts', 'http-tools.test.ts', 'workspace-file-ops.test.ts', 'git-push.test.ts', 'tool-execution.test.ts', 'tool-parameter.test.ts', 'git-tools.test.ts', 'plugin-loader.test.ts', 'plugin-loader-directory.test.ts', 'subprocess-plugin.test.ts', 'isolated-execution.test.ts',
     'controlled-execution.test.ts',
     'agent-capability-grants.test.ts',
     'git-commit.test.ts',

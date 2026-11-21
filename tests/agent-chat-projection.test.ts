@@ -186,3 +186,53 @@ test('activity changes alone are enough to project', () => {
   assert.ok(projected);
   assert.equal(projected!.activity.length, 1);
 });
+
+/**
+ * A failure has to say what failed.
+ *
+ * Every failed turn used to read "模型调用失败", including a URL the SSRF boundary
+ * refused and a tool the operator rejected. Measured on a real run: the reader
+ * saw "model call failed" for a tool that never reached the network.
+ */
+test('a tool refusal is described as a tool refusal, not a model failure', () => {
+  const blocked = projectMessage({
+    message: message({ state: 'thinking' }),
+    task: task({ state: 'failed', error: 'private_network_blocked' }),
+    activity: [],
+    now,
+  });
+  assert.ok(blocked);
+  assert.match(blocked!.body, /网络请求被运行时拒绝/);
+  assert.doesNotMatch(blocked!.body, /^模型调用失败。$/);
+
+  const escaped = projectMessage({
+    message: message({ state: 'thinking' }),
+    task: task({ state: 'failed', error: 'path_escapes_root' }),
+    activity: [],
+    now,
+  });
+  assert.ok(escaped);
+  assert.match(escaped!.body, /文件操作被运行时拒绝/);
+});
+
+test('a rejection by the operator is still reported as one', () => {
+  const rejected = projectMessage({
+    message: message({ state: 'waiting_approval' }),
+    task: task({ state: 'failed', error: 'Tool call rejected by the operator.' }),
+    activity: [],
+    now,
+  });
+  assert.ok(rejected);
+  assert.match(rejected!.body, /拒绝了这次工具执行/);
+});
+
+test('an ordinary model failure keeps its plain wording', () => {
+  const plain = projectMessage({
+    message: message({ state: 'thinking' }),
+    task: task({ state: 'failed', error: 'upstream returned 500' }),
+    activity: [],
+    now,
+  });
+  assert.ok(plain);
+  assert.match(plain!.body, /模型调用失败/);
+});

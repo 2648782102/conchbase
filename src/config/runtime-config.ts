@@ -135,6 +135,19 @@ export interface RuntimeConfig {
    */
   enableGitTools?: boolean;
   /**
+   * Outbound HTTP tool, off unless explicitly enabled.
+   *
+   * Opt-in like git: it is the only tool whose effects leave this machine.
+   */
+  enableHttpTools?: boolean;
+  /**
+   * Whether the HTTP tool may reach private, loopback, and link-local hosts.
+   *
+   * Operator-only and independent of `enableHttpTools`. Enabling the tool never
+   * disables the SSRF boundary; this flag does, deliberately and visibly.
+   */
+  allowPrivateNetworks?: boolean;
+  /**
    * The only directory tool calls may read or write. Defaults to the process
    * working directory, which is convenient for development and dangerous for
    * writes: a model that runs `workspace_write` would otherwise be able to
@@ -245,6 +258,8 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
   }
   const allowToolWrites = env.CONCHBASE_ALLOW_TOOL_WRITES === '1';
   const enableGitTools = env.CONCHBASE_ENABLE_GIT_TOOLS === '1';
+  const enableHttpTools = env.CONCHBASE_ENABLE_HTTP_TOOLS === '1';
+  const allowPrivateNetworks = env.CONCHBASE_ALLOW_PRIVATE_NETWORKS === '1';
   if (allowToolWrites && env.CONCHBASE_WORKSPACE_ROOT === undefined) {
     throw new Error(
       'CONCHBASE_ALLOW_TOOL_WRITES=1 requires CONCHBASE_WORKSPACE_ROOT. '
@@ -326,6 +341,8 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     ...(env.CONCHBASE_PLUGINS_DIR ? { pluginsDirectory: env.CONCHBASE_PLUGINS_DIR } : {}),
     ...(allowToolWrites ? { allowToolWrites: true } : {}),
     ...(enableGitTools ? { enableGitTools: true } : {}),
+    ...(enableHttpTools ? { enableHttpTools: true } : {}),
+    ...(allowPrivateNetworks ? { allowPrivateNetworks: true } : {}),
     workspaceRoot,
     executionMode,
     permissionLevel,

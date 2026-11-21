@@ -5,6 +5,7 @@ import { createBuiltinWriteTools } from './write-tools.js';
 import { createGitReadTools } from './git-tools.js';
 import { PluginRegistry, type PluginDefinition } from './plugin-registry.js';
 import { loadPluginDirectory } from './plugin-loader.js';
+import { createBuiltinHttpTools } from './http-tools.js';
 
 export interface ToolRuntime {
   readonly tools: ToolProvider;
@@ -28,12 +29,29 @@ export async function createToolRuntime(options: {
    * plugin is skipped with a report entry rather than preventing startup.
    */
   readonly pluginsDirectory?: string;
+  /**
+   * Outbound HTTP, off unless explicitly enabled.
+   *
+   * A network tool is the one capability whose failure mode is outside this
+   * machine, so it is opt-in like git rather than part of the default surface.
+   */
+  readonly enableHttp?: boolean;
+  /**
+   * Whether outbound HTTP may reach private, loopback, and link-local addresses.
+   *
+   * Operator-only, and separate from `enableHttp`: turning on the tool does not
+   * turn off the SSRF boundary.
+   */
+  readonly allowPrivateNetworks?: boolean;
 }): Promise<ToolRuntime> {
   const builtins = createBuiltinReadTools({ root: options.root });
   const writes = options.allowWrites ? createBuiltinWriteTools({ root: options.root }) : null;
   // Git is a read-only provider layered on the filesystem tools. It is opt-in
   // because it executes a subprocess, unlike every other built-in tool.
   const git = options.enableGit ? createGitReadTools({ root: options.root }) : null;
+  const http = options.enableHttp
+    ? createBuiltinHttpTools({ allowPrivateNetworks: options.allowPrivateNetworks === true })
+    : null;
   const loaded = options.pluginsDirectory ? loadPluginDirectory({ directory: options.pluginsDirectory }) : null;
   const definitions = [
     ...(options.plugins ?? []),
@@ -51,6 +69,7 @@ export async function createToolRuntime(options: {
     builtins,
     ...(writes ? [writes] : []),
     ...(git ? [git] : []),
+    ...(http ? [http] : []),
     ...(pluginProvider ? [pluginProvider] : []),
   ];
   const baseTools = providers.length === 1 ? builtins : combineToolProviders(providers);
