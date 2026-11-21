@@ -231,3 +231,21 @@ test('global scheduling capacity is operator configuration with bounded ranges',
     /CONCHBASE_PER_PROJECT_ACTIVE_WORK/,
   );
 });
+
+/**
+ * An operator needs a cost ceiling a very large model will not give them.
+ *
+ * Without an override the budget always comes from the catalog, so a 1M-token
+ * model means a 1M-token prompt — and summarisation is unreachable outside a
+ * fixture. The override is operator-only: never read from a task, Agent, model
+ * output, or request.
+ */
+test('the prompt budget can be capped by the operator', () => {
+  assert.equal(loadRuntimeConfig({}).contextTokens, undefined);
+  assert.equal(loadRuntimeConfig({ CONCHBASE_CONTEXT_TOKENS: '4000' }).contextTokens, 4_000);
+  assert.throws(
+    () => loadRuntimeConfig({ CONCHBASE_CONTEXT_TOKENS: '10' }),
+    /CONCHBASE_CONTEXT_TOKENS/,
+    'a window too small to hold any prompt is refused',
+  );
+});

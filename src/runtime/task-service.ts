@@ -61,6 +61,12 @@ import {
 } from './context-budget.js';
 import { DEFAULT_RETRY_POLICY, withProviderRetry } from './provider-retry.js';
 import {
+  summaryBudget,
+  summaryMessage,
+  transcriptForSummary,
+  type ContextSummarizer,
+} from './context-summary.js';
+import {
   ConfigurationRevisionNotFoundError as StoreRevisionNotFoundError,
   SqliteTaskStore,
   TaskConflictError,
@@ -125,6 +131,14 @@ export interface TaskServiceConfig {
    * is still `queued` and still cancellable.
    */
   readonly maxConcurrentTasks?: number;
+  /**
+   * Ceiling on the prompt budget, in tokens.
+   *
+   * Optional and operator-only. When set it wins over the catalog's reported
+   * window, which is how a deployment caps cost on a very large model — and the
+   * only way to exercise summarisation against one.
+   */
+  readonly contextTokens?: number;
 }
 
 export interface AgentLoopOptions {
@@ -132,6 +146,13 @@ export interface AgentLoopOptions {
   readonly reasoningEffort?: 'low' | 'medium' | 'high';
   readonly preferredChatModelId?: string;
   readonly skills?: readonly { readonly name: string; readonly instructions: string }[];
+  /**
+   * Compresses history that no longer fits the model's window.
+   *
+   * Optional: without it a trimmed prompt is still correct, just less useful —
+   * the earlier work is dropped and only the trim event records that it was.
+   */
+  readonly summarizer?: ContextSummarizer;
 }
 
 const DEFAULT_LOOP_BUDGET: LoopBudget = Object.freeze({
@@ -1262,18 +1283,32 @@ export class TaskService {
       if (fitted.fit.kind === 'overflow') {
         throw new Error(describeFit(fitted.fit) ?? 'Prompt exceeds the model context window.');
       }
-      if (fitted.fit.kind === 'trimmed') {
+      /*
+       * A trim may be summarised into a system turn.
+       *
+       * The dropped messages stay dropped — the summary does not re-send them —
+       * but their facts survive at a fraction of the cost. Without a summariser
+       * configured, or if it fails, this is exactly the plain trim it replaced.
+       */
+      const trimmed = fitted.fit.kind === 'trimmed' ? fitted.fit : null;
+      const summary = trimmed
+        ? await this.summarizeDropped(trimmed.dropped, fitted.fit.budget.promptTokens, turnSignal)
+        : null;
+      if (trimmed) {
         // Visible, not silent: a reply that "forgot" earlier turns must be
         // explainable to the person reading the conversation.
         this.recordLoopEvent(task, 'agent_loop.context_trimmed', 'running', {
           iteration,
-          droppedMessages: fitted.fit.droppedMessages,
-          droppedTokens: fitted.fit.droppedTokens,
+          droppedMessages: trimmed.droppedMessages,
+          droppedTokens: trimmed.droppedTokens,
           promptTokens: fitted.fit.tokens,
           budgetTokens: fitted.fit.budget.promptTokens,
+          summarized: summary !== null,
         });
       }
-      const promptMessages = fitted.messages;
+      const promptMessages = summary === null
+        ? fitted.messages
+        : Object.freeze([...fitted.messages, summaryMessage(summary)]);
       try {
         /*
          * Each turn is retried on a transient provider failure.
@@ -1410,6 +1445,35 @@ export class TaskService {
   }
 
   /**
+   * Summarises history that did not fit the window.
+   *
+   * Returns null — meaning "keep the plain trim" — for every reason that is not
+   * a usable summary: no summarizer configured, nothing worth summarising, a
+   * failed call, or a cancelled run. The caller cannot distinguish them, and
+   * does not need to: the trim already works.
+   */
+  private async summarizeDropped(
+    dropped: readonly ProviderMessage[],
+    promptTokens: number,
+    signal: AbortSignal,
+  ): Promise<string | null> {
+    const summarizer = this.loopOptions.summarizer;
+    if (!summarizer || dropped.length === 0 || signal.aborted) return null;
+    const transcript = transcriptForSummary(dropped);
+    if (transcript.trim().length === 0) return null;
+    try {
+      return await summarizer({
+        transcript,
+        budget: summaryBudget(promptTokens),
+        signal,
+      });
+    } catch {
+      // A summariser failure must never cost the user their turn.
+      return null;
+    }
+  }
+
+  /**
    * The context budget for the model this task is pinned to.
    *
    * Resolution order: the task's own provider/model, then the catalog. A
@@ -1418,6 +1482,14 @@ export class TaskService {
    * outage into a task failure before any model call is made.
    */
   private async contextBudgetFor(task: TaskSnapshot): Promise<ContextBudget> {
+    /*
+     * An operator override wins over the catalog.
+     *
+     * A gateway that reports no window, or reports one far larger than the
+     * deployment actually wants to spend, needs a way to set the ceiling. It is
+     * also the only way to rehearse summarisation on a 1M-token model.
+     */
+    if (this.config.contextTokens !== undefined) return contextBudget(this.config.contextTokens);
     const providerId = task.providerId ?? defaultProviderId();
     const modelId = task.modelId;
     if (!modelId) return contextBudget(undefined);
@@ -1640,18 +1712,26 @@ export class TaskService {
     if (fitted.fit.kind === 'overflow') {
       throw new Error(describeFit(fitted.fit) ?? 'Prompt exceeds the model context window.');
     }
-    if (fitted.fit.kind === 'trimmed') {
+    const trimmed = fitted.fit.kind === 'trimmed' ? fitted.fit : null;
+    const summary = trimmed
+      ? await this.summarizeDropped(trimmed.dropped, fitted.fit.budget.promptTokens, turnSignal)
+      : null;
+    if (trimmed) {
       this.store.recordEvent(task.id, {
         ...this.eventInput(task, 'agent_loop.context_trimmed', 'running', task.attempt),
         data: {
           iteration: 0,
-          droppedMessages: fitted.fit.droppedMessages,
-          droppedTokens: fitted.fit.droppedTokens,
+          droppedMessages: trimmed.droppedMessages,
+          droppedTokens: trimmed.droppedTokens,
           promptTokens: fitted.fit.tokens,
           budgetTokens: fitted.fit.budget.promptTokens,
+          summarized: summary !== null,
         },
       });
     }
+    const promptMessages = summary === null
+      ? fitted.messages
+      : Object.freeze([...fitted.messages, summaryMessage(summary)]);
     try {
       const retried = await withProviderRetry(
         () => provider.streamTurn({
@@ -1659,7 +1739,7 @@ export class TaskService {
           // Same messages the loop path builds, so instructions keep their system
           // role instead of being demoted into the user turn.
           prompt: task.prompt,
-          messages: fitted.messages,
+          messages: promptMessages,
           turnIndex: 0,
           signal: turnSignal,
           onOutputDelta: (delta) => {

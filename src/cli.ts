@@ -20,6 +20,7 @@ import { AgentChatService } from './runtime/agent-chat.js';
 import { createOpenAiCompatibleMemoryReviewer } from './runtime/memory-review.js';
 import { AgentChatMemory, createOpenAiCompatibleMemoryProposer } from './runtime/agent-chat-memory.js';
 import { createScheduleRunner } from './runtime/schedule-runner.js';
+import { createOpenAiCompatibleSummarizer } from './runtime/context-summary.js';
 import { createAutomaticBackup } from './runtime/automatic-backup.js';
 import { assertSupportedNode } from './runtime/node-version.js';
 
@@ -65,6 +66,7 @@ Configuration:
   CONCHBASE_BACKUP_KEEP          Snapshots to retain (default 7)
   CONCHBASE_BACKUP_DIR           Snapshot directory (default backups/ beside the database)
   CONCHBASE_PLUGINS_DIR          Directory of installed plugins (one plugin.json per subdirectory)
+  CONCHBASE_CONTEXT_TOKENS       Prompt-token ceiling, overriding the model's reported window
   CONCHBASE_MAX_ITERATIONS       Agent loop iteration ceiling (default 6, max 64)
   CONCHBASE_MAX_TOOL_CALLS_PER_TURN   Tool calls per turn (default 4, max 16)
   CONCHBASE_LOOP_DEADLINE_MS     Agent loop wall-clock budget (default 120000)
@@ -214,7 +216,23 @@ async function main(argv: readonly string[]): Promise<void> {
       ...(config.permissionLevel ? { permissionLevel: config.permissionLevel } : {}),
       loopBudget: config.loopBudget,
       ...(config.maxConcurrentTasks ? { maxConcurrentTasks: config.maxConcurrentTasks } : {}),
-      }, { tools: toolRuntime.tools, skills: toolRuntime.skills.skills });
+      ...(config.contextTokens ? { contextTokens: config.contextTokens } : {}),
+      }, {
+        tools: toolRuntime.tools,
+        skills: toolRuntime.skills.skills,
+        /*
+         * Trimming keeps the prompt legal; summarising keeps it useful.
+         *
+         * Without this the earliest turns are dropped and the model simply does
+         * not know what happened before. The call is bounded and fails closed:
+         * a summariser outage leaves the plain trim in place.
+         */
+        summarizer: createOpenAiCompatibleSummarizer({
+          baseUrl: config.magpieBaseUrl,
+          model: config.bossModel ?? config.defaultModel,
+          ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
+        }),
+      });
     const conversationService = new PrimaryConversationService({
       recordIntentText: (intentId, text) => service.store.organization.recordIntentText?.(intentId, text),
       intentTexts: () => service.store.organization.intentTexts?.() ?? new Map(),
@@ -367,6 +385,7 @@ async function main(argv: readonly string[]): Promise<void> {
     ...(config.permissionLevel ? { permissionLevel: config.permissionLevel } : {}),
     loopBudget: config.loopBudget,
     ...(config.maxConcurrentTasks ? { maxConcurrentTasks: config.maxConcurrentTasks } : {}),
+    ...(config.contextTokens ? { contextTokens: config.contextTokens } : {}),
     }, { tools: toolRuntime.tools, skills: toolRuntime.skills.skills });
   const conversationService = new PrimaryConversationService();
   const controller = new AbortController();

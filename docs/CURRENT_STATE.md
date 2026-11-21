@@ -24,9 +24,11 @@ Updated: 2026-11-21
 - One effective policy is published: `permissionLevel`, beside the legacy
   `executionMode` marked `executionModeIsLegacy`. They could disagree, so read
   the level.
-- Prompts are fitted to the model's window (`context-budget.ts`): catalog
-  window, 32k fallback, reserved reply room, and a visible
-  `agent_loop.context_trimmed`. Instructions are never dropped.
+- Prompts fit the model's window (`context-budget.ts`): catalog window, 32k
+  fallback, reserved reply room, visible `context_trimmed`. Instructions are
+  never dropped; the rest is compressed into a bounded system summary
+  (`context-summary.ts`). No summariser or a failed one leaves the plain trim,
+  recorded as `summarized: false`.
 - Transient provider failures retry with capped backoff (`provider-retry.ts`);
   auth, malformed requests, and context overflow still fail immediately.
 - Agent Chat cancels via `POST …/cancel`, for a running turn and a queued one.

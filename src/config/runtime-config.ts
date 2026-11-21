@@ -171,6 +171,13 @@ export interface RuntimeConfig {
    */
   maxConcurrentTasks?: number;
   /**
+   * Operator ceiling on prompt tokens, overriding what the model reports.
+   *
+   * Bounds cost on a very large model and makes summarisation reachable in
+   * development. Never read from a task, Agent, model output, or request.
+   */
+  contextTokens?: number;
+  /**
    * Automatic snapshotting of the database.
    *
    * On by default because the alternative — an operator who remembers to run
@@ -276,6 +283,11 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     'CONCHBASE_MAX_CONCURRENT_TASKS',
     { fallback: 4, min: 1, max: 32 },
   );
+  const contextTokens = env.CONCHBASE_CONTEXT_TOKENS === undefined
+    ? undefined
+    : boundedInteger(env.CONCHBASE_CONTEXT_TOKENS, 'CONCHBASE_CONTEXT_TOKENS', {
+      fallback: 32_000, min: 1_000, max: 4_000_000,
+    });
   // 0 is a deliberate opt-out, so the bound starts at 0 rather than 1.
   const backupIntervalMs = boundedInteger(
     env.CONCHBASE_BACKUP_INTERVAL_MS,
@@ -323,6 +335,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     globalActiveWork,
     perProjectActiveWork,
     maxConcurrentTasks,
+    ...(contextTokens === undefined ? {} : { contextTokens }),
     backupIntervalMs,
     backupKeep,
     ...(env.CONCHBASE_BACKUP_DIR ? { backupDirectory: env.CONCHBASE_BACKUP_DIR } : {}),

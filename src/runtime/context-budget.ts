@@ -120,6 +120,15 @@ export type PromptFit =
     readonly budget: ContextBudget;
     readonly droppedMessages: number;
     readonly droppedTokens: number;
+    /**
+     * The messages that did not fit, in order.
+     *
+     * Returned so the caller can summarise them instead of losing them. A
+     * `trimmed` fit is still correct without summarising — the prompt fits and
+     * the reader is told what was dropped — but a summary is what keeps the
+     * earlier work usable instead of merely acknowledging its absence.
+     */
+    readonly dropped: readonly ProviderMessage[];
   }
   | {
     readonly kind: 'overflow';
@@ -174,6 +183,7 @@ export function fitPrompt(
       budget,
       droppedMessages: messages.length - system.length - aligned.length,
       droppedTokens: Math.max(0, total - finalTokens),
+      dropped: Object.freeze(messages.slice(system.length, messages.length - aligned.length)),
     },
   };
 }

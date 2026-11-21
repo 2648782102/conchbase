@@ -200,6 +200,23 @@ the Agent's instructions, its tool list, and its Skill guidance — and a tool
 result is dropped together with the assistant turn that requested it, because a
 `tool` message whose call is missing is a protocol error in every chat template.
 
+### Trim, then summarise
+
+Trimming keeps the prompt legal but loses the earlier work, and the only trace
+was an event saying so. `context-summary.ts` compresses the dropped span into a
+bounded summary that is re-injected as a `system` turn, so the model keeps the
+facts at a fraction of the tokens.
+
+Three properties make that safe. The summary is **untrusted**: it is model output
+headed back into a prompt, which is the shape of an injection loop, so it is
+stripped of control characters, length-capped, and labelled as recollection that
+may be incomplete — with an explicit instruction to re-check a source rather than
+treat it as settled. It has its **own budget**, a small share of the window, so
+summarising can never cost more than it saves. And it is **optional and
+fail-closed**: no summariser, a failed call, or an aborted run all leave the
+plain trim in place, and the trim event records `summarized: false` so the
+difference is observable.
+
 ## Provider retry
 
 `provider-retry.ts` retries only what the adapter marked retryable. The

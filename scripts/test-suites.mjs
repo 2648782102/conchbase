@@ -29,7 +29,7 @@ const SUITES = Object.freeze({
     'organization-coordinator.test.ts', 'work-hold-projection.test.ts', 'work-hold-route.test.ts', 'organization-action-contract.test.ts', 'organization-validators.test.ts', 'composition-document.test.ts',
     'configuration-document.test.ts', 'configuration-revision.test.ts',
     'composition-execution.test.ts', 'work-contract.test.ts', 'platform-contract.test.ts',
-    'tool-request.test.ts', 'context-budget.test.ts', 'attachments.test.ts', 'attachments-runtime.test.ts', 'schedule.test.ts', 'shutdown-timeout.test.ts', 'context-budget-runtime.test.ts', 'provider-retry.test.ts', 'provider-retry-runtime.test.ts', 'agent-memory.test.ts', 'secret-filter.test.ts', 'digest.test.ts',
+    'tool-request.test.ts', 'context-budget.test.ts', 'context-summary.test.ts', 'context-summary-runtime.test.ts', 'attachments.test.ts', 'attachments-runtime.test.ts', 'schedule.test.ts', 'shutdown-timeout.test.ts', 'context-budget-runtime.test.ts', 'provider-retry.test.ts', 'provider-retry-runtime.test.ts', 'agent-memory.test.ts', 'secret-filter.test.ts', 'digest.test.ts',
     'memory-types.test.ts', 'memory-promotion.test.ts', 'tool-request-preview.test.ts',
     'task-state-machine.test.ts',
     'kernel-policy.test.ts', 'capability-scope.test.ts', 'kernel-process-spec.test.ts', 'kernel-level-integration.test.ts',
