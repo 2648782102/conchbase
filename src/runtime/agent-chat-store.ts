@@ -133,6 +133,7 @@ interface MessageRow {
   readonly progress: number | null;
   readonly updated_at: string;
   readonly reply_to_id: string | null;
+  readonly model_reference: string | null;
 }
 
 interface IdempotencyRow {
@@ -155,6 +156,7 @@ function messageFromRow(row: MessageRow): AgentChatMessage {
     updatedAt: row.updated_at,
     replyToId: row.reply_to_id,
     activity: Object.freeze([]),
+    modelReference: row.model_reference ?? null,
   });
 }
 
@@ -217,8 +219,8 @@ export class SqliteAgentChatStore implements AgentChatStore {
         this.database.prepare(`
           INSERT INTO agent_chat_messages (
             conversation_id, id, sequence, author, body, state, task_id, error,
-            phase, progress, updated_at, reply_to_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            phase, progress, updated_at, reply_to_id, model_reference
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(conversation_id, sequence) DO UPDATE SET
             id = excluded.id,
             author = excluded.author,
@@ -229,7 +231,8 @@ export class SqliteAgentChatStore implements AgentChatStore {
             phase = excluded.phase,
             progress = excluded.progress,
             updated_at = excluded.updated_at,
-            reply_to_id = excluded.reply_to_id
+            reply_to_id = excluded.reply_to_id,
+            model_reference = excluded.model_reference
         `).run(
           record.id,
           message.id,
@@ -243,6 +246,7 @@ export class SqliteAgentChatStore implements AgentChatStore {
           message.progress,
           message.updatedAt,
           message.replyToId,
+          message.modelReference,
         );
       }
       for (const [key, messageId] of record.idempotency) {
@@ -268,7 +272,8 @@ export class SqliteAgentChatStore implements AgentChatStore {
     `).get(conversationId) as ConversationRow | undefined;
     if (!conversation) return null;
     const messages = this.database.prepare(`
-      SELECT id, sequence, author, body, state, task_id, error, phase, progress, updated_at, reply_to_id
+      SELECT id, sequence, author, body, state, task_id, error, phase, progress, updated_at, reply_to_id,
+        model_reference
       FROM agent_chat_messages WHERE conversation_id = ? ORDER BY sequence
     `).all(conversationId) as unknown as MessageRow[];
     const idempotency = this.database.prepare(`
@@ -334,6 +339,7 @@ export function migrateAgentChatSchema(database: DatabaseSync): void {
         progress INTEGER,
         updated_at TEXT NOT NULL,
         reply_to_id TEXT,
+        model_reference TEXT,
         PRIMARY KEY (conversation_id, sequence),
         UNIQUE (conversation_id, id)
       ) STRICT;
@@ -361,5 +367,18 @@ export function migrateAgentChatSchema(database: DatabaseSync): void {
      * value would have claimed each old conversation had chosen a level.
      */
     database.exec('ALTER TABLE agent_chat_conversations ADD COLUMN permission_level TEXT');
+  }
+  const messageColumns = database.prepare('PRAGMA table_info(agent_chat_messages)').all() as unknown as {
+    name: string;
+  }[];
+  if (!messageColumns.some((column) => column.name === 'model_reference')) {
+    /*
+     * NULL, not the conversation's current model.
+     *
+     * Every reply written before this column existed is attributed to nobody:
+     * the conversation may have switched models since, and backfilling would
+     * invent provenance for answers that were never recorded.
+     */
+    database.exec('ALTER TABLE agent_chat_messages ADD COLUMN model_reference TEXT');
   }
 }

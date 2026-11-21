@@ -20,7 +20,25 @@ function fakeFetch(): typeof globalThis.fetch {
     const url = String(input);
     if (url.endsWith('/v1/models')) {
       return new Response(JSON.stringify({
-        data: [{ id: 'fixture/chat-model', display_name: 'Fixture Chat Model' }],
+        data: [
+          {
+            id: 'fixture/chat-model',
+            display_name: 'Fixture Chat Model',
+            reasoning: true,
+            reasoning_levels: ['low', 'medium', 'high'],
+          },
+          {
+            /*
+             * A second model with a different level set, so a switch can be
+             * told apart from a re-render: `none/low/high/max` has no `medium`,
+             * and carrying the old level across would be visible.
+             */
+            id: 'fixture/other-model',
+            display_name: 'Other Chat Model',
+            reasoning: true,
+            reasoning_levels: ['none', 'low', 'high', 'max'],
+          },
+        ],
       }), { status: 200, headers: { 'content-type': 'application/json' } });
     }
     if (url.endsWith('/v1/chat/completions')) {
@@ -780,6 +798,80 @@ test('agent chat conversation pins a user-selected model override', async () => 
     const task = (await app.inject({ method: 'GET', url: `/v1/tasks/${taskId}` })).json().task;
     assert.equal(task.providerId, 'magpie');
     assert.equal(task.modelId, 'fixture/chat-model');
+  });
+});
+
+test('a conversation switches model without losing its transcript', async () => {
+  await withApp(async (app, agentId) => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/v1/agent-chat/conversations',
+      payload: { agentId, reasoningEffort: 'medium' },
+    });
+    assert.equal(created.statusCode, 201);
+    const conversationId = created.json().id as string;
+    assert.equal(created.json().reasoningEffort, 'medium');
+
+    /*
+     * Switch on the next turn. The transcript above it is the asset this
+     * protects: before this, changing the model meant abandoning the
+     * conversation, which is why the client started a new one.
+     */
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: {
+        text: '换一个模型回答',
+        idempotencyKey: 'switch-model-1',
+        modelOverride: { providerId: 'magpie', modelId: 'fixture/other-model' },
+      },
+    });
+    assert.equal(sent.statusCode, 202, sent.body);
+
+    const switched = (await app.inject({
+      method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}`,
+    })).json();
+    // Same conversation, new model.
+    assert.equal(switched.id, conversationId);
+    assert.equal(switched.modelId, 'fixture/other-model');
+    /*
+     * `medium` belongs to the old model. The switch re-resolved the level
+     * against the new model's own list (`none/low/high/max`), which is why the
+     * stored value must have moved to `high` rather than stayed behind.
+     */
+    assert.equal(switched.reasoningEffort, 'high');
+
+    const reply = switched.messages.find((message: { author: string }) => message.author === 'assistant');
+    assert.equal(reply.modelReference, 'magpie:fixture/other-model',
+      'each reply records the model that produced it');
+  });
+});
+
+test('a model switch is refused before anything is written when the model is unknown', async () => {
+  await withApp(async (app, agentId) => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/v1/agent-chat/conversations',
+      payload: { agentId },
+    });
+    const conversationId = created.json().id as string;
+
+    const refused = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: {
+        text: '不该被写入',
+        idempotencyKey: 'switch-model-missing',
+        modelOverride: { providerId: 'magpie', modelId: 'fixture/does-not-exist' },
+      },
+    });
+    assert.equal(refused.statusCode, 400);
+
+    const view = (await app.inject({
+      method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}`,
+    })).json();
+    assert.equal(view.messages.length, 0, 'a refused switch leaves no trace in the transcript');
+    assert.equal(view.modelId, 'fixture/chat-model', 'and does not change the conversation');
   });
 });
 

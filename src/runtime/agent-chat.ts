@@ -225,9 +225,20 @@ export interface AgentChatStreamFrame {
   readonly conversation: AgentChatConversationView | null;
 }
 
-interface ConversationRecord extends Omit<AgentChatConversationRecord, 'idempotency' | 'reasoningEffort'> {
+interface ConversationRecord
+  extends Omit<AgentChatConversationRecord, 'idempotency' | 'reasoningEffort' | 'providerId' | 'modelId'> {
   readonly messages: AgentChatMessage[];
   readonly idempotency: Map<string, string>;
+  /**
+   * The model the next turn runs on.
+   *
+   * Writable because a reader may switch models mid-conversation; the identity
+   * a conversation starts with is a default, not a lock. Each assistant message
+   * records the model that actually produced it, so the transcript stays
+   * truthful after a switch.
+   */
+  providerId: string;
+  modelId: string;
   /**
    * The effort the next turn inherits.
    *
@@ -293,8 +304,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function message(
-  input: Omit<AgentChatMessage, 'phase' | 'progress' | 'updatedAt' | 'replyToId' | 'activity'>
-    & Partial<Pick<AgentChatMessage, 'phase' | 'progress' | 'updatedAt' | 'replyToId' | 'activity'>>,
+  input: Omit<AgentChatMessage, 'phase' | 'progress' | 'updatedAt' | 'replyToId' | 'activity' | 'modelReference'>
+    & Partial<Pick<AgentChatMessage, 'phase' | 'progress' | 'updatedAt' | 'replyToId' | 'activity' | 'modelReference'>>,
   now = () => new Date().toISOString(),
 ): AgentChatMessage {
   return Object.freeze({
@@ -303,6 +314,7 @@ function message(
     updatedAt: now(),
     replyToId: null,
     activity: Object.freeze([]),
+    modelReference: null,
     ...input,
   });
 }
@@ -740,6 +752,11 @@ export class AgentChatService {
         ...assistantMessage,
         state: 'thinking',
         taskId: task.id,
+        /* Same rule as the direct path: the task's model, recorded when the turn
+           starts, so a later switch cannot rewrite this reply's provenance. */
+        modelReference: task.providerId && task.modelId
+          ? `${task.providerId}:${task.modelId}`
+          : null,
         updatedAt: this.now(),
       });
       this.persist(record);
@@ -1099,11 +1116,45 @@ export class AgentChatService {
     const record = this.load(conversationId);
     if (!record) throw new AgentChatServiceError('Agent Chat conversation not found.', 404);
     if (!isRecord(input)) throw new AgentChatServiceError('Message input must be an object.');
-    const allowed = new Set(['text', 'idempotencyKey', 'attachments', 'reasoningEffort']);
+    const allowed = new Set(['text', 'idempotencyKey', 'attachments', 'reasoningEffort', 'modelOverride']);
     const unknown = Object.keys(input).filter((key) => !allowed.has(key));
     if (unknown.length > 0) throw new AgentChatServiceError(`Unknown fields: ${unknown.sort().join(', ')}.`);
     const text = boundedText(input.text, 'text').slice(0, 6000);
     const idempotencyKey = boundedText(input.idempotencyKey, 'idempotencyKey').slice(0, 200);
+    /*
+     * A conversation may change model between turns.
+     *
+     * The identity a conversation is *created* with is a starting point, not a
+     * lock: a reader who finds a model too slow, or one whose quota ran out,
+     * should switch it and keep the thread — the transcript is the asset, and
+     * forcing a new conversation to change models throws it away.
+     *
+     * Applied before anything is written, for the same reason the effort is:
+     * an unavailable model must be refused while the transcript is still
+     * untouched, not after a user message and a placeholder have been appended.
+     */
+    const requestedModel = this.parseModelOverride(input.modelOverride);
+    if (requestedModel) {
+      try {
+        await this.taskService.validateModelReference(requestedModel);
+      } catch (cause) {
+        throw new AgentChatServiceError(
+          cause instanceof Error ? cause.message.slice(0, 240) : 'Model override is not available.',
+          400,
+        );
+      }
+      record.providerId = requestedModel.providerId;
+      record.modelId = requestedModel.modelId;
+      /*
+       * The level belonged to the old model. Carrying it across is how a
+       * conversation ends up sending `medium` to a model that publishes
+       * `none/low/high/max`; re-resolving here picks the new model's middle
+       * step, and a level the caller sent explicitly is still checked below.
+       */
+      const carried = record.reasoningEffort.length > 0 ? record.reasoningEffort : undefined;
+      record.reasoningEffort = (await this.resolveEffort(requestedModel, carried)) ?? '';
+      this.persist(record);
+    }
     /*
      * Per-message effort, resolved before anything is written.
      *
@@ -1307,6 +1358,14 @@ export class AgentChatService {
       error: null,
       phase: 'preparing',
       replyToId: userMessage.id,
+      /*
+       * Captured from the task, not from the record: the reader may switch
+       * model again while this reply is still generating, and this answer must
+       * keep saying which model wrote it.
+       */
+      modelReference: task.providerId && task.modelId
+        ? `${task.providerId}:${task.modelId}`
+        : null,
       updatedAt: this.now(),
     }, this.now);
     record.messages.push(userMessage, assistantMessage);
@@ -1719,6 +1778,12 @@ export class AgentChatService {
       error: null,
       phase: 'preparing',
       replyToId: userMessage.id,
+      /*
+       * The Boss answers through one model per turn, chosen at submit time.
+       * Recording it here means a later switch does not rewrite which model
+       * wrote this answer.
+       */
+      modelReference: `${record.providerId}:${record.modelId}`,
       updatedAt: this.now(),
     }, this.now);
     record.messages.push(userMessage, assistantMessage);

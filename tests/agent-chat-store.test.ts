@@ -38,6 +38,7 @@ function record(id = 'chat_fixture'): AgentChatConversationRecord {
       updatedAt: '2026-11-14T00:00:00.000Z',
       replyToId: null,
       activity: Object.freeze([]),
+      modelReference: null,
     })]),
     idempotency: Object.freeze([['key-1', 'amsg_fixture'] as const]),
   });

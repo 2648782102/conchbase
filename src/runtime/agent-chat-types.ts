@@ -70,4 +70,14 @@ export interface AgentChatMessage {
   readonly updatedAt: string;
   readonly replyToId: string | null;
   readonly activity: readonly AgentChatActivity[];
+  /**
+   * The model that produced this reply, captured when the turn started.
+   *
+   * A conversation may change model between turns, so the transcript has to say
+   * which one wrote each answer — otherwise changing the model silently
+   * rewrites the apparent provenance of everything above it. Absent on
+   * messages written before this field existed, and null where the reply was
+   * not produced by a model at all.
+   */
+  readonly modelReference: string | null;
 }
