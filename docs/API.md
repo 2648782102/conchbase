@@ -1,6 +1,11 @@
 # Runtime API status
 
-The service listens on `127.0.0.1:4318` by default. The machine-readable source of truth for all routes is [`openapi.yaml`](openapi.yaml). Conchbase owns this contract; Pagurus and other clients consume it.
+The service listens on loopback. `CONCHBASE_PORT` selects the port; without it a
+checkout derives one from its branch, so parallel worktrees never collide
+(`4318` in the original clone, see
+[`PAIRED_DEVELOPMENT.md`](PAIRED_DEVELOPMENT.md#ports-and-databases)). The
+machine-readable source of truth for all routes is [`openapi.yaml`](openapi.yaml).
+Conchbase owns this contract; Pagurus and other clients consume it.
 
 ## Implemented routes
 
@@ -18,6 +23,7 @@ The service listens on `127.0.0.1:4318` by default. The machine-readable source 
 | `POST /v1/agents/{agentId}/archive` | Soft archive; preserves tasks/revisions, clears default, and blocks new tasks. |
 | `GET /v1/agents/{agentId}/revisions` | Read the immutable revision history. |
 | `POST /v1/agents/{agentId}/revisions/apply` | Roll back by appending a new revision from history with optimistic concurrency. |
+| `GET /v1/agents/capability-grants` | Audit every stored Agent revision's grants against the tools and skills this Runtime can actually register. |
 | `GET /v1/agents/default` | Read the default Agent or `null`. |
 | `PUT /v1/agents/default` | Set a non-archived default Agent or clear the default with `null`. |
 | `POST /v1/tasks` | Accept either legacy `{ prompt, model? }` or Agent `{ prompt, agentId, modelOverride? }`; pin the active configuration and (for Agent tasks) Agent revision plus effective provider/model; create and start; `202`. |
@@ -25,6 +31,7 @@ The service listens on `127.0.0.1:4318` by default. The machine-readable source 
 | `GET /v1/tasks/{taskId}` | One persisted task; `404` when absent. |
 | `POST /v1/tasks/{taskId}/cancel` | Request cancellation of an active task; `409` when it is not active. |
 | `POST /v1/tasks/{taskId}/retry` | Start a new attempt from the original prompt and pinned configuration revision for a terminal task; `409` otherwise. |
+| `POST /v1/tasks/{taskId}/approval` | Resolve one pending approval on a `waiting_approval` task with `approved` or `rejected`; `400` for any other decision. |
 | `GET /v1/events?after=<eventId>` | Persisted events strictly after a known global event ID, plus the resulting cursor; `400` for an unknown cursor. |
 | `GET /v1/configuration` | Active immutable configuration revision and versioned document. |
 | `GET /v1/configuration/revisions` | Revision summaries, newest first, plus the active revision id. |
@@ -86,6 +93,14 @@ The service listens on `127.0.0.1:4318` by default. The machine-readable source 
 | `POST /v1/agent-chat/conversations` | Create a direct Agent Chat conversation pinned to a selected Agent revision and optional Magpie model override; `201`. |
 | `GET /v1/agent-chat/conversations/{conversationId}` | Read one Agent Chat conversation with bounded user, assistant, pending, and terminal state. |
 | `POST /v1/agent-chat/conversations/{conversationId}/messages` | Send one bounded user message and start a real Agent-backed model task; `202`. |
+| `POST /v1/agent-chat/conversations/{conversationId}/approval` | Resolve the conversation's pending tool approval; the decision is applied to the waiting task. |
+| `GET /v1/agent-chat/conversations/{conversationId}/events` | Server-Sent Events projection of one conversation; see the Agent Chat `1.8.0` notes below. |
+| `GET /v1/memory` | Read reviewable memory entries filtered by scope; bounded `limit` up to 200. |
+| `DELETE /v1/memory/{memoryId}` | Retract one memory entry; `404` when absent. This is the only client-side mutation — there is no write route. |
+| `GET /v1/operations/data` | Report the database path, size, existence, and schema version. Never its contents. |
+| `POST /v1/operations/backup` | Write one consistent snapshot to a caller-named absolute path outside the live database. |
+| `GET /v1/operations/diagnostics` | Run the same bounded checks as `conchbase diagnose`. |
+| `GET /v1/operations/support-bundle` | Return a copyable support bundle that excludes secrets, prompts, and private file contents. |
 | `GET /v1/execution/health` | Read controlled-execution `1.2.0` availability and exact published paths. |
 | `GET /v1/execution/capabilities` | List published capability facts; recorded data never grants execution. |
 | `GET /v1/execution/grants` | List explicit Runtime-owned grants. |
@@ -105,13 +120,13 @@ The service listens on `127.0.0.1:4318` by default. The machine-readable source 
 | `POST /v1/execution/runs/{runId}/recover` | Recover an interrupted or failed run for a fresh bounded attempt. |
 | `GET /v1/execution/runs/{runId}/events` | Read bounded audit events for one run. |
 
-An Agent profile is a versioned resource with bounded name, instructions, and `{ providerId, modelId }` default model reference. It contains no credential, provider URL, permission, or tool grant. The first Agent becomes default; there is no implicit default selection for task creation. Profile edits and history apply use `expectedRevisionId`; rollback appends a revision. Archiving is soft and irreversible in the current API, preserves history, and prevents new tasks. Existing tasks, including retries, stay bound to their pinned revision.
+An Agent profile is a versioned resource with bounded name, instructions, and `{ providerId, modelId }` default model reference. It contains no credential, provider URL, or permission. It may carry `grantedCapabilities`, which only ever *narrow* the Runtime's registered tools and skills — a grant cannot create a capability, and an Agent without grants sees none. The first Agent becomes default; there is no implicit default selection for task creation. Profile edits and history apply use `expectedRevisionId`; rollback appends a revision. Archiving is soft and irreversible in the current API, preserves history, and prevents new tasks. Existing tasks, including retries, stay bound to their pinned revision.
 
 A task has a stable ID, its original prompt, selected model id, pinned configuration revision, current state, attempt number, final output, current `partialOutput`, and error. Agent tasks also expose `agentId`, `agentRevisionId`, `providerId`, and `modelId`; the queued event carries the same identity. `model` and `modelOverride` cannot be combined with Agent mode; `modelOverride` cannot be sent without `agentId`. Agent tasks use a bounded Agent loop through their pinned provider/model even if the active runtime configuration is v2, and may call tools across several turns. Legacy tasks keep their old global v1/v2 dispatch and request shape. `partialOutput` is visible while a v1 model task is `running` or `cancelling` and is null in terminal states; final `output` remains authoritative. States include `queued`, `running`, `cancelling`, `succeeded`, `failed`, `cancelled`, and `interrupted`. A restart changes persisted nonterminal states to `interrupted`; retry creates a visible new attempt.
 
 Agent Chat `1.8.0` adds `GET /v1/agent-chat/conversations/{conversationId}/events` as a Server-Sent Events projection. The first frame is a `snapshot` with the full bounded conversation; later `message` frames carry a complete published assistant message and the Runtime event id. Clients can resume with `Last-Event-ID` or `?after=<eventId>`; an unknown or foreign cursor returns `400` before the stream starts. Replay is bounded to 500 events, a `health` frame is sent every 15 seconds, slow clients above 1 MB of buffered output are disconnected, at most 32 streams may be open per process, and no frame contains tool arguments, file contents, provider reasoning, or private paths. Polling `GET /v1/agent-chat/conversations/{conversationId}` remains supported as the compatibility transport; approval stays on `POST .../approval`. SSE is available on loopback. With authenticated non-loopback binding, `EventSource` cannot send the required bearer token, so clients must use polling until a paired cookie or stream-ticket flow is accepted; a token is never accepted in the query string.
 
-Events use stable IDs and a global monotonic `sequence`. Each event records its task, type, resulting state, pinned configuration revision, attempt, and a bounded `data` object. `task.output_delta.data` contains `delta`, zero-based per-attempt `index`, and accumulated `outputLength`. Composition events carry `compositionDocumentId`, `compositionNodeId`, `nodeIndex`, `nodeCount`, `completedNodeCount`, and `terminalNodeIds` as documented in `docs/openapi.yaml` and the published API contract. Public tool ledger events carry `toolRequestId`, `configurationRevisionId`, `attempt`, `compositionDocumentId`, `compositionNodeId`, `toolName`, `argumentsDigest`, `idempotencyKey`, `status`, and decision-only `decision`, `approvalId`, and `reasonDigest` fields. They do not transition task state and never claim execution. Polling remains the client transport; SSE, `Last-Event-ID`, retention, and multi-process ownership remain open.
+Events use stable IDs and a global monotonic `sequence`. Each event records its task, type, resulting state, pinned configuration revision, attempt, and a bounded `data` object. `task.output_delta.data` contains `delta`, zero-based per-attempt `index`, and accumulated `outputLength`. Composition events carry `compositionDocumentId`, `compositionNodeId`, `nodeIndex`, `nodeCount`, `completedNodeCount`, and `terminalNodeIds` as documented in `docs/openapi.yaml` and the published API contract. Public tool ledger events carry `toolRequestId`, `configurationRevisionId`, `attempt`, `compositionDocumentId`, `compositionNodeId`, `toolName`, `argumentsDigest`, `idempotencyKey`, `status`, and decision-only `decision`, `approvalId`, and `reasonDigest` fields. They do not transition task state and never claim execution. `/v1/events` polling remains the general transport for task events; Agent Chat adds a bounded SSE projection of its own conversation. Cross-process event fan-out is not implemented, because the database has a single owner.
 
 Errors use `{ "error": "message" }` with documented status codes. Validation errors return `400`; missing resources return `404`; conflicting task or Agent operations return `409`; model-catalog failures return `502`; an unconfigured task service returns `503`.
 
@@ -130,7 +145,7 @@ Durable work documents are deterministic, topology-neutral state from the Runtim
 - A `schemaVersion: 1` task performs one streaming text completion. Reasoning text is ignored and model-requested tools are rejected, not executed.
 - The provider parser is wired into the transient observation route. A whole message-shaped tool call becomes a transient observation; streaming deltas and unsupported shapes remain rejected. No observation creates a ledger request, task transition, event, or execution permission.
 - A legacy `schemaVersion: 2` task performs bounded deterministic graph traversal. It makes no model call and executes no model-requested or real host tool. Agent-backed tasks use a single model turn and do not implicitly execute the global composition graph.
-- No public tool execution, executable approval, real MCP/Skill/plugin lifecycle, model-driven composition, or dedicated composition management route exists yet. Capability records are configuration data. Composition is part of the versioned configuration document; the tool request/approval routes are ledger records only.
+- There is no public arbitrary tool execution route, real MCP/Skill/plugin lifecycle, model-driven composition, or dedicated composition management route. The executing path is the Agent loop and Agent Chat; their approval routes are `POST /v1/tasks/{taskId}/approval` and `POST /v1/agent-chat/conversations/{conversationId}/approval`. The separate `POST /v1/tool-requests/{requestId}/approval` route is a ledger record only and never executes.
 - Configuration document routes do not install, enable, grant, resolve secrets, load code, or execute tools.
 - Tool request and approval routes do not execute tools, transition task state, load code, resolve secrets, or grant capabilities.
 - Work and platform routes do not call a model, execute a host tool, perform an external write, expose a generic secret resolver, read a private file from a client, define a canonical topology, or reinterpret the phase-1 `Task` resource. A submitted SecretHandle value is sealed with a process-scoped key and is exposed only to one runtime-owned fixed adapter; restart invalidates old sealed values.

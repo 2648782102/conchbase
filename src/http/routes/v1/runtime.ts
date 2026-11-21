@@ -1,6 +1,30 @@
 import type { FastifyInstance } from 'fastify';
 import type { ExecutionMode, LoopBudget } from '../../../config/runtime-config.js';
 import type { PermissionLevel } from '../../../kernel/policy.js';
+import {
+  AGENT_CHAT_PUBLIC_PATHS,
+  AGENT_CHAT_CONTRACT_VERSION,
+} from '../../../runtime/agent-chat.js';
+import {
+  EXECUTION_PUBLIC_PATHS,
+  EXECUTION_CONTRACT_VERSION,
+} from '../../../runtime/controlled-execution.js';
+import {
+  EXECUTION_RUN_PUBLIC_PATHS,
+  EXECUTION_RUN_CONTRACT_VERSION,
+} from '../../../runtime/isolated-execution.js';
+import {
+  ORGANIZATION_PUBLIC_PATHS,
+  ORGANIZATION_PUBLIC_CONTRACT_VERSION,
+} from '../../../runtime/organization-public-contract.js';
+import {
+  PRIMARY_CONVERSATION_PUBLIC_PATHS,
+  PRIMARY_CONVERSATION_CONTRACT_VERSION,
+} from '../../../runtime/primary-conversation.js';
+import {
+  MEMORY_PUBLIC_PATHS,
+  MEMORY_PUBLIC_CONTRACT_VERSION,
+} from './memory.js';
 
 export function registerRuntimeRoute(
   app: FastifyInstance,
@@ -30,28 +54,28 @@ export function registerRuntimeRoute(
       },
     }),
     ...(organizationEnabled ? {
-      organizationContract: '1.1.0' as const,
-      organizationPaths: 18,
+      organizationContract: ORGANIZATION_PUBLIC_CONTRACT_VERSION,
+      organizationPaths: ORGANIZATION_PUBLIC_PATHS.length,
     } : {}),
     ...(executionEnabled ? {
-      executionContract: '1.2.0' as const,
-      executionPaths: 8,
+      executionContract: EXECUTION_CONTRACT_VERSION,
+      executionPaths: EXECUTION_PUBLIC_PATHS.length,
     } : {}),
     ...(executionRunEnabled ? {
-      executionRunContract: '1.3.0' as const,
-      executionRunPaths: 8,
+      executionRunContract: EXECUTION_RUN_CONTRACT_VERSION,
+      executionRunPaths: EXECUTION_RUN_PUBLIC_PATHS.length,
     } : {}),
     ...(conversationEnabled ? {
-      conversationContract: '1.4.0' as const,
-      conversationPaths: 2,
+      conversationContract: PRIMARY_CONVERSATION_CONTRACT_VERSION,
+      conversationPaths: PRIMARY_CONVERSATION_PUBLIC_PATHS.length,
     } : {}),
     ...(agentChatEnabled ? {
-      agentChatContract: '1.8.0' as const,
-      agentChatPaths: 6,
+      agentChatContract: AGENT_CHAT_CONTRACT_VERSION,
+      agentChatPaths: AGENT_CHAT_PUBLIC_PATHS.length,
     } : {}),
     ...(memoryEnabled ? {
-      memoryContract: '1.9.0' as const,
-      memoryPaths: 2,
+      memoryContract: MEMORY_PUBLIC_CONTRACT_VERSION,
+      memoryPaths: MEMORY_PUBLIC_PATHS.length,
     } : {}),
     ...(scheduler ? {
       globalWorkScheduler: {

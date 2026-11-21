@@ -9,8 +9,6 @@ export const PRIMARY_CONVERSATION_PUBLIC_PATHS = Object.freeze([
   '/v1/organization/conversation/messages',
 ] as const);
 
-export const PRIMARY_CONVERSATION_PUBLIC_PATH_COUNT = PRIMARY_CONVERSATION_PUBLIC_PATHS.length;
-
 export type ConversationMessageKind =
   | 'user_message'
   | 'boss_acknowledgement'

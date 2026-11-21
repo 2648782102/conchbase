@@ -126,9 +126,14 @@ test('a missing task becomes a failed message', () => {
   assert.equal(projected!.error, 'Task not found.');
 });
 
-test('terminal and non-assistant messages are never re-projected', () => {
+test('a settled message that already matches its task projects nothing', () => {
+  // `null` is what keeps a read idempotent: reading a finished conversation
+  // must not rewrite a row on every request.
   assert.equal(projectMessage({
-    message: message({ state: 'done' }), task: task(), activity: [], now,
+    message: message({ state: 'done', body: '答案', phase: 'terminal', progress: 100 }),
+    task: task({ state: 'succeeded', output: '答案' }),
+    activity: [],
+    now,
   }), null);
   assert.equal(projectMessage({
     message: message({ author: 'user', state: 'published' }), task: task(), activity: [], now,
@@ -136,6 +141,39 @@ test('terminal and non-assistant messages are never re-projected', () => {
   assert.equal(projectMessage({
     message: message({ taskId: null }), task: task(), activity: [], now,
   }), null);
+});
+
+/**
+ * The message presents the task, so a retried task wins.
+ *
+ * Reproduced end to end: a reply was interrupted, the message became `failed`,
+ * the task was retried and succeeded, and the conversation showed the failure
+ * forever because a terminal message was never re-projected. The read path now
+ * follows the task; only a message with no task of its own stays untouched.
+ */
+test('a retried task revives a failed message', () => {
+  const revived = projectMessage({
+    message: message({ state: 'failed', body: '模型调用失败。', error: 'Runtime restarted before this task finished.' }),
+    task: task({ state: 'succeeded', attempt: 2, output: '最终答案' }),
+    activity: [],
+    now,
+  });
+  assert.ok(revived, 'a succeeded task must replace the stale failure');
+  assert.equal(revived!.state, 'done');
+  assert.equal(revived!.body, '最终答案');
+  assert.equal(revived!.error, null);
+});
+
+test('a running task after a retry replaces a failed message with live state', () => {
+  const running = projectMessage({
+    message: message({ state: 'failed', body: '模型调用失败。', error: 'Runtime restarted.' }),
+    task: task({ state: 'running', attempt: 2, partialOutput: '半' }),
+    activity: [],
+    now,
+  });
+  assert.ok(running);
+  assert.equal(running!.state, 'streaming');
+  assert.equal(running!.body, '半');
 });
 
 test('activity changes alone are enough to project', () => {

@@ -11,7 +11,7 @@ import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { TaskService } from '../../../runtime/task-service.js';
 import { backupOpenDatabase, inspectBackup } from '../../../runtime/backup.js';
-import { buildDiagnosticChecks, defaultDiagnosticContext } from '../../../runtime/diagnostics.js';
+import { buildDiagnosticChecks, consolePortFor, defaultDiagnosticContext } from '../../../runtime/diagnostics.js';
 import { buildSupportBundle } from '../../../runtime/support-bundle.js';
 import type { RuntimeConfig } from '../../../config/runtime-config.js';
 
@@ -78,7 +78,7 @@ export function registerOperationsRoutes(
     port: config!.port,
     host: config!.host,
     magpieBaseUrl: config!.magpieBaseUrl,
-    consolePort: config!.port === 4318 ? 5173 : 5173 + (config!.port - 4318),
+    consolePort: consolePortFor(config!.port),
   }));
 
   app.get('/v1/operations/support-bundle', async (_request, reply) => {
@@ -98,14 +98,7 @@ export function registerOperationsRoutes(
 
   app.get('/v1/operations/diagnostics', async (_request, reply) => {
     if (!config) return unavailable(reply);
-    const checks = await buildDiagnosticChecks(defaultDiagnosticContext({
-      databasePath: config.databasePath,
-      workspaceRoot: config.workspaceRoot,
-      port: config.port,
-      host: config.host,
-      magpieBaseUrl: config.magpieBaseUrl,
-      consolePort: config.port === 4318 ? 5173 : 5173 + (config.port - 4318),
-    }));
+    const checks = await runChecks();
     return reply.send({
       version: 1,
       checks: checks.map((check) => ({ id: check.id, status: check.status, detail: check.detail })),

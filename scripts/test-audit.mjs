@@ -14,8 +14,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const EXEMPT = Object.freeze({
-  'main.ts': 'process entry point; started by scripts and never imported by tests',
-  'cli.ts': 'process entry point; behaviour is covered through the services it calls',
+  'cli.ts': 'the only process entry point; behaviour is covered through the services it calls',
   'isolated-executor-worker.mjs': 'child-process worker; exercised end-to-end by isolated-execution.test.ts',
   // Exercised through the SQLite-backed suites below; importing them directly
   // would mean constructing a second DatabaseSync owner and duplicating the

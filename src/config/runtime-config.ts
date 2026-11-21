@@ -144,7 +144,7 @@ export interface RuntimeConfig {
    */
   permissionLevel?: PermissionLevel;
   loopBudget: LoopBudget;
-  /** the implementation: worker loop iterations per cooperative slice. 0 disables yielding. */
+  /** Worker loop iterations per cooperative slice. 0 disables yielding. */
   workerSliceIterations: number;
   /**
    * How long a project may receive no observable activity before the
@@ -152,7 +152,7 @@ export interface RuntimeConfig {
    * can never change the retention policy.
    */
   projectIdleMs: number;
-  /** the implementation: non-preemptive global work capacity. */
+  /** Non-preemptive global work capacity. */
   globalActiveWork: number;
   perProjectActiveWork: number;
   /**

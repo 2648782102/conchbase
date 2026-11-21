@@ -3,7 +3,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { buildDiagnosticChecks, formatDiagnostics, type DiagnosticContext } from '../src/runtime/diagnostics.js';
+import {
+  buildDiagnosticChecks,
+  consolePortFor,
+  formatDiagnostics,
+  type DiagnosticContext,
+} from '../src/runtime/diagnostics.js';
+import { readFileSync } from 'node:fs';
 
 function baseContext(directory: string): DiagnosticContext {
   return {
@@ -94,4 +100,30 @@ test('a port held by this very Runtime is reported as ok, not a conflict', async
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+/**
+ * The console port derivation must have one owner.
+ *
+ * `pagurus/vite.config.ts` computes the matching console port from the branch,
+ * and the Runtime needs the same number to tell the operator where the console
+ * should be. Three copies of the expression is how one of them eventually
+ * disagrees.
+ */
+test('console port derivation lives in one function', async () => {
+  assert.equal(consolePortFor(4318), 5173);
+  assert.equal(consolePortFor(4320), 5175);
+  const { readdirSync } = await import('node:fs');
+  const offenders: string[] = [];
+  const walk = (directory: string): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const child = path.join(directory, entry.name);
+      if (entry.isDirectory()) { walk(child); continue; }
+      if (!child.endsWith('.ts')) continue;
+      if (child.endsWith('diagnostics.ts')) continue;
+      if (/\?\s*5173\s*:\s*5173\s*\+/.test(readFileSync(child, 'utf8'))) offenders.push(child);
+    }
+  };
+  walk(path.join(import.meta.dirname, '..', 'src'));
+  assert.deepEqual(offenders, [], 'derive the console port with consolePortFor()');
 });

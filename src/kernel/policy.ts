@@ -14,9 +14,9 @@
  *    tests and cannot drift with process state.
  * 2. One decision per action, total. Every action maps to exactly one of
  *    `allow`, `approve`, `deny`; there is no "implicitly fine" outcome.
- * 3. Boundaries are not negotiable. A permission level may waive approval and
- *    may waive the grant list, but the workspace boundary and the secret
- *    boundary are inputs to the decision, never things a level can switch off.
+ * 3. Only ceremony is negotiable. A permission level may waive *approval*; it
+ *    never waives the grant list, the workspace boundary, or the secret
+ *    boundary. Those are inputs to the decision, not switches a level owns.
  */
 
 /** How much the operator trusts this Runtime. */

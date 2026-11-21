@@ -18,6 +18,7 @@ import { defaultWorkerGrants } from './runtime/capability-grants.js';
 import { createConvergenceRuntime } from './runtime/organization-convergence-runtime.js';
 import { AgentChatService } from './runtime/agent-chat.js';
 import { createOpenAiCompatibleMemoryReviewer } from './runtime/memory-review.js';
+import { createAutomaticBackup } from './runtime/automatic-backup.js';
 import { assertSupportedNode } from './runtime/node-version.js';
 
 assertSupportedNode();
@@ -225,10 +226,39 @@ async function main(argv: readonly string[]): Promise<void> {
       service.close();
       throw cause;
     }
+    // Automatic snapshots go through the live connection: the database has
+    // exactly one owner, so no external process may open it. A failure is
+    // recorded in `status()`, never thrown into the task loop.
+    const backupIntervalMs = config.backupIntervalMs ?? 24 * 60 * 60 * 1000;
+    const automaticBackup = backupIntervalMs > 0
+      ? createAutomaticBackup({
+        store: service.store,
+        directory: config.backupDirectory ?? path.join(path.dirname(config.databasePath), 'backups'),
+        keep: config.backupKeep ?? 7,
+        intervalMs: backupIntervalMs,
+      })
+      : null;
+    automaticBackup?.start();
     for (const signal of ['SIGINT', 'SIGTERM'] as const) {
       process.once(signal, () => {
-        convergence.stop();
-        process.exit(0);
+        void (async () => {
+          // Await an in-flight snapshot before exiting; a shutdown that lands
+          // mid-backup would otherwise leave a half-written file behind.
+          await automaticBackup?.stop();
+          convergence.stop();
+          // SSE streams can hold the listener open, and a tool call can be
+          // mid-flight. Both are bounded so a stuck client cannot turn a stop
+          // into a hang; `stop()` aborts in-flight tasks and closes the store.
+          await Promise.race([
+            app.close(),
+            new Promise((resolve) => setTimeout(resolve, 2_000)),
+          ]);
+          await Promise.race([
+            service.stop(),
+            new Promise((resolve) => setTimeout(resolve, 2_000)),
+          ]);
+          process.exit(0);
+        })();
       });
     }
     return;

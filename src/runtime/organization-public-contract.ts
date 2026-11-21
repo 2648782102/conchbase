@@ -20,5 +20,3 @@ export const ORGANIZATION_PUBLIC_PATHS = Object.freeze([
   '/v1/organization/attention/{attentionId}/withdraw',
   '/v1/organization/events',
 ] as const);
-
-export const ORGANIZATION_PUBLIC_PATH_COUNT = ORGANIZATION_PUBLIC_PATHS.length;

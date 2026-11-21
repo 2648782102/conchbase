@@ -32,6 +32,18 @@ export interface DiagnosticContext {
   readonly modelCount: () => Promise<number | null>;
 }
 
+/**
+ * The console port that belongs to a Runtime port.
+ *
+ * Both processes derive the number from the same rule, so a worktree gets a
+ * matching pair without configuration. It lives here, in one exported function,
+ * because the operations routes had already re-implemented the expression twice
+ * and `defaultDiagnosticContext` a third time.
+ */
+export function consolePortFor(runtimePort: number): number {
+  return runtimePort === 4318 ? 5173 : 5173 + (runtimePort - 4318);
+}
+
 function probePort(host: string, port: number): Promise<'free' | 'busy'> {
   return new Promise((resolve) => {
     const socket = createConnection({ host, port });
@@ -176,7 +188,7 @@ export function defaultDiagnosticContext(config: {
     port: config.port,
     host: config.host,
     magpieBaseUrl: config.magpieBaseUrl,
-    consolePort: config.consolePort ?? (config.port === 4318 ? 5173 : 5173 + (config.port - 4318)),
+    consolePort: config.consolePort ?? consolePortFor(config.port),
     checkPort: probePort,
     checkHttp: probeHttp,
     modelCount: async () => {

@@ -13,7 +13,6 @@ import { isTerminalTaskState } from './task-lifecycle.js';
 import { containsSecretLike } from './secret-filter.js';
 import {
   NONTERMINAL_STATES,
-  nonterminalMessageState,
   parseReasoningEffort as parseReasoningEffortShared,
   phaseForState,
   taskStateToMessageState,
@@ -23,12 +22,8 @@ import {
 } from './agent-chat-state.js';
 import type {
   AgentChatActivity,
-  AgentChatActivityKind,
-  AgentChatActivityState,
-  AgentChatMessageAuthor,
-  AgentChatMessagePhase,
-  AgentChatMessageState,
   AgentChatMessage,
+  AgentChatMessageState,
   AgentChatReasoningEffort,
 } from './agent-chat-types.js';
 
@@ -41,7 +36,6 @@ export type {
   AgentChatMessageState,
   AgentChatMessage,
   AgentChatReasoningEffort,
-  AgentChatMessage as AgentChatMessageType,
 } from './agent-chat-types.js';
 import {
   InMemoryAgentChatStore,
@@ -59,8 +53,6 @@ export const AGENT_CHAT_PUBLIC_PATHS = Object.freeze([
   '/v1/agent-chat/conversations/{conversationId}/approval',
   '/v1/agent-chat/conversations/{conversationId}/events',
 ] as const);
-
-export const AGENT_CHAT_PUBLIC_PATH_COUNT = AGENT_CHAT_PUBLIC_PATHS.length;
 
 export const BOSS_AGENT_ID = 'boss-agent';
 export const BOSS_AGENT_NAME = '老板 Agent';
@@ -142,8 +134,8 @@ export interface AgentChatStreamFrame {
   readonly conversationId: string;
   readonly kind: 'snapshot' | 'message' | 'health';
   /**
-   * Additive AG-UI mapping. `kind` remains the Conchbase vocabulary under
-   * the implementation; this field lets an AG-UI client map the same frame without a
+   * Additive AG-UI mapping. `kind` remains the Conchbase vocabulary;
+   * this field lets an AG-UI client map the same frame without a
    * private adapter. `null` means the frame has no faithful AG-UI equivalent.
    */
   readonly agUiType: string | null;
@@ -1295,7 +1287,7 @@ export class AgentChatService {
           if (byTool.get(toolId)?.length === 0) byTool.delete(toolId);
         }
       } else if (event.type === 'agent_loop.tool_reused') {
-        // the implementation: the read was served from an earlier identical result. It is
+        // The read was served from an earlier identical result. It is
         // still a successful tool activity, but the label says so instead of
         // pretending a new execution happened.
         const toolId = boundedString(event.data.toolId, 'unknown');

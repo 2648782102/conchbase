@@ -146,6 +146,24 @@ User messages are `published`. The assistant message moves through
 cancelled | unavailable`. `waiting_approval` is a human phase and carries the
 pending task id; it returns to the model phase after a decision.
 
+### The message is a projection of its task
+
+A message that carries a `taskId` is not an independent record of an outcome:
+it presents the task. `projectMessage` (in `agent-chat-projection.ts`) is the
+single rule, and both the write path and the read path use it.
+
+Two consequences, both of which were observed as bugs before they were rules:
+
+- the restart sweep only fails a message with **no** task. A message that owns
+  a task is settled by the task, which may still be re-admitted from a loop
+  checkpoint or explicitly retried. Sweeping it failed first produced a
+  conversation saying "discarded" beside a task that later succeeded;
+- a terminal message can still change, if its task changed. Retry moves a task
+  from `interrupted` back to `succeeded`, so the presentation must follow.
+  Re-projection is required to be idempotent — it returns `null` when only
+  `updatedAt` would differ — which is what keeps a read from writing a row on
+  every request.
+
 ### Rule of thumb
 
 A client never invents a transition. If a UI needs a new state, it is a Runtime

@@ -12,7 +12,7 @@ Requirements: Node.js 24 or newer.
 ```sh
 npm ci
 npm run dev
-curl http://127.0.0.1:4318/v1/health
+curl http://127.0.0.1:<port>/v1/health   # the port is printed at startup
 ```
 
 For a first model call, configure a local OpenAI-compatible Magpie gateway and

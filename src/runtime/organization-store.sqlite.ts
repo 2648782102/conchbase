@@ -1,6 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
 import {
-  ORGANIZATION_CONTRACT_VERSION,
   OrganizationConflictError,
   OrganizationValidationError,
   applyOrganizationAction,
@@ -11,7 +10,6 @@ import {
   type OrganizationSnapshot,
 } from './organization-contract.js';
 import {
-  ORGANIZATION_STORE_CONTRACT_VERSION,
   parseOrganizationLimit,
   type OrganizationStore,
 } from './organization-store.js';
@@ -182,5 +180,3 @@ export function migrateOrganizationSchema(database: DatabaseSync): void {
   `);
 }
 
-export const SQLITE_ORGANIZATION_STORE_CONTRACT_VERSION = ORGANIZATION_STORE_CONTRACT_VERSION;
-export const SQLITE_ORGANIZATION_CONTRACT_VERSION = ORGANIZATION_CONTRACT_VERSION;

@@ -1,6 +1,5 @@
 import type { AgentChatMessage } from './agent-chat-types.js';
 import {
-  nonterminalMessageState,
   phaseForState,
   taskStateToMessageState,
   terminalTaskState,
@@ -41,9 +40,9 @@ export interface ProjectionInput {
 export function projectMessage(input: ProjectionInput): AgentChatMessage | null {
   const { message, task, activity, now } = input;
   if (message.author !== 'assistant' || message.taskId === null) return null;
-  if (!nonterminalMessageState(message.state)) return null;
 
   if (!task) {
+    if (message.state === 'failed' && message.error === 'Task not found.') return null;
     return Object.freeze({
       ...message,
       body: 'Agent 任务不可用。',
@@ -93,7 +92,7 @@ export function projectMessage(input: ProjectionInput): AgentChatMessage | null 
   const state = projected === 'done' && message.state === 'replied' ? 'replied' : projected;
   const error = state === 'failed' ? (task.error ?? 'Agent task failed.').slice(0, 500) : null;
   const finalState = state === 'failed' && unavailableError(error) ? 'unavailable' : state;
-  return Object.freeze({
+  const next = Object.freeze({
     ...message,
     body: state === 'done' || state === 'replied'
       ? boundedOutput(task.output)
@@ -106,7 +105,28 @@ export function projectMessage(input: ProjectionInput): AgentChatMessage | null 
     phase: 'terminal' as const,
     progress: state === 'done' || state === 'replied' ? 100 : null,
     error,
-    updatedAt: now,
+    updatedAt: message.updatedAt,
     activity: Object.freeze([...activity]),
   });
+  /*
+   * A terminal message may still need to change.
+   *
+   * The message is the presentation of a task, and a task can be retried: it
+   * moves from `interrupted` back through `queued` to `succeeded`, while the
+   * message stays `failed` because the old rule never re-projected a terminal
+   * one. The reader then saw a failure forever.
+   *
+   * Re-projecting is safe only if it is idempotent, so `null` is returned when
+   * nothing but `updatedAt` would change. `updatedAt` is preserved instead of
+   * being bumped, which is what keeps a repeated read from writing every time.
+   */
+  if (message.state === next.state
+    && message.body === next.body
+    && message.error === next.error
+    && message.phase === next.phase
+    && message.progress === next.progress
+    && JSON.stringify(message.activity) === JSON.stringify(next.activity)) {
+    return null;
+  }
+  return Object.freeze({ ...next, updatedAt: now });
 }

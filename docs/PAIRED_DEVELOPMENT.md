@@ -40,8 +40,15 @@ not collide:
 
 | Checkout | Runtime port | Console port | Database |
 |---|---|---|---|
-| main checkout | 4318 | 5173 | `<checkout>/.conchbase/runtime.sqlite` |
+| default checkout | 4318 | 5173 | `<checkout>/.conchbase/runtime.sqlite` |
 | linked worktree | 4320–4399 (hashed from branch) | `5173 + (runtimePort − 4318)` | per-worktree path |
+
+The 4318 row is the checkout that owns `git-common-dir` — the original clone.
+A `git worktree` (including one created for a parallel session) is a linked
+checkout even when it holds `main`, so it takes a hashed port and its own
+database directory. `node -e "import('./scripts/worktree-env.mjs').then(m => console.log(m.resolveWorktreeEnv()))"`
+prints the values for the checkout you are standing in; `.conchbase/session.json`
+records them too.
 
 Both `scripts/worktree-env.mjs` (Runtime) and `pagurus/vite.config.ts`
 (console) compute the same number from the branch. The console points at the
@@ -57,7 +64,9 @@ npm run dev                 # or: CONCHBASE_PORT=4318 node dist/cli.js serve
 cd pagurus && npm install && npm run dev
 ```
 
-Health check: `curl -s http://127.0.0.1:4318/v1/health`.
+Health check: `curl -s http://127.0.0.1:${PORT}/v1/health`, where `PORT` is the
+number the session banner printed at startup (4318 only in the original
+checkout).
 Preflight: `conchbase diagnose` checks Node, paths, port, gateway, and console
 in one pass.
 
@@ -73,7 +82,7 @@ and the `fetch` stubs in each focused test). The live eval harness
 | Symptom | Cause | Fix |
 |---|---|---|
 | `Node.js … is too old` | wrong interpreter | `nvm use` |
-| `EADDRINUSE :4318` | main Runtime already running | stop it, or use a linked worktree (gets its own port) |
+| `EADDRINUSE :<port>` | a Runtime is already running on that port | stop it, or use a linked worktree (gets its own port) |
 | `Runtime database is already owned` | two processes on one SQLite file | one Runtime per database path |
 | Console shows offline | Runtime not up, or port mismatch | check `/v1/health`; set `CONCHBASE_URL` |
 | Task stuck in `waiting_approval` | a write tool needs approval | approve via the conversation's shown `POST …/approval` hint |

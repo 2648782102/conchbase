@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -103,4 +103,21 @@ test('starting and stopping controls the timer without leaving work behind', asy
     assert.equal(snapshots(backups).length, 0, 'stopping before the first tick writes nothing');
     assert.equal(automatic.status().running, false);
   });
+});
+
+/**
+ * A timer nobody starts is the same as no timer.
+ *
+ * Snapshots existed as a module and as `backup` / `verify-backup` verbs for a
+ * long time, and the documentation claimed they ran on a schedule. They did
+ * not: only a second, unreachable entry point wired `createAutomaticBackup`,
+ * while `conchbase serve` — the path `npm run dev` and `start` both use — never
+ * constructed it. The tests passed because they exercised the module directly.
+ * Pinning the wiring is the only way a unit test can catch that.
+ */
+test('the real serve path starts automatic snapshots', () => {
+  const entry = readFileSync(new URL('../src/cli.ts', import.meta.url), 'utf8');
+  assert.match(entry, /createAutomaticBackup\(/, 'serve must construct the automatic backup');
+  assert.match(entry, /automaticBackup\?\.start\(\)/, 'serve must start the timer');
+  assert.match(entry, /await automaticBackup\?\.stop\(\)/, 'shutdown must await an in-flight snapshot');
 });

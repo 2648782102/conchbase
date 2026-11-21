@@ -134,9 +134,10 @@ test('scope narrowing stays in the kernel', () => {
  * itself, it just makes the system look more complete than it is.
  */
 test('every runtime module is imported by something', () => {
-  // Entry points are executed directly (`node dist/main.js`), so they are
-  // legitimately imported by nothing.
-  const entryPoints = new Set(['src/main.ts', 'src/cli.ts']);
+  // The CLI is executed directly (`node dist/cli.js`), so it is legitimately
+  // imported by nothing. It must also be the *only* entry point: two wiring
+  // roots drift, and this repository had already done so.
+  const entryPoints = new Set(['src/cli.ts']);
   // Files reachable from an entry point, computed over actual import edges.
   const sources = [...listTypeScriptFiles('src'), ...listTypeScriptFiles('tests')];
   const imported = new Set<string>();
@@ -154,6 +155,11 @@ test('every runtime module is imported by something', () => {
     .filter((file) => !entryPoints.has(file) && !imported.has(file));
   assert.deepEqual(unreferenced, [], `modules no source or test imports:\n${unreferenced.join('\n')}`);
   assert.ok([...entryPoints].every((entry) => sources.includes(entry)), 'entry points exist');
+  assert.equal(
+    [...entryPoints].length,
+    1,
+    'exactly one process entry point may exist; a second one silently forks startup wiring',
+  );
 });
 
 test('every script is wired to a command or a document', () => {

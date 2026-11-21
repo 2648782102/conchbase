@@ -12,7 +12,7 @@ Conchbase 是一个本地优先的个人 Agent Runtime。它负责 Agent 循环�
 ```sh
 npm ci
 npm run dev
-curl http://127.0.0.1:4318/v1/health
+curl http://127.0.0.1:<port>/v1/health   # 端口会在启动时打印
 ```
 
 需要真实模型时，在本机配置 OpenAI 兼容的 Magpie 网关并设置

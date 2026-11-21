@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { LogController } from 'fastify';
 import type { RuntimeConfig } from '../config/runtime-config.js';
 import type { TaskService } from '../runtime/task-service.js';
 import type { OrganizationStore } from '../runtime/organization-store.js';
@@ -44,9 +44,13 @@ export interface CreateAppOptions {
 export function createApp(options: CreateAppOptions = {}) {
   // Never serialize request bodies into logs: they can contain prompts and
   // tool arguments. The error hook below logs a category and identifiers only.
+  //
+  // `logController` is how Fastify 5 disables request/response logging; the
+  // top-level `disableRequestLogging` option is deprecated and prints a warning
+  // on every start.
   const app = Fastify({
     logger: options.logger ?? true,
-    disableRequestLogging: true,
+    logController: new LogController({ disableRequestLogging: true }),
   });
   app.addHook('onError', async (request, _reply, error) => {
     const { toErrorRecord, formatErrorLog } = await import('../runtime/error-categories.js');

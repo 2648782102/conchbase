@@ -157,17 +157,15 @@ test('the runtime publishes the convergence policy it enforces', async () => {
 
 test('app startup shares one Agent Chat instance with the sweeper', async () => {
   // A live probe found the notice missing from the user's conversation even
-  // though it had been written: main.ts created one AgentChatService for the API
+  // though it had been written: startup created one AgentChatService for the API
   // and another for the sweeper, and the in-memory caches diverged. Read the
   // startup sources so the invariant is pinned where the mistake happened.
   const { readFileSync } = await import('node:fs');
-  for (const file of ['../src/main.ts', '../src/cli.ts']) {
-    const source = readFileSync(new URL(file, import.meta.url), 'utf8');
-    assert.match(source, /agentChatService: agentChat/, `${file} must pass the shared instance to createApp`);
-    assert.equal(
-      (source.match(/new AgentChatService\(/g) ?? []).length,
-      1,
-      `${file} must construct exactly one AgentChatService`,
-    );
-  }
+  const source = readFileSync(new URL('../src/cli.ts', import.meta.url), 'utf8');
+  assert.match(source, /agentChatService: agentChat/, 'startup must pass the shared instance to createApp');
+  assert.equal(
+    (source.match(/new AgentChatService\(/g) ?? []).length,
+    1,
+    'startup must construct exactly one AgentChatService',
+  );
 });

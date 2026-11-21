@@ -9,8 +9,6 @@ export const MEMORY_PUBLIC_PATHS = Object.freeze([
   '/v1/memory/{memoryId}',
 ] as const);
 
-export const MEMORY_PUBLIC_PATH_COUNT = MEMORY_PUBLIC_PATHS.length;
-
 const MAX_LIST = 200;
 
 function unavailable(reply: { code(status: number): { send(payload: unknown): unknown } }) {

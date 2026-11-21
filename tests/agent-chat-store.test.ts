@@ -131,6 +131,52 @@ test('SQLite agent chat store recovers an interrupted organizing message on init
   }
 });
 
+/**
+ * A message that owns a task is the task's to settle.
+ *
+ * Measured on a real restart: a reply was mid-flight when the process died,
+ * the task had already committed `succeeded`, and the store's recovery sweep
+ * marked the message `failed` first. The task projection can only repair a
+ * non-terminal message, so the conversation kept saying "discarded" forever
+ * beside a successful task. The sweep must therefore leave task-owned messages
+ * alone.
+ */
+test('initialize leaves a task-owned message for the task projection to settle', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-agent-chat-owned-'));
+  const filename = path.join(directory, 'runtime.sqlite');
+  try {
+    const firstDatabase = new DatabaseSync(filename);
+    firstDatabase.exec('PRAGMA user_version = 4;');
+    migrateAgentChatSchema(firstDatabase);
+    const first = new SqliteAgentChatStore(firstDatabase);
+    first.initialize();
+    first.save({
+      ...record(),
+      messages: Object.freeze([record().messages[0]!, Object.freeze({
+        ...record().messages[0]!,
+        id: 'amsg_owned',
+        sequence: 2,
+        author: 'assistant' as const,
+        body: '',
+        state: 'thinking' as const,
+        phase: 'model' as const,
+        taskId: 'task_finished_elsewhere',
+      })]),
+    });
+    firstDatabase.close();
+
+    const secondDatabase = new DatabaseSync(filename);
+    const second = new SqliteAgentChatStore(secondDatabase);
+    second.initialize();
+    const loaded = second.get('chat_fixture');
+    assert.equal(loaded?.messages[1]?.state, 'thinking', 'the sweep must not claim a task-owned message');
+    assert.equal(loaded?.messages[1]?.taskId, 'task_finished_elsewhere');
+    secondDatabase.close();
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('SQLite agent chat store upserts messages without duplicating rows', () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-agent-chat-upsert-'));
   const filename = path.join(directory, 'runtime.sqlite');

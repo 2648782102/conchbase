@@ -17,6 +17,10 @@ Updated: 2026-11-21
   inline approval for the supported tool path. A waiting approval carries the
   Runtime-computed summary, risk, and bounded preview, so the client can show
   the change without a second lookup.
+- A conversation message presents its task, so it follows the task across a
+  retry: an interrupted reply shows as failed, and once the retried attempt
+  succeeds the same message is re-projected to the real output. A message with
+  no task (a queued turn) is the only one a restart marks failed on its own.
 - Runtime notices are authored `runtime`, not `assistant`, and are excluded from
   model context: they are the Runtime speaking and must not be replayed as one
   of the Agent's own turns. Only user turns and non-empty assistant turns reach
@@ -75,7 +79,7 @@ Updated: 2026-11-21
 
 ## Source map
 
-- Runtime bootstrap: `src/main.ts`, `src/cli.ts`
+- Runtime bootstrap: `src/cli.ts` (the only process entry point)
 - HTTP registration: `src/http/create-app.ts`
 - Tasks and persistence: `src/runtime/task-service.ts`, `task-store.ts`
 - Agent loop/tools: `src/runtime/agent-chat.ts`, `agent-loop-tools.ts`,

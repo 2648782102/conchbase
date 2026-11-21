@@ -182,21 +182,18 @@ test('startup creates the configured workspace root before tools use it', () => 
   // A worker whose root does not exist can list nothing and write nothing: it
   // reports not_found for every path and produces no output. The Runtime must
   // create the root at startup rather than relying on the operator to do it.
-  const sources = [
-    readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8'),
-    readFileSync(new URL('../src/cli.ts', import.meta.url), 'utf8'),
-  ];
-  for (const source of sources) {
-    assert.match(
-      source,
-      /mkdirSync\(config\.workspaceRoot, \{ recursive: true \}\)/,
-      'every Runtime entry point must create the workspace root',
-    );
-  }
+  // `src/cli.ts` is the only process entry point; there must be exactly one
+  // place that wires a Runtime, or the paths silently diverge.
+  const source = readFileSync(new URL('../src/cli.ts', import.meta.url), 'utf8');
+  assert.match(
+    source,
+    /mkdirSync\(config\.workspaceRoot, \{ recursive: true \}\)/,
+    'the Runtime entry point must create the workspace root',
+  );
 });
 
 test('project idle policy is operator configuration with a bounded range', () => {
-  // the implementation: convergence is a retention decision, so a model, task, or client
+  // Convergence is a retention decision, so a model, task, or client
   // must never be able to shorten it into an immediate archive.
   assert.equal(loadRuntimeConfig({}).projectIdleMs, 30 * 60 * 1000);
   assert.equal(loadRuntimeConfig({ CONCHBASE_PROJECT_IDLE_MS: '60000' }).projectIdleMs, 60_000);
@@ -212,7 +209,7 @@ test('project idle policy is operator configuration with a bounded range', () =>
 });
 
 test('git tools are off unless explicitly enabled', () => {
-  // the implementation: these execute a subprocess, so the default surface must not
+  // These execute a subprocess, so the default surface must not
   // include them. The flag mirrors CONCHBASE_ALLOW_TOOL_WRITES.
   assert.equal(loadRuntimeConfig({}).enableGitTools, undefined);
   assert.equal(loadRuntimeConfig({ CONCHBASE_ENABLE_GIT_TOOLS: '1' }).enableGitTools, true);

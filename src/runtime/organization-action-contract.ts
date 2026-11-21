@@ -63,8 +63,6 @@ export const REPORT_STATES = Object.freeze([
   'draft', 'progress', 'waiting', 'ready', 'blocked', 'failed', 'attention', 'ended',
 ] as const);
 
-export const ATTENTION_DECISIONS = Object.freeze(['approve', 'decline', 'defer'] as const);
-
 const CAPABILITY_PATTERN = /^cap_[a-z0-9][a-z0-9_-]{2,80}$/;
 
 /**

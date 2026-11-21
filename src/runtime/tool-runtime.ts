@@ -16,9 +16,9 @@ export async function createToolRuntime(options: {
   readonly mcpConfigPath?: string;
   readonly skillsDirectory?: string;
   readonly allowWrites?: boolean;
-  /** the implementation: read-only git tools, off unless explicitly enabled. */
+  /** Read-only git tools, off unless explicitly enabled. */
   readonly enableGit?: boolean;
-  /** the implementation: plugins are supplied by composition, never imported by path. */
+  /** Plugins are supplied by composition, never imported by path. */
   readonly plugins?: readonly PluginDefinition[];
 }): Promise<ToolRuntime> {
   const builtins = createBuiltinReadTools({ root: options.root });

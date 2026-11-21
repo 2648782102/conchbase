@@ -610,7 +610,7 @@ export class TaskService {
     });
   }
 
-  /** the implementation: the Boss marks worker tasks with a Runtime-owned slice budget. */
+  /** The Boss marks worker tasks with a Runtime-owned slice budget. */
   setTaskSliceBudget(taskId: string, sliceIterations: number): void {
     if (!Number.isInteger(sliceIterations) || sliceIterations < 1) {
       this.sliceBudgetByTaskId.delete(taskId);
@@ -622,7 +622,7 @@ export class TaskService {
   startTask(taskId: string): void {
     const task = this.store.getTask(taskId);
     if (!task) throw new TaskNotFoundError();
-    // the implementation: a cooperative slice yield interrupts the task at a safe
+    // A cooperative slice yield interrupts the task at a safe
     // boundary but keeps its checkpoint; re-admission resumes it in place.
     const resuming = (task.state === 'running' || task.state === 'interrupted')
       && parseLoopContinuation(this.store.getLoopState(taskId)) !== undefined;
@@ -1211,7 +1211,7 @@ export class TaskService {
         iteration,
         messages,
       } satisfies LoopContinuationCheckpoint));
-      // the implementation: a worker that used its slice budget yields at this safe
+      // A worker that used its slice budget yields at this safe
       // boundary. The checkpoint above lets a later re-admission continue.
       const sliceBudget = this.sliceBudgetByTaskId.get(task.id);
       if (sliceBudget !== undefined && iteration + 1 - startIteration >= sliceBudget) {

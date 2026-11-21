@@ -436,7 +436,7 @@ export class SqlitePlatformStore implements PlatformStore {
     return this.transitionWork(workItemId, expectedState, 'running', ['open', 'paused'], 'work.started');
   }
 
-  /** the implementation: a running worker voluntarily yields its slot at a slice boundary. */
+  /** A running worker voluntarily yields its slot at a slice boundary. */
   pauseWork(workItemId: string, expectedState: WorkState): WorkSnapshot {
     const current = this.getWorkItemOrThrow(workItemId);
     if (current.state !== expectedState || current.state !== 'running') {

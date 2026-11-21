@@ -29,11 +29,6 @@ export interface OrganizationAttentionSubmission {
   readonly decisionDigest?: string;
 }
 
-export interface OrganizationEventPageQuery {
-  readonly after?: string;
-  readonly limit?: string;
-}
-
 export interface OrganizationIntentResult {
   readonly version: typeof ORGANIZATION_PUBLIC_CONTRACT_VERSION;
   readonly intentId: string;

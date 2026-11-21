@@ -38,7 +38,10 @@ const NONTERMINAL: readonly AgentChatMessageState[] = Object.freeze([
 ]);
 
 function recoverMessages(messages: readonly AgentChatMessage[]): readonly AgentChatMessage[] {
+  // Same rule as the SQLite sweep: a message that owns a task is settled by the
+  // task projection, not here. See `SqliteAgentChatStore.initialize`.
   return Object.freeze(messages.map((message) => NONTERMINAL.includes(message.state)
+    && message.taskId === null
     ? Object.freeze({
       ...message,
       state: 'failed' as const,
@@ -139,10 +142,23 @@ export class SqliteAgentChatStore implements AgentChatStore {
   constructor(readonly database: DatabaseSync) {}
 
   initialize(): void {
+    /*
+     * A message that owns a task is not ours to fail.
+     *
+     * This sweep runs at store construction, before `TaskService` has decided
+     * what a leftover task becomes. A `running` task with a checkpoint is
+     * re-admitted and finishes normally, so marking its reply failed here
+     * produced a conversation that said "discarded" next to a task that
+     * succeeded — and `projectMessage` never repaired it, because the sweep had
+     * already made the message terminal. Only a message with no task (a
+     * queued turn, whose queue is in memory) is provably stranded at this
+     * point; the task owner settles the rest through the projection.
+     */
     this.database.prepare(`
       UPDATE agent_chat_messages
       SET state = 'failed', phase = 'terminal', progress = NULL, error = ?, updated_at = ?
-      WHERE author = 'assistant' AND state IN ('pending', 'thinking', 'streaming', 'organizing')
+      WHERE author = 'assistant' AND task_id IS NULL
+        AND state IN ('pending', 'thinking', 'streaming', 'organizing')
     `).run(RECOVERED_ERROR, new Date().toISOString());
   }
 

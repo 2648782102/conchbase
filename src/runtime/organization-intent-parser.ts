@@ -100,7 +100,7 @@ export function parseStructuredOrganizationResult(
       && (candidate as Record<string, unknown>).type === 'open_project'
       ? { ...(candidate as Record<string, unknown>), originTriggerId: input.intentId }
       : candidate;
-    // the implementation: the Runtime owns `expectedSequence`, so fill it before
+    // The Runtime owns `expectedSequence`, so fill it before
     // validation. Validating first would reject a plan for omitting a value the
     // model cannot compute.
     const withSequence = isRecord(normalized)
@@ -453,12 +453,6 @@ export function createDeterministicOrganizationIntentParser(): OrganizationInten
       });
     },
   };
-}
-
-export interface StructuredModelCall {
-  readonly model: string;
-  readonly prompt: string;
-  readonly signal?: AbortSignal;
 }
 
 const OPENAI_COMPATIBLE_PARSER_INSTRUCTIONS = [
