@@ -183,6 +183,74 @@ export function createGitReadTools(options: GitToolsOptions): ToolProvider {
     });
   };
 
+  /*
+   * Push publishes commits; there is no undo on the remote.
+   *
+   * The argument vector is fixed — no branch, no remote, no flags from the
+   * model — so this cannot become `push --force` or a push to a different
+   * remote. The preview names the branch and the commits about to leave this
+   * machine, because an approval prompt that only says "push" is not informed
+   * consent.
+   */
+  const push = async (args: ToolArguments): Promise<ToolExecutionResult> => {
+    const branch = await invoke(['rev-parse', '--abbrev-ref', 'HEAD']).catch(() => null);
+    const current = (branch?.summary ?? '').trim();
+    if (current.length === 0 || current === '(no output)' || current === 'HEAD') {
+      return Object.freeze({
+        ok: false,
+        summary: 'refusing to push: HEAD is detached or unreadable.',
+        digest: referenceDigest('git', 'detached-head'),
+        bytes: 0,
+        errorCode: 'detached_head',
+      });
+    }
+    /*
+     * An explicit upstream is required.
+     *
+     * A repository with no upstream would make `git push` fail with its own
+     * message; worse, a misconfigured `push.default` could send the branch
+     * somewhere the operator did not intend. Naming `origin <branch>` keeps
+     * the destination fixed and visible in the preview.
+     */
+    const remote = await invoke(['remote', 'get-url', 'origin']).catch(() => null);
+    if (remote === null || !remote.ok) {
+      return Object.freeze({
+        ok: false,
+        summary: 'refusing to push: no `origin` remote is configured.',
+        digest: referenceDigest('git', 'no-origin'),
+        bytes: 0,
+        errorCode: 'no_remote',
+      });
+    }
+    const ahead = await invoke(['rev-list', '--count', `origin/${current}..HEAD`]).catch(() => null);
+    const pending = Number((ahead?.summary ?? '').trim());
+    const commits = Number.isInteger(pending) && pending > 0 ? pending : 0;
+    if (args.dryRun === true) {
+      return Object.freeze({
+        ok: true,
+        summary: commits > 0
+          ? `would push ${commits} commit(s) from ${current} to origin`
+          : `nothing to push: ${current} is up to date with origin`,
+        digest: referenceDigest('git', `push-preview:${current}:${commits}`),
+        bytes: 0,
+        evidence: { facts: { branch: current, commits, remote: 'origin' } },
+      });
+    }
+    const result = await run(['push', 'origin', `HEAD:refs/heads/${current}`], root)
+      .catch(() => { throw new ToolRejectedError('git_failed'); });
+    if (result.code !== 0) {
+      throw new ToolRejectedError('git_failed', bounded(result.stderr, 500).trim() || 'git push failed.');
+    }
+    const summary = bounded(`${result.stdout}\n${result.stderr}`, maxBytes).trim();
+    return Object.freeze({
+      ok: true,
+      summary: summary.length > 0 ? summary : `pushed ${current} to origin`,
+      digest: referenceDigest('git', summary),
+      bytes: Buffer.byteLength(summary, 'utf8'),
+      evidence: { facts: { branch: current, commits, remote: 'origin' } },
+    });
+  };
+
   const invoke = async (args: readonly string[]): Promise<ToolExecutionResult> => {
     let result: { code: number; stdout: string; stderr: string };
     try {
@@ -250,8 +318,29 @@ export function createGitReadTools(options: GitToolsOptions): ToolProvider {
           additionalProperties: false,
         },
       },
+      {
+        id: 'git_push',
+        version: 1 as const,
+        description: [
+          'Push the current branch to `origin`.',
+          'An external write: it publishes commits and cannot be undone on the remote.',
+          'The branch and remote are fixed by the Runtime, never taken from the caller.',
+          'Pass dryRun: true to see what would be pushed without sending anything.',
+        ].join(' '),
+        // `external`, not `write`: the effect leaves this machine, so it is
+        // approved even at the `standard` level and recorded like any other
+        // outbound action.
+        sideEffect: 'external' as const,
+        parameters: {
+          type: 'object',
+          properties: {
+            dryRun: { type: 'boolean', description: 'Report what would be pushed, without pushing.' },
+          },
+          additionalProperties: false,
+        },
+      },
     ]),
-    has: (toolId: string) => ['git_status', 'git_diff', 'git_log', 'git_commit'].includes(toolId),
+    has: (toolId: string) => ['git_status', 'git_diff', 'git_log', 'git_commit', 'git_push'].includes(toolId),
     invoke: async (toolId: string, args: ToolArguments) => {
       switch (toolId) {
         case 'git_status':
@@ -267,6 +356,8 @@ export function createGitReadTools(options: GitToolsOptions): ToolProvider {
         }
         case 'git_commit':
           return commit(args);
+        case 'git_push':
+          return push(args);
         case 'git_log': {
           const requested = args.maxCount;
           const maxCount = typeof requested === 'number' && Number.isInteger(requested)

@@ -24,31 +24,28 @@ Updated: 2026-11-21
 - One effective policy is published: `permissionLevel`, beside the legacy
   `executionMode` marked `executionModeIsLegacy`. They could disagree, so read
   the level.
-- Prompts fit the model's window (`context-budget.ts`): catalog window, 32k
-  fallback, reserved reply room, visible `context_trimmed`. Instructions are
-  never dropped; the rest is compressed into a bounded system summary
-  (`context-summary.ts`). No summariser or a failed one leaves the plain trim,
+- Prompts fit the window (`context-budget.ts`, 32k fallback) with reserved reply
+  room and a visible `context_trimmed`; instructions are never dropped and the
+  rest is summarised (`context-summary.ts`). No summariser leaves the plain trim,
   recorded as `summarized: false`.
 - Transient provider failures retry with capped backoff (`provider-retry.ts`);
   auth, malformed requests, and context overflow still fail immediately.
-- Agent Chat cancels via `POST …/cancel`, for a running turn and a queued one.
-- Direct Agent conversations use memory: injected index plus reviewed
-  proposals, agent scope only, fail-closed reviewer.
-- `CONCHBASE_PLUGINS_DIR` installs plugins; ids are namespaced by plugin, a
-  broken plugin is skipped, and `close()` stops every subprocess.
+- Agent Chat cancels via `POST …/cancel` (running or queued); direct
+  conversations use memory — injected index plus reviewed proposals, agent scope
+  only, fail-closed reviewer.
+- `CONCHBASE_PLUGINS_DIR` installs plugins, namespaced by plugin id; a broken
+  plugin is skipped and `close()` stops every subprocess.
 - Recurring tasks via `/v1/schedules`; overlapping and missed runs are skipped,
-  and a schedule with a missing Agent disables itself.
+  a schedule with a missing Agent disables itself.
 - Attachments: images become content parts; text documents are inlined and
-  labelled as data. PDF and other binary formats are refused.
-- `TaskService.stop()` is bounded (5 s) and records `shutdownTimedOut`.
+  labelled as data; PDF and other binary formats are refused.
+- Tools cover read, search, write, delete, move, copy, git, opt-in `http_fetch`,
+  and opt-in `git_push`. Every one is bounded to the workspace or to an explicit
+  external target; see `ARCHITECTURE.md#tools` for the boundaries.
 - Runtime notices are authored `runtime`, not `assistant`, and are excluded from
   model context: they are the Runtime speaking and must not be replayed as one
   of the Agent's own turns. Only user turns and non-empty assistant turns reach
   the model.
-- Built-in workspace read/search tools with a depth cap, a search-time budget,
-  UTF-8-safe truncation, and structured evidence on every result.
-- Safe workspace writes: an existing file needs an explicit `overwrite: true`,
-  and each result reports created-vs-replaced and byte sizes.
 - Approval requests name the tool, target path, and risk before anything runs.
 - A failed task records a bounded `category` (`auth`, `rate-limit`, `timeout`,
   `unavailable`, `provider`, …) on its `task.failed` event, derived from the

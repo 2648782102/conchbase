@@ -236,6 +236,58 @@ until a person acts, and retrying every tick would only write events.
 
 ## Plugins and attachments
 
+## Tools
+
+Every tool declares a side effect, and that class is what the policy kernel acts
+on — not the tool's name. `read` runs immediately at `standard`; `write` and
+`external` need approval; `trusted` waives approval but never the workspace
+boundary or the Agent's grant list.
+
+| Group | Tools | Effect |
+|---|---|---|
+| read | `workspace_list`, `workspace_read`, `text_search` | read |
+| write | `workspace_write`, `workspace_delete`, `workspace_move`, `workspace_copy` | write |
+| git | `git_status`, `git_diff`, `git_log` | read |
+| git | `git_commit` | write |
+| git | `git_push` | external |
+| network | `http_fetch` (opt-in) | external |
+
+Two of the write tools have guards that are not about policy:
+
+- `workspace_delete` refuses the workspace root itself, and a non-empty directory
+  needs `recursive: true`. Comparing the *resolved* root matters: on macOS `/var`
+  is a symlink to `/private/var`, so the string forms differ for the same
+  directory — the first version of this check let `delete(".")` through on
+  exactly the platform it runs on.
+- `workspace_move` and `workspace_copy` refuse to replace an existing destination
+  without `overwrite: true`, and both endpoints are checked against the root.
+
+### Outbound HTTP
+
+`http_fetch` is the only tool whose failure mode is outside this machine, so it
+is opt-in and its boundary is enforced in three places:
+
+1. before the request, on the scheme, embedded credentials, and the resolved
+   address of the hostname — a name that resolves to `127.0.0.1` is the same
+   request as writing the address out;
+2. on every redirect, re-vetted, because a public host is free to answer
+   `Location: http://127.0.0.1:4318/` and that is the standard bypass;
+3. on the response, capping bytes and refusing non-textual content types before
+   anything reaches the model's context.
+
+Private, loopback, link-local, unique-local, carrier-grade NAT, and metadata
+ranges are refused for both v4 and v6, including IPv4-mapped v6 forms.
+`CONCHBASE_ALLOW_PRIVATE_NETWORKS=1` is the only way past that, and it is
+operator-only — a model or an Agent revision cannot ask for it.
+
+### Push
+
+`git_push` fixes the destination: the branch comes from `HEAD`, the remote must
+be `origin`, and the argv is built by the Runtime. There is no path from the tool
+schema to `--force`, another remote, or a caller-named branch. A detached HEAD or
+a missing `origin` is refused before anything is sent, and `dryRun: true` reports
+the commit count without pushing.
+
 `plugin-loader.ts` turns a directory of `plugin.json` manifests into tool
 providers. Tool ids are namespaced by plugin id: two plugins declaring `echo`
 would otherwise collide, and `combineToolProviders` refuses the whole surface —

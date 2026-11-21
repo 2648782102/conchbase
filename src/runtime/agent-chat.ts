@@ -125,8 +125,42 @@ function withApprovalExplanation(message: AgentChatMessage): AgentChatMessage {
   if (message.state !== 'waiting_approval' || message.body.trim().length > 0) return message;
   return Object.freeze({
     ...message,
-    body: '【需要你的批准】这一步会修改工作区。请查看上面的改动预览，然后选择批准或拒绝。',
+    body: approvalHintFor(message),
   });
+}
+
+/**
+ * Says what the pending action actually is.
+ *
+ * The old text said "this will modify the workspace" for every approval,
+ * including an outbound HTTP request and a git push. A reader deciding whether
+ * to approve has to know which of those they are allowing, so the wording comes
+ * from the tool named in the message and falls back to the neutral form.
+ */
+function approvalHintFor(message: AgentChatMessage): string {
+  /*
+   * The tool name lives in different fields depending on the frame: the approval
+   * entry carries it in `label` ("等待审批：http_fetch"), the tool entry in
+   * `detail`. Reading only one of them is why the first version of this fell
+   * through to the generic wording for every external tool.
+   */
+  const detail = message.activity
+    .filter((entry) => entry.kind === 'approval' || entry.kind === 'tool')
+    .map((entry) => `${entry.label} ${entry.detail ?? ''}`)
+    .join(' ');
+  if (/git_push/.test(detail)) {
+    return '【需要你的批准】这一步会把本机提交推送到远程仓库，远程无法撤销。请确认分支与提交，然后选择批准或拒绝。';
+  }
+  if (/http_fetch/.test(detail)) {
+    return '【需要你的批准】这一步会向外部地址发起网络请求。请确认目标地址，然后选择批准或拒绝。';
+  }
+  if (/workspace_delete/.test(detail)) {
+    return '【需要你的批准】这一步会删除工作区中的内容，且无法撤销。请确认目标路径，然后选择批准或拒绝。';
+  }
+  if (/workspace_move|workspace_copy/.test(detail)) {
+    return '【需要你的批准】这一步会移动或复制工作区中的内容。请确认来源与目标，然后选择批准或拒绝。';
+  }
+  return '【需要你的批准】这一步会修改工作区。请查看上面的改动预览，然后选择批准或拒绝。';
 }
 
 export interface AgentChatMessageResult {

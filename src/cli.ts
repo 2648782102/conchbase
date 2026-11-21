@@ -206,6 +206,8 @@ async function main(argv: readonly string[]): Promise<void> {
   ...(config.pluginsDirectory ? { pluginsDirectory: config.pluginsDirectory } : {}),
   ...(config.allowToolWrites ? { allowWrites: true } : {}),
   ...(config.enableGitTools ? { enableGit: true } : {}),
+      ...(config.enableHttpTools ? { enableHttp: true } : {}),
+      ...(config.allowPrivateNetworks ? { allowPrivateNetworks: true } : {}),
     });
     const service = createTaskService(config.databasePath, {
       magpieBaseUrl: config.magpieBaseUrl,
@@ -375,6 +377,8 @@ async function main(argv: readonly string[]): Promise<void> {
   ...(config.pluginsDirectory ? { pluginsDirectory: config.pluginsDirectory } : {}),
   ...(config.allowToolWrites ? { allowWrites: true } : {}),
   ...(config.enableGitTools ? { enableGit: true } : {}),
+      ...(config.enableHttpTools ? { enableHttp: true } : {}),
+      ...(config.allowPrivateNetworks ? { allowPrivateNetworks: true } : {}),
   });
   const service = createTaskService(config.databasePath, {
     magpieBaseUrl: config.magpieBaseUrl,

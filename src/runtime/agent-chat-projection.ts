@@ -96,10 +96,8 @@ export function projectMessage(input: ProjectionInput): AgentChatMessage | null 
     ...message,
     body: state === 'done' || state === 'replied'
       ? boundedOutput(task.output)
-      : state === 'failed'
-        ? /rejected by the operator/i.test(error ?? '')
-          ? '你拒绝了这次工具执行，本轮已停止。'
-          : '模型调用失败。'
+        : state === 'failed'
+          ? failureBody(error)
         : '回复已取消。',
     state: finalState,
     phase: 'terminal' as const,
@@ -129,4 +127,35 @@ export function projectMessage(input: ProjectionInput): AgentChatMessage | null 
     return null;
   }
   return Object.freeze({ ...next, updatedAt: now });
+}
+
+/**
+ * Turns a bounded task error into something a reader can act on.
+ *
+ * "模型调用失败" was shown for every failure, including a tool the Runtime
+ * refused and one the operator rejected. A reader cannot tell a bad key from a
+ * blocked URL from a refused approval, so the message hid the one fact they
+ * needed. The task already stores the reason; this only decides how to phrase
+ * it.
+ */
+function failureBody(error: string | null): string {
+  if (error === null || error.trim().length === 0) return '模型调用失败。';
+  if (/rejected by the operator/i.test(error)) return '你拒绝了这次工具执行，本轮已停止。';
+  /*
+   * A tool rejection reaches the task as its code or message. Surfacing it is
+   * safe — tool errors are already bounded and never contain arguments — and it
+   * is the difference between "something broke" and "the URL was blocked".
+   */
+  /*
+   * Match both the code and the human message. A tool rejection reaches the task
+   * as its message text when the message was supplied, so keying only on codes
+   * left the common case falling through to "model call failed".
+   */
+  if (/private_network_blocked|unsupported_scheme|url_contains_credentials|unsupported_content_type|too_many_redirects|private, loopback, or link-local|only http and https|credentials/i.test(error)) {
+    return `这次网络请求被运行时拒绝：${error.slice(0, 160)}`;
+  }
+  if (/path_escapes_root|refuses_workspace_root|recursive_requires_confirmation|target_exists|parent_not_found|inside the workspace/i.test(error)) {
+    return `这次文件操作被运行时拒绝：${error.slice(0, 160)}`;
+  }
+  return `模型调用失败：${error.slice(0, 160)}`;
 }

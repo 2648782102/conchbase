@@ -19,16 +19,26 @@ test('the built-in tool set exposes no arbitrary shell or exec tool', () => {
     for (const forbidden of ['shell', 'exec', 'bash', 'run_command', 'spawn', 'system']) {
       assert.equal(ids.includes(forbidden), false, `no ${forbidden} tool may exist`);
     }
-    // Git tools are fixed read-only commands, not a command runner.
+    // Git tools are fixed commands, not a command runner: every id is one of
+    // the known set, and none of them takes a subcommand or an argv.
     const gitIds = createGitReadTools({ root }).list().map((tool) => tool.id);
     for (const id of gitIds) {
-      assert.match(id, /^git_(status|diff|log|commit)$/, `unexpected git tool ${id}`);
+      assert.match(id, /^git_(status|diff|log|commit|push)$/, `unexpected git tool ${id}`);
     }
-    // The one non-read git tool must be approval-gated, not a free runner.
+    /*
+     * The two effects are gated: `commit` is a write (approval at `standard`),
+     * `push` is external (approval at every level below `trusted`). Neither is a
+     * free runner, and neither accepts a branch, remote, or flags.
+     */
     const gitTools = createGitReadTools({ root }).list();
     const commit = gitTools.find((tool) => tool.id === 'git_commit');
     assert.equal(commit?.sideEffect, 'write', 'commit requires approval');
-    assert.equal(gitTools.some((tool) => tool.id !== 'git_commit' && tool.sideEffect !== 'read'), false);
+    const push = gitTools.find((tool) => tool.id === 'git_push');
+    assert.equal(push?.sideEffect, 'external', 'push leaves the machine and is approved as such');
+    for (const tool of gitTools) {
+      const expected = tool.id === 'git_commit' ? 'write' : tool.id === 'git_push' ? 'external' : 'read';
+      assert.equal(tool.sideEffect, expected, `${tool.id} has the wrong effect class`);
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
