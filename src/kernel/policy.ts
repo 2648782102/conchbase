@@ -132,6 +132,39 @@ export function isPermissionLevel(value: unknown): value is PermissionLevel {
   return typeof value === 'string' && (PERMISSION_LEVELS as readonly string[]).includes(value);
 }
 
+/**
+ * How restrictive each level is. Higher tightens.
+ *
+ * Used only to decide whether a conversation may ask for a level, never to
+ * compare two policies for any other purpose.
+ */
+const STRICTNESS: Readonly<Record<PermissionLevel, number>> = Object.freeze({
+  trusted: 0,
+  standard: 1,
+  strict: 2,
+});
+
+/**
+ * Narrows a requested level to what the operator allows.
+ *
+ * A conversation may ask to be *more* cautious than the Runtime (`standard` →
+ * `strict`); it may never ask to be less. Without this, "choose your permission
+ * level in the composer" is a UI for turning off approval: a model that
+ * requested a tool would be one dropdown change away from running unapproved,
+ * and the operator's setting would mean nothing.
+ *
+ * Loosening is not a validation error the caller could retry around — it is
+ * silently clamped, and the effective level is reported back so the client can
+ * show what actually applied.
+ */
+export function narrowPermissionLevel(
+  operatorLevel: PermissionLevel,
+  requested: PermissionLevel | undefined,
+): PermissionLevel {
+  if (requested === undefined) return operatorLevel;
+  return STRICTNESS[requested] > STRICTNESS[operatorLevel] ? requested : operatorLevel;
+}
+
 /** A grant as the kernel sees it: a kind and a name, nothing more. */
 export interface ScopedGrant {
   readonly kind: 'tool' | 'skill';

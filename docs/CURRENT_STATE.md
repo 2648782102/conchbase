@@ -24,10 +24,13 @@ Updated: 2026-11-21
 - One effective policy is published: `permissionLevel`, beside the legacy
   `executionMode` marked `executionModeIsLegacy`. They could disagree, so read
   the level.
+- A conversation may pin its own level, but only stricter than the Runtime's —
+  looser requests are clamped and the response reports what applied. The choice
+  is fixed at creation, carried onto every task, and cannot loosen while an
+  approval is pending.
 - Prompts fit the window (`context-budget.ts`, 32k fallback) with reserved reply
   room and a visible `context_trimmed`; instructions are never dropped and the
-  rest is summarised (`context-summary.ts`). No summariser leaves the plain trim,
-  recorded as `summarized: false`.
+  rest is summarised (`context-summary.ts`), else `summarized: false`.
 - Transient provider failures retry with capped backoff (`provider-retry.ts`);
   auth, malformed requests, and context overflow still fail immediately.
 - Agent Chat cancels via `POST …/cancel` (running or queued); direct
@@ -39,9 +42,9 @@ Updated: 2026-11-21
   a schedule with a missing Agent disables itself.
 - Attachments: images become content parts; text documents are inlined and
   labelled as data; PDF and other binary formats are refused.
-- Tools cover read, search, write, delete, move, copy, git, opt-in `http_fetch`,
-  and opt-in `git_push`. Every one is bounded to the workspace or to an explicit
-  external target; see `ARCHITECTURE.md#tools` for the boundaries.
+- Tools cover read, search, write, delete, move, copy, git, opt-in `http_fetch`
+  and `git_push`, each bounded to the workspace or an explicit target; see
+  `ARCHITECTURE.md#tools`.
 - Runtime notices are authored `runtime`, not `assistant`, and are excluded from
   model context: they are the Runtime speaking and must not be replayed as one
   of the Agent's own turns. Only user turns and non-empty assistant turns reach

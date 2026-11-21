@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import type { PermissionLevel } from '../kernel/policy.js';
 import type {
   AgentChatMessage,
   AgentChatMessageAuthor,
@@ -15,6 +16,16 @@ export interface AgentChatConversationRecord {
   readonly configurationRevisionId: string;
   readonly isBoss: boolean;
   readonly reasoningEffort: 'low' | 'medium' | 'high';
+  /**
+   * The approval level this conversation was pinned to.
+   *
+   * `null` means "whatever the Runtime is configured with" — the behaviour of
+   * every conversation created before this field existed. A value narrows the
+   * operator's level and can never widen it; the narrowing happens once, when
+   * the conversation is created, so a conversation cannot loosen mid-run while
+   * an approval is pending.
+   */
+  readonly permissionLevel: PermissionLevel | null;
   readonly createdAt: string;
   /**
    * Last time the user actually looked at this conversation. A finished reply
@@ -97,6 +108,7 @@ interface ConversationRow {
   readonly configuration_revision_id: string;
   readonly is_boss: number;
   readonly reasoning_effort: string;
+  readonly permission_level: string | null;
   readonly created_at: string;
   readonly last_read_at: string | null;
 }
@@ -168,8 +180,8 @@ export class SqliteAgentChatStore implements AgentChatStore {
       this.database.prepare(`
         INSERT INTO agent_chat_conversations (
           id, agent_id, agent_revision_id, provider_id, model_id,
-          configuration_revision_id, is_boss, reasoning_effort, created_at, last_read_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          configuration_revision_id, is_boss, reasoning_effort, permission_level, created_at, last_read_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           agent_id = excluded.agent_id,
           agent_revision_id = excluded.agent_revision_id,
@@ -178,6 +190,7 @@ export class SqliteAgentChatStore implements AgentChatStore {
           configuration_revision_id = excluded.configuration_revision_id,
           is_boss = excluded.is_boss,
           reasoning_effort = excluded.reasoning_effort,
+          permission_level = excluded.permission_level,
           last_read_at = excluded.last_read_at
       `).run(
         record.id,
@@ -188,6 +201,7 @@ export class SqliteAgentChatStore implements AgentChatStore {
         record.configurationRevisionId,
         record.isBoss ? 1 : 0,
         record.reasoningEffort,
+        record.permissionLevel,
         record.createdAt,
         record.lastReadAt ?? null,
       );
@@ -241,7 +255,7 @@ export class SqliteAgentChatStore implements AgentChatStore {
   get(conversationId: string): AgentChatConversationRecord | null {
     const conversation = this.database.prepare(`
       SELECT id, agent_id, agent_revision_id, provider_id, model_id,
-        configuration_revision_id, is_boss, reasoning_effort, created_at, last_read_at
+        configuration_revision_id, is_boss, reasoning_effort, permission_level, created_at, last_read_at
       FROM agent_chat_conversations WHERE id = ?
     `).get(conversationId) as ConversationRow | undefined;
     if (!conversation) return null;
@@ -262,6 +276,7 @@ export class SqliteAgentChatStore implements AgentChatStore {
       configurationRevisionId: conversation.configuration_revision_id,
       isBoss: conversation.is_boss === 1,
       reasoningEffort: (conversation.reasoning_effort as AgentChatConversationRecord['reasoningEffort']) ?? 'medium',
+      permissionLevel: (conversation.permission_level as AgentChatConversationRecord['permissionLevel']) ?? null,
       lastReadAt: conversation.last_read_at ?? null,
       createdAt: conversation.created_at,
       messages: Object.freeze(messages.map(messageFromRow)),
@@ -295,6 +310,7 @@ export function migrateAgentChatSchema(database: DatabaseSync): void {
         configuration_revision_id TEXT NOT NULL,
         is_boss INTEGER NOT NULL CHECK (is_boss IN (0, 1)),
         reasoning_effort TEXT NOT NULL DEFAULT 'medium',
+        permission_level TEXT,
         created_at TEXT NOT NULL
       ) STRICT;
       CREATE TABLE IF NOT EXISTS agent_chat_messages (
@@ -329,5 +345,13 @@ export function migrateAgentChatSchema(database: DatabaseSync): void {
     // Null means "never observed". A reply finished before this column existed
     // stays unread rather than silently claiming the user saw it.
     database.exec('ALTER TABLE agent_chat_conversations ADD COLUMN last_read_at TEXT');
+  }
+  if (!columns.some((column) => column.name === 'permission_level')) {
+    /*
+     * NULL means "use the Runtime's configured level", which is exactly how
+     * every existing conversation behaved before this column existed. A default
+     * value would have claimed each old conversation had chosen a level.
+     */
+    database.exec('ALTER TABLE agent_chat_conversations ADD COLUMN permission_level TEXT');
   }
 }

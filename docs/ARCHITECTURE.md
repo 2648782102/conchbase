@@ -374,6 +374,26 @@ allowed action", never "what may this Agent touch".
 still there, marked `executionModeIsLegacy`, because a client that read it as
 policy would be wrong whenever an explicit level overrode the default mode.
 
+### Choosing a level per conversation
+
+The composer may offer a level, but only downward. `narrowPermissionLevel`
+clamps a request to the operator's setting: `standard` may ask for `strict`,
+never for `trusted`. Without the clamp the dropdown is a switch for turning
+approval off — a model that asked for a write would be one selection away from
+running it unapproved, and the operator's setting would mean nothing.
+
+The narrowing happens **once**, when the conversation is created, and the result
+is pinned on the record. Re-reading a mutable choice per message would let a
+conversation loosen while an approval was pending, which is the one moment the
+choice matters. The task carries the pinned level into the loop
+(`setTaskPermissionLevel`, which clamps again), so the decision the UI shows and
+the decision the loop makes are the same one; the map entry is released when the
+task reaches a terminal state.
+
+Omission is not the same as choosing. A conversation created without a level
+stores `null` and follows the Runtime's current setting, so changing it later
+still applies; only an explicit choice is pinned.
+
 `decidePolicy` resolves in a fixed order, and the order is the contract:
 boundary → grants → approval. Reversing it would let a level waive a boundary
 it must not waive. An unknown side-effect class is treated as `external`, so a

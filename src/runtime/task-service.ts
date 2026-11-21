@@ -35,7 +35,7 @@ import { digestArguments } from './tool-arguments.js';
 import { buildToolRequestPreview } from './tool-request-preview.js';
 import { projectSkills, projectToolProvider } from './capability-grants.js';
 import type { ExecutionMode, LoopBudget } from '../config/runtime-config.js';
-import type { PermissionLevel } from '../kernel/policy.js';
+import { narrowPermissionLevel, type PermissionLevel } from '../kernel/policy.js';
 import {
   OTEL_GENAI_ATTRIBUTES,
   flattenOtelAttributes,
@@ -251,6 +251,15 @@ export class TaskService {
   private readonly loopOptions: AgentLoopOptions;
   private readonly effortByTaskId = new Map<string, 'low' | 'medium' | 'high'>();
   /**
+   * Per-task approval level, pinned by whoever created the task.
+   *
+   * Same lifetime as `effortByTaskId`: set at creation, dropped when the task
+   * reaches a terminal state. A conversation pins its chosen level here so the
+   * loop reads it per turn without re-deriving from the conversation record —
+   * and so a conversation cannot change its mind while an approval is pending.
+   */
+  private readonly permissionByTaskId = new Map<string, PermissionLevel>();
+  /**
    * Images for a task that has been created but not started yet.
    *
    * Held in memory on purpose: an attachment is user content with no audit
@@ -320,6 +329,16 @@ export class TaskService {
     return this.config.executionMode ?? 'restricted';
   }
 
+  /**
+   * The approval level this Runtime is configured with.
+   *
+   * The ceiling for anything a conversation may request: a conversation can be
+   * stricter, never looser.
+   */
+  get effectivePermissionLevel(): PermissionLevel {
+    return resolveLevel(this.config.permissionLevel, this.executionMode);
+  }
+
   get loopBudget(): LoopBudget {
     return this.config.loopBudget ?? DEFAULT_LOOP_BUDGET;
   }
@@ -351,11 +370,23 @@ export class TaskService {
    */
   private requiresApproval(definition: { readonly id?: string; readonly sideEffect: ToolSideEffect }): boolean {
     return decideToolAction({
-      level: resolveLevel(this.config.permissionLevel, this.executionMode),
+      level: this.permissionLevelFor(),
       action: definition.id ?? 'tool',
       sideEffect: definition.sideEffect,
       granted: true,
     }).requiresApproval;
+  }
+
+  /**
+   * The level in force right now.
+   *
+   * Without a task there is nothing narrower than the operator's setting; with
+   * one, the task's pinned level applies. Both entry points into a tool call go
+   * through here so there is one answer to "which level is running".
+   */
+  private permissionLevelFor(taskId?: string): PermissionLevel {
+    const pinned = taskId === undefined ? undefined : this.permissionByTaskId.get(taskId);
+    return pinned ?? this.effectivePermissionLevel;
   }
 
   getConfigurationState(): ConfigurationState {
@@ -595,6 +626,19 @@ export class TaskService {
       return;
     }
     this.imagesByTaskId.set(taskId, Object.freeze([...images]));
+  }
+
+  /**
+   * Pins an approval level for one task.
+   *
+   * Narrowing is the caller's job (a conversation clamps against the operator
+   * level at creation); this setter refuses to widen, so a mistake upstream
+   * cannot turn into a loosened approval path here.
+   */
+  setTaskPermissionLevel(taskId: string, level: PermissionLevel): void {
+    if (!this.store.getTask(taskId)) throw new TaskNotFoundError();
+    const operator = this.effectivePermissionLevel;
+    this.permissionByTaskId.set(taskId, narrowPermissionLevel(operator, level));
   }
 
   /**
@@ -1069,6 +1113,7 @@ export class TaskService {
       this.imagesByTaskId.delete(taskId);
       this.documentsByTaskId.delete(taskId);
       this.effortByTaskId.delete(taskId);
+      this.permissionByTaskId.delete(taskId);
     }
     for (const listener of this.eventListeners) {
       try {
@@ -1643,7 +1688,7 @@ export class TaskService {
       readResults: this.readResults,
       capabilities,
       needsApproval: (sideEffect) => decideToolAction({
-        level: resolveLevel(this.config.permissionLevel, this.executionMode),
+        level: this.permissionLevelFor(task.id),
         action: 'tool',
         sideEffect,
         granted: true,
