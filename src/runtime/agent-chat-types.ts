@@ -35,7 +35,16 @@ export type AgentChatMessagePhase =
   | 'human'
   | 'terminal';
 
-export type AgentChatReasoningEffort = 'low' | 'medium' | 'high';
+/**
+ * A reasoning effort token, exactly as the model's catalogue publishes it.
+ *
+ * Deliberately not a closed union. The gateway's own catalogue mixes
+ * `none/low/high/max`, `low/medium/high/xhigh/ultra`, a model with only `high`,
+ * and models that reason without publishing any level at all. A union of three
+ * could not name four of those, so the vocabulary is validated by the
+ * catalogue instead — see `src/runtime/reasoning-effort.ts`.
+ */
+export type AgentChatReasoningEffort = string;
 
 export type AgentChatActivityKind = 'turn' | 'tool' | 'approval' | 'output';
 export type AgentChatActivityState = 'running' | 'succeeded' | 'failed' | 'waiting_approval';

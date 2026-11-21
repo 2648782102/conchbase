@@ -2492,7 +2492,7 @@ paths:
                 properties:
                   version:
                     type: string
-                    const: '1.9.0'
+                    const: '1.8.0'
                   entries:
                     type: array
                     items:
@@ -2526,7 +2526,7 @@ paths:
                 properties:
                   version:
                     type: string
-                    const: '1.9.0'
+                    const: '1.8.0'
                   memoryId:
                     type: string
                   removed:
@@ -2949,6 +2949,16 @@ components:
           type: array
           items:
             type: string
+        contextTokens:
+          type: integer
+        reasoningLevels:
+          type: array
+          description: |
+            The effort tokens this model accepts, weakest first, exactly as the
+            gateway publishes them. Absent means the model offers no effort
+            control; an empty array means it reasons but offers no choice.
+          items:
+            type: string
     ProviderModelList:
       type: object
       additionalProperties: false
@@ -3305,7 +3315,7 @@ components:
           const: 2
         agentChatContract:
           type: string
-          const: '1.8.0'
+          const: '1.9.0'
         agentChatPaths:
           const: 6
     Error:
@@ -5855,7 +5865,7 @@ components:
           type: boolean
     AgentChatVersion:
       type: string
-      const: '1.8.0'
+      const: '1.9.0'
     AgentChatAgentView:
       type: object
       additionalProperties: false
@@ -5907,8 +5917,10 @@ components:
               agentId:
                 type: string
               reasoningEffort:
-                type: string
-                enum: [low, medium, high]
+                type: [string, "null"]
+                description: |
+                  The level the next turn runs at, or null when the model
+                  publishes no levels at all.
               createdAt:
                 type: string
               messageCount:
@@ -5937,7 +5949,12 @@ components:
           maxLength: 200
         reasoningEffort:
           type: string
-          enum: [low, medium, high]
+          pattern: "^[a-z][a-z0-9_-]{0,31}$"
+          description: |
+            The reasoning effort to pin. Any token the chosen model publishes in
+            GET /v1/model-catalog `reasoningLevels` is accepted; a token the
+            model does not publish is refused with 400 rather than silently
+            ignored. Omit it to use the middle of what the model publishes.
         modelOverride:
           type: object
           additionalProperties: false
@@ -6075,8 +6092,10 @@ components:
         configurationRevisionId:
           type: string
         reasoningEffort:
-          type: string
-          enum: [low, medium, high]
+          type: [string, "null"]
+          description: |
+            The level the next turn runs at, or null when this conversation's
+            model publishes no levels.
         messages:
           type: array
           items:
@@ -6094,6 +6113,13 @@ components:
           type: string
           minLength: 1
           maxLength: 200
+        reasoningEffort:
+          type: string
+          pattern: "^[a-z][a-z0-9_-]{0,31}$"
+          description: |
+            Overrides the conversation's pinned level for this one turn, and
+            becomes the new default for later turns. Refused with 400 when the
+            conversation's model does not publish it.
     AgentChatMessageResult:
       type: object
       additionalProperties: false

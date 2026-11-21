@@ -1,3 +1,5 @@
+import { sortEfforts } from './reasoning-effort.js';
+
 export interface ModelCatalogEntry {
   readonly id: string;
   readonly displayName: string;
@@ -6,8 +8,37 @@ export interface ModelCatalogEntry {
   readonly supportsStreaming?: boolean;
   readonly supportsTools?: boolean;
   readonly supportsReasoning?: boolean;
+  /**
+   * The effort tokens this model accepts, weakest first.
+   *
+   * Read from the gateway rather than inferred from the model id: the same
+   * catalogue mixes `none/low/high/max`, `low/medium/high/xhigh/ultra`, a lone
+   * `high`, and models with reasoning but no published levels at all. An absent
+   * list means "this model has no effort control"; an empty list means the
+   * gateway says it reasons but offers no choice.
+   */
+  readonly reasoningLevels?: readonly string[];
   /** Whether this model is a reasonable default for Boss planning. */
   readonly suitableForBoss?: boolean;
+}
+
+/** Read `reasoning_levels`, falling back to `supported_reasoning_levels[].effort`. */
+function reasoningLevelsOf(record: Record<string, unknown>): readonly string[] | undefined {
+  const direct = record.reasoning_levels;
+  if (Array.isArray(direct)) {
+    return sortEfforts(direct.filter((level): level is string =>
+      typeof level === 'string' && level.length > 0 && level.length <= 32));
+  }
+  const supported = record.supported_reasoning_levels;
+  if (Array.isArray(supported)) {
+    const efforts = supported.flatMap((entry) => {
+      if (typeof entry !== 'object' || entry === null) return [];
+      const effort = (entry as Record<string, unknown>).effort;
+      return typeof effort === 'string' && effort.length > 0 && effort.length <= 32 ? [effort] : [];
+    });
+    return sortEfforts(efforts);
+  }
+  return undefined;
 }
 
 function positiveInt(value: unknown): number | undefined {
@@ -61,6 +92,16 @@ export class MagpieModelCatalog implements ModelCatalogClient {
         const textOnly = Array.isArray(record.modalities)
           ? (record.modalities as { input?: readonly string[] }).input?.includes('text') ?? true
           : true;
+        /*
+         * The gateway's own answer, not a guess from the model id.
+         *
+         * The previous rule was `/reason|think|thinking/i.test(id)`, which read
+         * `deepseek-flash` as "no reasoning" while the gateway listed four
+         * levels for it, and read `gemini-4-hydrogen` as reasoning-capable
+         * while never learning that it also accepts `xhigh`.
+         */
+        const levels = reasoningLevelsOf(record);
+        const claimsReasoning = record.reasoning === true || levels !== undefined;
         // Magpie's gateway is OpenAI-compatible for chat, streaming, and tools.
         // A model that cannot take text is not a chat model at all.
         return [{
@@ -71,7 +112,8 @@ export class MagpieModelCatalog implements ModelCatalogClient {
           ...(contextTokens ? { contextTokens } : {}),
           supportsStreaming: textOnly,
           supportsTools: textOnly,
-          supportsReasoning: /reason|think|thinking/i.test(record.id),
+          supportsReasoning: textOnly && claimsReasoning,
+          ...(textOnly && levels !== undefined ? { reasoningLevels: levels } : {}),
           suitableForBoss: textOnly && (contextTokens ?? 0) >= 32_000,
         }];
       }));

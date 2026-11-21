@@ -24,7 +24,6 @@ import { isTerminalTaskState } from './task-lifecycle.js';
 import { containsSecretLike } from './secret-filter.js';
 import {
   NONTERMINAL_STATES,
-  parseReasoningEffort as parseReasoningEffortShared,
   phaseForState,
   terminalMessageState,
   taskStateToMessageState,
@@ -32,6 +31,11 @@ import {
   unavailableBody,
   unavailableError,
 } from './agent-chat-state.js';
+import {
+  defaultEffort,
+  parseEffortToken,
+  sortEfforts,
+} from './reasoning-effort.js';
 import type {
   AgentChatActivity,
   AgentChatMessage,
@@ -55,7 +59,7 @@ import {
   type AgentChatStore,
 } from './agent-chat-store.js';
 
-export const AGENT_CHAT_CONTRACT_VERSION = '1.8.0';
+export const AGENT_CHAT_CONTRACT_VERSION = '1.9.0';
 
 export const AGENT_CHAT_PUBLIC_PATHS = Object.freeze([
   '/v1/agent-chat/agents',
@@ -91,14 +95,18 @@ export interface AgentChatConversationView {
   readonly providerId: string;
   readonly modelId: string;
   readonly configurationRevisionId: string;
-  readonly reasoningEffort: AgentChatReasoningEffort;
+  /**
+   * The effort this conversation's next turn will run at, or `null` when its
+   * model publishes no levels at all.
+   */
+  readonly reasoningEffort: AgentChatReasoningEffort | null;
   readonly messages: readonly AgentChatMessage[];
 }
 
 export interface AgentChatConversationSummary {
   readonly id: string;
   readonly agentId: string;
-  readonly reasoningEffort: AgentChatReasoningEffort;
+  readonly reasoningEffort: AgentChatReasoningEffort | null;
   readonly createdAt: string;
   readonly messageCount: number;
   readonly lastMessagePreview: string;
@@ -166,9 +174,17 @@ export interface AgentChatStreamFrame {
   readonly conversation: AgentChatConversationView | null;
 }
 
-interface ConversationRecord extends Omit<AgentChatConversationRecord, 'idempotency'> {
+interface ConversationRecord extends Omit<AgentChatConversationRecord, 'idempotency' | 'reasoningEffort'> {
   readonly messages: AgentChatMessage[];
   readonly idempotency: Map<string, string>;
+  /**
+   * The effort the next turn inherits.
+   *
+   * Writable because a reader may switch strength mid-conversation: the turn
+   * they send it on uses the new value, and every later turn keeps it until
+   * they switch again. Everything else on this record is fixed at creation.
+   */
+  reasoningEffort: string;
 }
 
 /**
@@ -191,6 +207,14 @@ interface QueuedTurn {
   readonly assistantMessageId: string;
   readonly text: string;
   readonly idempotencyKey: string;
+  /**
+   * The effort this turn asked for, resolved when it was queued.
+   *
+   * Captured here rather than read from the conversation when the turn starts:
+   * the reader may change the effort for the *next* message while this one
+   * waits, and a queued turn must run at the strength it was sent with.
+   */
+  readonly effort: string | undefined;
 }
 
 export class AgentChatServiceError extends Error {
@@ -655,7 +679,7 @@ export class AgentChatService {
         agentId: record.agentId,
         expectedAgentRevisionId: record.agentRevisionId,
         modelOverride: { providerId: record.providerId, modelId: record.modelId },
-      }, record.reasoningEffort);
+      }, turn.effort);
       this.replaceMessage(record, assistantMessage.id, {
         ...assistantMessage,
         state: 'thinking',
@@ -729,6 +753,7 @@ export class AgentChatService {
     record: ConversationRecord,
     text: string,
     idempotencyKey: string,
+    effort: string | undefined,
   ): AgentChatMessageResult {
     const userMessage = message({
       id: referenceDigest('amsg', `${record.id}:${idempotencyKey}:user`),
@@ -764,6 +789,7 @@ export class AgentChatService {
       assistantMessageId: assistantMessage.id,
       text,
       idempotencyKey,
+      effort,
     });
     this.queuedTurns.set(record.id, queue);
     this.watchQueue(record);
@@ -800,14 +826,7 @@ export class AgentChatService {
       ? this.defaultAgentId()
       : boundedText(input.agentId, 'agentId');
     const modelOverride = this.parseModelOverride(input.modelOverride);
-    const reasoningEffort = (() => {
-      try {
-        return parseReasoningEffortShared(input.reasoningEffort);
-      } catch {
-        // The service owns its error type; the shared parser stays transport-free.
-        throw new AgentChatServiceError('reasoningEffort must be low, medium, or high.');
-      }
-    })();
+    const requestedEffort = this.readEffort(input.reasoningEffort);
     const isBoss = agentId === BOSS_AGENT_ID;
     if (isBoss && !this.bossMode) throw new AgentChatServiceError('Boss Agent is not configured.', 503);
     const bossView = isBoss ? this.bossAgentView() : null;
@@ -818,6 +837,20 @@ export class AgentChatService {
       providerId: agentDetail!.current.providerId,
       modelId: agentDetail!.current.modelId,
     };
+    /*
+     * The Boss is pinned to the model it actually calls, not to its display
+     * identity.
+     *
+     * `bossAgentView()` answers "runtime / 组织编排", which is what the header
+     * should read — the Boss is the Runtime's own planner, not a configurable
+     * provider route. But no gateway has heard of that pair, so storing it here
+     * made every downstream question about the Boss's model answer "unknown":
+     * the catalogue lookup returned nothing, the effort picker found no levels,
+     * and a per-turn override was refused as unsupported. The conversation now
+     * records the real provider/model; the virtual identity stays where it
+     * belongs, in the Agent list and the header.
+     */
+    const bossModel = isBoss ? this.bossMode?.modelReference : undefined;
     if (modelOverride) {
       try {
         await this.taskService.validateModelReference(modelOverride);
@@ -828,16 +861,34 @@ export class AgentChatService {
         );
       }
     }
+    /*
+     * The chosen effort has to be one this model actually publishes.
+     *
+     * Checked at creation, not only at send time: a conversation that stores a
+     * value its model cannot accept is exactly what made "思考强度" look like a
+     * setting that changed nothing. Refusing up front leaves the choice where
+     * the reader can see it.
+     */
+    const reasoningEffort = await this.resolveEffort({
+      providerId: modelOverride?.providerId ?? bossModel?.providerId ?? agent.providerId,
+      modelId: modelOverride?.modelId ?? bossModel?.modelId ?? agent.modelId,
+    }, requestedEffort, true);
     const id = referenceDigest('chat', `${agent.id}:${agent.currentRevisionId}:${randomUUID()}`);
     const record: ConversationRecord = {
       id,
       agentId: isBoss ? BOSS_AGENT_ID : agent.id,
       agentRevisionId: agent.currentRevisionId,
-      providerId: modelOverride?.providerId ?? agent.providerId,
-      modelId: modelOverride?.modelId ?? agent.modelId,
+      providerId: modelOverride?.providerId ?? bossModel?.providerId ?? agent.providerId,
+      modelId: modelOverride?.modelId ?? bossModel?.modelId ?? agent.modelId,
       configurationRevisionId: this.taskService.activeConfigurationRevisionId,
       isBoss,
-      reasoningEffort,
+      /*
+       * Stored as `''` when the model publishes no levels, never as a default.
+       * The column is NOT NULL (SQLite cannot relax that in place), so an empty
+       * token is the one value that records "no effort control" without
+       * inventing a level the model would ignore.
+       */
+      reasoningEffort: reasoningEffort ?? '',
       createdAt: this.now(),
       lastReadAt: null,
       messages: [],
@@ -847,6 +898,116 @@ export class AgentChatService {
     this.evictIfOverCapacity(id);
     this.persist(record);
     return this.view(id);
+  }
+
+  /**
+   * Read the effort a request asked for, bounded but not yet validated.
+   *
+   * Shape only. Whether the model admits it is `resolveEffort`'s job, which
+   * needs the catalogue; keeping the two apart means a malformed token fails
+   * before any network call.
+   */
+  private readEffort(value: unknown): string | undefined {
+    try {
+      return parseEffortToken(value);
+    } catch {
+      // The service owns its error type; the shared parser stays transport-free.
+      throw new AgentChatServiceError(
+        'reasoningEffort must be a short lowercase token such as low, medium, or high.',
+      );
+    }
+  }
+
+  /**
+   * Resolve the effort to pin, against what the model actually publishes.
+   *
+   * Three outcomes, and all three are different facts:
+   *   - the model publishes levels and the request named one of them → that one
+   *   - the model publishes levels and the request was silent → the middle step
+   *   - the model publishes none → `undefined`, and nothing is sent
+   *
+   * The middle step is chosen from the published list rather than assumed to be
+   * `medium`: a model offering only `none/low/high/max` has no `medium` at all.
+   *
+   * `strict` is true only when a person explicitly asked for a level. An
+   * inherited value that the gateway has since withdrawn must not block a
+   * turn, but a person typing "use xhigh" against a model that has no levels
+   * deserves to be told, not quietly overridden.
+   */
+  private async resolveEffort(
+    reference: { readonly providerId: string; readonly modelId: string },
+    requested: string | undefined,
+    strict = false,
+  ): Promise<string | undefined> {
+    let levels: readonly string[] | undefined;
+    try {
+      levels = await this.taskService.reasoningLevelsFor(reference);
+    } catch {
+      /*
+       * A catalogue outage must not block a conversation that was going to work
+       * anyway. Falling back to the requested value defers the decision to the
+       * gateway, which is the same authority — it will ignore what it cannot
+       * honour, and the next read will report the catalogue again.
+       */
+      return requested;
+    }
+    if (levels === undefined || levels.length === 0) {
+      if (strict && requested !== undefined) {
+        throw new AgentChatServiceError(
+          `这个模型（${reference.modelId}）没有公布思考强度档位，不能指定「${requested}」。`,
+          400,
+        );
+      }
+      return undefined;
+    }
+    const ordered = sortEfforts(levels);
+    if (requested !== undefined) {
+      if (ordered.includes(requested)) return requested;
+      if (strict) {
+        throw new AgentChatServiceError(
+          `这个模型不支持「${requested}」这一档思考强度；可选：${ordered.join('、')}。`,
+          400,
+        );
+      }
+      // Withdrawn since it was stored. Fall through to the published middle.
+    }
+    return defaultEffort(ordered);
+  }
+
+  /**
+   * The effort a single turn should run at.
+   *
+   * One turn may override what the conversation is pinned to, and an override
+   * is checked against the live catalogue like any other choice. A turn that
+   * says nothing inherits the conversation's stored effort — but only after
+   * confirming the model still accepts it, because the gateway can revoke a
+   * level between turns and a stored value is a memory, not an authority.
+   */
+  private async effortForTurn(
+    record: ConversationRecord,
+    requested: string | undefined,
+  ): Promise<string | undefined> {
+    const stored = record.reasoningEffort.length > 0 ? record.reasoningEffort : undefined;
+    /*
+     * Nothing to ask when nothing was chosen.
+     *
+     * An empty stored effort means this conversation's model published no
+     * levels when it was created, and the caller named none now — so there is
+     * no question to put to the catalogue. Skipping the read keeps the common
+     * turn free of a network round trip, and avoids holding a fast turn open
+     * behind a model list it will not use.
+     */
+    if (requested === undefined && stored === undefined) return undefined;
+    const reference = { providerId: record.providerId, modelId: record.modelId };
+    if (requested !== undefined) return this.resolveEffort(reference, requested, true);
+    if (stored === undefined) return this.resolveEffort(reference, undefined);
+    /*
+     * Not strict: a level the gateway has since withdrawn must not strand the
+     * conversation on a setting the reader cannot fix without starting over.
+     * `resolveEffort` falls back to the published middle, and the next read
+     * reports the new list.
+     */
+    return this.resolveEffort(reference, stored);
   }
 
   private parseModelOverride(value: unknown): { providerId: string; modelId: string } | undefined {
@@ -865,11 +1026,44 @@ export class AgentChatService {
     const record = this.load(conversationId);
     if (!record) throw new AgentChatServiceError('Agent Chat conversation not found.', 404);
     if (!isRecord(input)) throw new AgentChatServiceError('Message input must be an object.');
-    const allowed = new Set(['text', 'idempotencyKey', 'attachments']);
+    const allowed = new Set(['text', 'idempotencyKey', 'attachments', 'reasoningEffort']);
     const unknown = Object.keys(input).filter((key) => !allowed.has(key));
     if (unknown.length > 0) throw new AgentChatServiceError(`Unknown fields: ${unknown.sort().join(', ')}.`);
     const text = boundedText(input.text, 'text').slice(0, 6000);
     const idempotencyKey = boundedText(input.idempotencyKey, 'idempotencyKey').slice(0, 200);
+    /*
+     * Per-message effort, resolved before anything is written.
+     *
+     * A turn is the unit the reader actually chooses for: "this question is
+     * worth thinking about" is a property of the question, not of the
+     * conversation. Omitting the field keeps the conversation's stored choice,
+     * so a client that only knows about conversations still behaves as before.
+     *
+     * Resolved here rather than at task creation so an unsupported value is
+     * refused before a user message and a placeholder reply are appended —
+     * otherwise the transcript would show a message that was never sendable.
+     */
+    const requestedEffort = input.reasoningEffort === undefined
+      ? undefined
+      : this.readEffort(input.reasoningEffort);
+    const turnEffort = await this.effortForTurn(record, requestedEffort);
+    if (requestedEffort !== undefined) {
+      /*
+       * The chosen strength becomes the conversation's new default: the next
+       * turn inherits it, so a reader who switches to "深入" once does not have
+       * to switch again on every message.
+       */
+      record.reasoningEffort = turnEffort ?? '';
+      this.persist(record);
+    } else if (turnEffort !== (record.reasoningEffort.length > 0 ? record.reasoningEffort : undefined)) {
+      /*
+       * An inherited level was no longer accepted. Record the one that was
+       * used, so the chip the reader sees matches what actually ran instead of
+       * continuing to advertise a level the gateway has dropped.
+       */
+      record.reasoningEffort = turnEffort ?? '';
+      this.persist(record);
+    }
     let attachments: readonly Attachment[];
     try {
       attachments = parseAttachments(input.attachments);
@@ -922,7 +1116,7 @@ export class AgentChatService {
           409,
         );
       }
-      return this.enqueueTurn(record, text, idempotencyKey);
+      return this.enqueueTurn(record, text, idempotencyKey, turnEffort);
     }
 
     const context = conversationalHistory(record.messages).map((message) =>
@@ -947,7 +1141,7 @@ export class AgentChatService {
         agentId: record.agentId,
         expectedAgentRevisionId: record.agentRevisionId,
         modelOverride: { providerId: record.providerId, modelId: record.modelId },
-      }, record.reasoningEffort);
+      }, turnEffort);
       if (attachments.length > 0) {
         /*
          * Split by kind at the boundary, so the task store holds two narrow
@@ -1214,9 +1408,23 @@ export class AgentChatService {
       providerId: record.providerId,
       modelId: record.modelId,
       configurationRevisionId: record.configurationRevisionId,
-      reasoningEffort: record.reasoningEffort,
+      reasoningEffort: this.publishedEffort(record),
       messages: Object.freeze(seen.map((message) => Object.freeze({ ...message }))),
     });
+  }
+
+  /**
+   * The effort to publish for a conversation.
+   *
+   * Stored as `''` when the model has no levels; published as `null` so a
+   * client can tell "no effort control" apart from "the level happens to be
+   * called something odd". An empty string on the wire would read as a value
+   * and the composer would try to render it.
+   */
+  private publishedEffort(
+    record: Pick<AgentChatConversationRecord, 'reasoningEffort'>,
+  ): string | null {
+    return record.reasoningEffort.length > 0 ? record.reasoningEffort : null;
   }
 
   conversationTaskIds(conversationId: string): readonly string[] {
@@ -1340,7 +1548,7 @@ export class AgentChatService {
         return Object.freeze({
           id: record.id,
           agentId: record.agentId,
-          reasoningEffort: record.reasoningEffort,
+          reasoningEffort: this.publishedEffort(record),
           createdAt: record.createdAt,
           messageCount: record.messages.length,
           unread,
@@ -1373,12 +1581,23 @@ export class AgentChatService {
   }
 
   private bossAgentView(): AgentChatAgentView {
+    /*
+     * The Boss is listed under the identity a reader recognises — the Runtime's
+     * own planner — and under the model it actually calls.
+     *
+     * Those were the same field before, which meant a client asking "what does
+     * this Agent run on" got `runtime:组织编排`: a name no gateway knows. Since
+     * a client needs that answer to find the model's effort levels, the real
+     * reference is published here whenever one is configured, and the virtual
+     * pair remains only as the fallback for a Boss with no fixed model.
+     */
+    const model = this.bossMode?.modelReference;
     return Object.freeze({
       id: BOSS_AGENT_ID,
       name: BOSS_AGENT_NAME,
       currentRevisionId: BOSS_AGENT_REVISION_ID,
-      providerId: BOSS_AGENT_PROVIDER_ID,
-      modelId: BOSS_AGENT_MODEL_ID,
+      providerId: model?.providerId ?? BOSS_AGENT_PROVIDER_ID,
+      modelId: model?.modelId ?? BOSS_AGENT_MODEL_ID,
       isDefault: false,
       archived: false,
     });
@@ -1467,12 +1686,32 @@ export class AgentChatService {
       });
       this.persist(record);
     };
+    /*
+     * Whether this Boss turn should let the Boss resolve its own model.
+     *
+     * It used to be `providerId === 'runtime'`, the virtual pair stored on the
+     * record. The record now holds the real model so the catalogue can answer
+     * questions about it, so the test is "does the record match the Boss's
+     * configured model" — which means the same thing and survives a configured
+     * model change. A reader who explicitly picked a different model for the
+     * Boss still gets that override.
+     */
+    const bossDefault = this.bossMode?.modelReference;
+    /*
+     * A Boss with no configured model keeps its virtual identity on the record,
+     * and that record must still mean "let the Boss resolve its own model" —
+     * turning it into a `modelOverride` would ask the Boss to route to a
+     * provider called `runtime`, which no gateway has heard of.
+     */
+    const usingBossDefault = record.isBoss && (bossDefault === undefined
+      ? record.providerId === BOSS_AGENT_PROVIDER_ID && record.modelId === BOSS_AGENT_MODEL_ID
+      : record.providerId === bossDefault.providerId && record.modelId === bossDefault.modelId);
     void bossMode.submit({
         text,
         idempotencyKey: `agent-chat:${record.id}:${idempotencyKey}`,
         conversation,
-        reasoningEffort: record.reasoningEffort,
-        ...(record.isBoss && record.providerId === 'runtime'
+        ...(record.reasoningEffort.length > 0 ? { reasoningEffort: record.reasoningEffort } : {}),
+        ...(usingBossDefault
           ? {}
           : { modelOverride: { providerId: record.providerId, modelId: record.modelId } }),
         source: 'agent-chat' as const,

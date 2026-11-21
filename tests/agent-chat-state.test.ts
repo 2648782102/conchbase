@@ -77,10 +77,23 @@ test('provider failures are classified, not collapsed', () => {
   assert.match(unavailableBody(new Error('contains secret-like content')), /敏感内容/);
 });
 
-test('reasoning effort defaults to medium and rejects unknown values', () => {
-  assert.equal(parseReasoningEffort(undefined), 'medium');
+test('reasoning effort has no default and accepts whatever a model publishes', () => {
+  /*
+   * The old rule answered `medium` for an absent value and threw for anything
+   * outside `low|medium|high`. Both halves were wrong once the gateway started
+   * publishing four to six levels per model: `medium` is not a level every model
+   * has, and `xhigh` is one several do.
+   *
+   * What survives here is shape checking only. Whether a token is *allowed* is
+   * a question about a specific model, answered by the catalogue.
+   */
+  assert.equal(parseReasoningEffort(undefined), undefined, 'an absent value is not a default');
+  assert.equal(parseReasoningEffort('  '), undefined, 'blank is treated as absent');
   assert.equal(parseReasoningEffort('low'), 'low');
   assert.equal(parseReasoningEffort('high'), 'high');
-  assert.throws(() => parseReasoningEffort('extreme'));
-  assert.throws(() => parseReasoningEffort(1));
+  assert.equal(parseReasoningEffort('xhigh'), 'xhigh', 'levels beyond the old three work');
+  assert.equal(parseReasoningEffort('ultra'), 'ultra');
+  assert.throws(() => parseReasoningEffort(1), /string/);
+  assert.throws(() => parseReasoningEffort('a'.repeat(64)), /short lowercase token/);
+  assert.throws(() => parseReasoningEffort('HIGH!'), /short lowercase token/);
 });

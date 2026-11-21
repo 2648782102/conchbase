@@ -53,7 +53,13 @@ test('known capability fields are surfaced and unknown ones are omitted', async 
       data: [
         { id: 'big/model', display_name: 'Big', context_length: 200000, modalities: { input: ['text'] } },
         { id: 'tiny/model', display_name: 'Tiny' },
-        { id: 'reason/model', display_name: 'Reason', context_window: 128000 },
+        /*
+         * Capability comes from the gateway's own `reasoning` flag now, not
+         * from the shape of the model id. The old heuristic matched `/reason/`
+         * against the id, which both invented reasoning for models that had
+         * none and missed it for models that did.
+         */
+        { id: 'reason/model', display_name: 'Reason', context_window: 128000, reasoning: true },
       ],
     }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof globalThis.fetch,
   });
@@ -68,4 +74,37 @@ test('known capability fields are surfaced and unknown ones are omitted', async 
   assert.equal(tiny?.suitableForBoss, false);
   const reason = models.find((m) => m.id === 'reason/model');
   assert.equal(reason?.supportsReasoning, true);
+});
+
+test('the catalog carries the effort levels each model publishes', async () => {
+  /*
+   * This is the data the composer's effort menu is built from. Until it was
+   * forwarded, every client had to assume the same three levels for every
+   * model, which is how "思考强度" ended up offering values that several models
+   * do not accept.
+   */
+  const catalog = new MagpieModelCatalog({
+    baseUrl: 'http://127.0.0.1:3425',
+    fetch: (async () => new Response(JSON.stringify({
+      data: [
+        { id: 'deepseek/flash', reasoning: true, reasoning_levels: ['none', 'low', 'high', 'max'] },
+        { id: 'gpt/terra', reasoning: true, reasoning_levels: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] },
+        // Published only in the object form; both shapes must be read.
+        { id: 'gemini/hydrogen', reasoning: true, supported_reasoning_levels: [{ effort: 'low' }, { effort: 'xhigh' }] },
+        // Reasons, but offers no choice.
+        { id: 'gemma/26b', reasoning: true, reasoning_levels: [] },
+        // No reasoning at all: no list, and no claim.
+        { id: 'plain/model' },
+      ],
+    }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof globalThis.fetch,
+  });
+  const models = await catalog.listModels();
+  const levels = (id: string) => models.find((model) => model.id === id)?.reasoningLevels;
+
+  assert.deepEqual(levels('deepseek/flash'), ['none', 'low', 'high', 'max'], 'published order is kept when known');
+  assert.deepEqual(levels('gpt/terra'), ['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
+  assert.deepEqual(levels('gemini/hydrogen'), ['low', 'xhigh'], 'the object form is read too');
+  assert.deepEqual(levels('gemma/26b'), [], 'an empty list is a fact: reasons, but no choice');
+  assert.equal(levels('plain/model'), undefined, 'a model without reasoning advertises no list');
+  assert.equal(models.find((model) => model.id === 'plain/model')?.supportsReasoning, false);
 });

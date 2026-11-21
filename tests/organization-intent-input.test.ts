@@ -67,8 +67,18 @@ test('model override and reasoning effort are shape-checked', () => {
     () => validateSubmission({ text: 'x', idempotencyKey: 'k', modelOverride: { providerId: 'magpie' } }),
     /providerId and modelId/,
   );
+  /*
+   * `extreme` used to be rejected because the accepted set was the literal
+   * `low|medium|high`. It is a well-formed token now, and whether any model
+   * offers it is the catalogue's answer, not this boundary's — so what this
+   * boundary still refuses is a malformed one, not an unfamiliar one.
+   */
+  assert.equal(
+    validateSubmission({ text: 'x', idempotencyKey: 'k', reasoningEffort: 'extreme' }).reasoningEffort,
+    'extreme',
+  );
   assert.throws(
-    () => validateSubmission({ text: 'x', idempotencyKey: 'k', reasoningEffort: 'extreme' }),
+    () => validateSubmission({ text: 'x', idempotencyKey: 'k', reasoningEffort: 'HIGH!' }),
     /reasoningEffort/,
   );
   const accepted = validateSubmission({

@@ -13,8 +13,14 @@ function fakeFetch(): typeof globalThis.fetch {
     if (url.endsWith('/v1/models')) {
       return new Response(JSON.stringify({
         data: [
-          { id: 'fixture/first-model', display_name: 'First Model' },
-          { id: 'workbuddy/blind-model-h', display_name: 'Blind H' },
+          /*
+           * Levels are published per model, so a fixture without them is a
+           * model with no effort control — which is a legitimate shape, and the
+           * one that used to make these tests pass by accident.
+           */
+          { id: 'fixture/first-model', display_name: 'First Model', reasoning: true, reasoning_levels: ['low', 'medium', 'high'] },
+          { id: 'workbuddy/blind-model-h', display_name: 'Blind H', reasoning: true, reasoning_levels: ['low', 'medium', 'high'] },
+          { id: 'fixture/no-effort', display_name: 'No Effort' },
         ],
       }), { status: 200, headers: { 'content-type': 'application/json' } });
     }
@@ -61,7 +67,7 @@ test('agent chat lists recent conversations and a default chat model', async () 
     const list = await app.inject({ method: 'GET', url: '/v1/agent-chat/conversations' });
     assert.equal(list.statusCode, 200);
     const body = list.json();
-    assert.equal(body.version, '1.8.0');
+    assert.equal(body.version, '1.9.0');
     assert.ok(body.conversations.some((entry: { id: string }) => entry.id === conversationId));
     assert.equal(body.defaultModelId, 'workbuddy/blind-model-h');
     assert.doesNotMatch(JSON.stringify(body), /runtime\.sqlite|sk-/);
@@ -84,15 +90,91 @@ test('agent chat conversation pins reasoning effort and exposes it in the list',
   });
 });
 
-test('agent chat rejects an unsupported reasoning effort', async () => {
+test('agent chat rejects an effort outside the model\'s published levels', async () => {
   await withApp(async (app, _service, agentId) => {
     const created = await app.inject({
       method: 'POST',
       url: '/v1/agent-chat/conversations',
+      /*
+       * `ultra` is a real level — some models publish it. This fixture's model
+       * publishes only low/medium/high, so the refusal has to come from the
+       * model's own list rather than from a hard-coded union.
+       */
       payload: { agentId, reasoningEffort: 'ultra' },
     });
     assert.equal(created.statusCode, 400);
+    assert.match(created.json().error, /low、medium、high/);
   });
+});
+
+test('agent chat accepts a level beyond the old three when the model publishes it', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-chat-efforts-'));
+  const service = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/wide',
+    fetch: (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/v1/models')) {
+        return new Response(JSON.stringify({
+          data: [
+            { id: 'fixture/wide', display_name: 'Wide', reasoning: true,
+              reasoning_levels: ['none', 'low', 'high', 'max'] },
+            { id: 'fixture/none', display_name: 'No Effort' },
+          ],
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response('{}', { status: 404 });
+    }) as typeof globalThis.fetch,
+  });
+  const chat = new AgentChatService(service);
+  const app = createApp({ logger: false, taskService: service, agentChatService: chat });
+  try {
+    const wide = await service.createAgent({
+      name: '宽档位', instructions: '', providerId: 'magpie', modelId: 'fixture/wide',
+    });
+    /*
+     * `max` was unrepresentable before: the closed union stopped at `high`, so
+     * the gateway's strongest step could not be chosen at all.
+     */
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations',
+      payload: { agentId: wide.id, reasoningEffort: 'max' },
+    });
+    assert.equal(created.statusCode, 201);
+    assert.equal(created.json().reasoningEffort, 'max');
+
+    /*
+     * A conversation that names no level gets the middle of what the model
+     * actually publishes — here `high`, not the absent `medium`.
+     */
+    const defaulted = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: wide.id },
+    });
+    assert.equal(defaulted.json().reasoningEffort, 'high');
+
+    /*
+     * A model with no levels publishes `null`, which is what lets the composer
+     * show a read-only note instead of a menu that would change nothing.
+     */
+    const plain = await service.createAgent({
+      name: '无档位', instructions: '', providerId: 'magpie', modelId: 'fixture/none',
+    });
+    const noLevels = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: plain.id },
+    });
+    assert.equal(noLevels.statusCode, 201);
+    assert.equal(noLevels.json().reasoningEffort, null);
+
+    const refused = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations',
+      payload: { agentId: plain.id, reasoningEffort: 'high' },
+    });
+    assert.equal(refused.statusCode, 400, 'a model with no levels cannot honour a named one');
+  } finally {
+    await app.close();
+    await service.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('recent conversations survive a service restart', async () => {

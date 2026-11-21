@@ -597,6 +597,19 @@ export class BossModeService {
     }
   }
 
+  /**
+   * The model this Boss actually calls, or `undefined` when nothing fixed it.
+   *
+   * Exposed so a client can ask the catalogue about *this* model's effort
+   * levels. The Boss conversation's published `providerId`/`modelId` are the
+   * virtual `runtime` / `组织编排` pair — a display identity, not something any
+   * gateway has heard of — so resolving levels from them would always come
+   * back empty and the effort control would look permanently unavailable.
+   */
+  get modelReference(): { readonly providerId: string; readonly modelId: string } | undefined {
+    return this.bossModelReference;
+  }
+
   private async resolveModelOverride(
     reference: { readonly providerId: string; readonly modelId: string },
   ): Promise<{ providerId: string; modelId: string }> {

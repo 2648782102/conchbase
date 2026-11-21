@@ -4,6 +4,7 @@ import type {
   AgentChatMessageState,
   AgentChatReasoningEffort,
 } from './agent-chat-types.js';
+import { parseEffortToken } from './reasoning-effort.js';
 
 /**
  * State derivation for Agent Chat messages.
@@ -75,8 +76,14 @@ export function phaseForState(state: AgentChatMessageState): AgentChatMessagePha
   return 'accepted';
 }
 
-export function parseReasoningEffort(value: unknown): AgentChatReasoningEffort {
-  if (value === undefined) return 'medium';
-  if (value === 'low' || value === 'medium' || value === 'high') return value;
-  throw new Error('reasoningEffort must be low, medium, or high.');
+/**
+ * Read the effort a caller asked for, or `undefined` when they did not say.
+ *
+ * There is no default here any more. The old one — "medium" — was a guess that
+ * reached a model the gateway describes as `none/low/high/max`: it accepted
+ * `medium` by ignoring it, so every turn silently ran at the gateway's default
+ * while the client showed a choice that had never been applied.
+ */
+export function parseReasoningEffort(value: unknown): AgentChatReasoningEffort | undefined {
+  return parseEffortToken(value);
 }

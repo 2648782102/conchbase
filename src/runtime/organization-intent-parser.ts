@@ -39,7 +39,8 @@ export interface OrganizationIntentParserInput {
    */
   readonly memoryIndex?: string;
   readonly onProgress?: (progress: BossConversationProgress) => void;
-  readonly reasoningEffort?: 'low' | 'medium' | 'high';
+  /** Any effort token the gateway publishes; forwarded verbatim. */
+  readonly reasoningEffort?: string;
 }
 
 export interface BossConversationProgress {

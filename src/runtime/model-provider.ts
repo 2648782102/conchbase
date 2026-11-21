@@ -42,7 +42,8 @@ export interface ProviderRequest {
   readonly taskId: string;
   readonly messages: readonly ProviderMessage[];
   readonly tools?: readonly ProviderToolDefinition[];
-  readonly reasoningEffort?: 'low' | 'medium' | 'high';
+  /** Any effort token the catalogue publishes for this model. */
+  readonly reasoningEffort?: string;
   readonly signal?: AbortSignal;
 }
 

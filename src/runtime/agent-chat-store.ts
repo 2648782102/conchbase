@@ -14,7 +14,15 @@ export interface AgentChatConversationRecord {
   readonly modelId: string;
   readonly configurationRevisionId: string;
   readonly isBoss: boolean;
-  readonly reasoningEffort: 'low' | 'medium' | 'high';
+  /**
+   * The effort this conversation asked for.
+   *
+   * A preference, not a promise: whether it is actually sent depends on the
+   * model accepting it, which is decided per turn from the live catalogue. A
+   * model that publishes no levels gets no `reasoning_effort` at all, even
+   * though this column still holds the last choice.
+   */
+  readonly reasoningEffort: string;
   readonly createdAt: string;
   /**
    * Last time the user actually looked at this conversation. A finished reply

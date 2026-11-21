@@ -143,7 +143,8 @@ export interface TaskServiceConfig {
 
 export interface AgentLoopOptions {
   readonly tools?: ToolProvider;
-  readonly reasoningEffort?: 'low' | 'medium' | 'high';
+  /** Any effort token the catalogue publishes for this model. */
+  readonly reasoningEffort?: string;
   readonly preferredChatModelId?: string;
   readonly skills?: readonly { readonly name: string; readonly instructions: string }[];
   /**
@@ -195,6 +196,14 @@ export interface ProviderModelCatalogEntry extends ModelReference {
   readonly capabilities: readonly string[];
   /** Total context window when the provider publishes one. */
   readonly contextTokens?: number;
+  /**
+   * Efforts this model accepts, weakest first.
+   *
+   * Absent means the gateway offers no effort control for it — which is what
+   * lets a client show a read-only chip instead of a menu the model would
+   * silently ignore.
+   */
+  readonly reasoningLevels?: readonly string[];
 }
 
 export class TaskValidationError extends Error {
@@ -249,7 +258,7 @@ export class TaskService {
   private readonly config: TaskServiceConfig;
   private readonly catalog: ModelCatalogClient;
   private readonly loopOptions: AgentLoopOptions;
-  private readonly effortByTaskId = new Map<string, 'low' | 'medium' | 'high'>();
+  private readonly effortByTaskId = new Map<string, string>();
   /**
    * Images for a task that has been created but not started yet.
    *
@@ -575,7 +584,7 @@ export class TaskService {
 
   async createAgentTaskWithEffort(
     input: unknown,
-    reasoningEffort?: 'low' | 'medium' | 'high',
+    reasoningEffort?: string,
   ): Promise<TaskSnapshot> {
     const task = await this.createAgentTask(input);
     if (reasoningEffort) this.effortByTaskId.set(task.id, reasoningEffort);
@@ -986,6 +995,13 @@ export class TaskService {
         // Published so a client (and the budget) can tell a small window from a
         // large one instead of assuming every model behaves the same.
         ...(model.contextTokens ? { contextTokens: model.contextTokens } : {}),
+        /*
+         * Forwarded, not recomputed: the gateway is the only party that knows
+         * which steps a model accepts, and it answers differently per model.
+         * Clients gate their effort menu on this list, so dropping it here
+         * would leave every model looking like it had no control.
+         */
+        ...(model.reasoningLevels ? { reasoningLevels: model.reasoningLevels } : {}),
       }));
     }));
     return Object.freeze(perProvider.flat());
@@ -1015,6 +1031,26 @@ export class TaskService {
     if (!models.some((model) => model.id === reference.modelId)) {
       throw new AgentValidationError(`Model '${reference.modelId}' is not available from provider '${reference.providerId}'.`);
     }
+  }
+
+  /**
+   * The effort tokens one model accepts, or `undefined` when it offers none.
+   *
+   * Asked at the moment an effort is chosen rather than trusted from a client's
+   * copy of the catalogue: the catalogue is a remote document that can change
+   * under a long-lived conversation, and the gateway is the authority on what
+   * it will accept.
+   */
+  async reasoningLevelsFor(reference: ModelReference): Promise<readonly string[] | undefined> {
+    let models: readonly ModelCatalogEntry[];
+    try {
+      models = reference.providerId === defaultProviderId()
+        ? await this.listModels()
+        : await this.providerCatalog(reference.providerId).listModels();
+    } catch {
+      throw new AgentValidationError('Model catalog is unavailable.');
+    }
+    return models.find((model) => model.id === reference.modelId)?.reasoningLevels;
   }
 
   getAgent(agentId: string): AgentDetail {

@@ -101,7 +101,7 @@ async function withApp(run: (app: ReturnType<typeof createApp>, agentId: string)
 test('agent chat starts a configured Agent conversation and publishes a real model reply', async () => {
   await withApp(async (app, agentId) => {
     const runtime = await app.inject({ method: 'GET', url: '/v1/runtime' });
-    assert.equal(runtime.json().agentChatContract, '1.8.0');
+    assert.equal(runtime.json().agentChatContract, '1.9.0');
     assert.equal(runtime.json().agentChatPaths, 7);
 
     const agents = await app.inject({ method: 'GET', url: '/v1/agent-chat/agents' });

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { contentDigest } from './digest.js';
+import { parseEffortToken } from './reasoning-effort.js';
 import { containsSecretLike } from './secret-filter.js';
 
 /**
@@ -21,7 +22,8 @@ export interface BossModeSubmitInput {
     readonly providerId: string;
     readonly modelId: string;
   };
-  readonly reasoningEffort?: 'low' | 'medium' | 'high';
+  /** Any effort token a model publishes; validated against the catalogue. */
+  readonly reasoningEffort?: string;
   readonly source?: BossIntentSource;
   readonly conversation?: readonly {
     readonly author: 'user' | 'assistant';
@@ -111,12 +113,16 @@ export function validateSubmission(input: unknown): BossModeSubmitInput {
       modelId: input.modelOverride.modelId,
     });
   }
-  if (input.reasoningEffort !== undefined
-    && input.reasoningEffort !== 'low'
-    && input.reasoningEffort !== 'medium'
-    && input.reasoningEffort !== 'high') {
-    throw new BossModeServiceError('reasoningEffort must be low, medium, or high.');
-  }
+  const reasoningEffort = (() => {
+    if (input.reasoningEffort === undefined) return undefined;
+    try {
+      return parseEffortToken(input.reasoningEffort);
+    } catch {
+      throw new BossModeServiceError(
+        'reasoningEffort must be a short lowercase token such as low, medium, or high.',
+      );
+    }
+  })();
   return Object.freeze({
     text: input.text,
     idempotencyKey: input.idempotencyKey,
@@ -125,7 +131,7 @@ export function validateSubmission(input: unknown): BossModeSubmitInput {
       : {}),
     ...(input.source ? { source: input.source } : {}),
     ...(modelOverride ? { modelOverride } : {}),
-    ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
+    ...(reasoningEffort ? { reasoningEffort } : {}),
     ...(boundedConversation ? { conversation: boundedConversation } : {}),
   });
 }
