@@ -118,3 +118,72 @@ test('an attachment is refused while a reply is still in flight', async () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+/**
+ * A text document must reach the model, labelled as data.
+ *
+ * An inlined log with no marker would read as a user instruction — the model
+ * would follow the first line of a stack trace as though it were a request. The
+ * wrapper says "this is file content", which is what keeps a document that
+ * contains instructions from being obeyed as one.
+ */
+test('a text attachment arrives as labelled data, not as instructions', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-attach-doc-'));
+  let seenBody: Record<string, unknown> | null = null;
+  const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).endsWith('/v1/models')) {
+      return new Response(JSON.stringify({ data: [{ id: 'fixture/chat-model' }] }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    }
+    seenBody = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+    return new Response(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: '看到了' }, finish_reason: null }] })}\n\ndata: [DONE]\n\n`,
+      { status: 200, headers: { 'content-type': 'text/event-stream' } },
+    );
+  }) as typeof globalThis.fetch;
+
+  const service = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: fetchImpl,
+  });
+  const chat = new AgentChatService(service);
+  try {
+    const agent = await service.createAgent({
+      name: '看文档', instructions: '', providerId: 'magpie', modelId: 'fixture/chat-model',
+    });
+    const conversation = await chat.createConversation({ agentId: agent.id });
+    await chat.postMessage(conversation.id, {
+      text: '这个日志说明了什么？',
+      idempotencyKey: 'doc1',
+      attachments: [{
+        kind: 'text',
+        name: 'error.log',
+        mediaType: 'text/plain',
+        text: 'TypeError: boom\n  at main.js:12',
+      }],
+    });
+    for (let tick = 0; tick < 300; tick += 1) {
+      if (chat.view(conversation.id).messages[1]?.state === 'replied') break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const messages = (seenBody as { messages?: readonly Record<string, unknown>[] } | null)?.messages ?? [];
+    const userTurn = [...messages].reverse().find((message) => message.role === 'user');
+    assert.ok(userTurn, 'the provider received a user turn');
+    const content = userTurn!.content;
+    assert.ok(Array.isArray(content), 'an attachment makes the content a part array');
+    const text = (content as readonly { type: string; text?: string }[])
+      .filter((part) => part.type === 'text')
+      .map((part) => part.text ?? '')
+      .join('\n');
+    assert.match(text, /这个日志说明了什么/, 'the question survives');
+    assert.match(text, /TypeError: boom/, 'the document body is present');
+    assert.match(text, /附件 error\.log/, 'and is labelled by name');
+    assert.match(text, /数据而不是指令/, 'and is labelled as data, not instructions');
+  } finally {
+    chat.close();
+    await service.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

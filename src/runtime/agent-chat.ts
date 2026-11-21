@@ -12,7 +12,13 @@ import {
   AgentChatMemory,
   type MemoryProposer,
 } from './agent-chat-memory.js';
-import { AttachmentError, parseAttachments, type ImageAttachment } from './attachments.js';
+import {
+  AttachmentError,
+  parseAttachments,
+  type Attachment,
+  type ImageAttachment,
+  type TextAttachment,
+} from './attachments.js';
 import { projectMessage } from './agent-chat-projection.js';
 import { isTerminalTaskState } from './task-lifecycle.js';
 import { containsSecretLike } from './secret-filter.js';
@@ -864,7 +870,7 @@ export class AgentChatService {
     if (unknown.length > 0) throw new AgentChatServiceError(`Unknown fields: ${unknown.sort().join(', ')}.`);
     const text = boundedText(input.text, 'text').slice(0, 6000);
     const idempotencyKey = boundedText(input.idempotencyKey, 'idempotencyKey').slice(0, 200);
-    let attachments: readonly ImageAttachment[];
+    let attachments: readonly Attachment[];
     try {
       attachments = parseAttachments(input.attachments);
     } catch (cause) {
@@ -943,10 +949,25 @@ export class AgentChatService {
         modelOverride: { providerId: record.providerId, modelId: record.modelId },
       }, record.reasoningEffort);
       if (attachments.length > 0) {
-        this.taskService.attachImages(task.id, attachments.map((image) => ({
-          mediaType: image.mediaType,
-          dataUrl: image.dataUrl,
-        })));
+        /*
+         * Split by kind at the boundary, so the task store holds two narrow
+         * lists rather than a union each consumer has to re-discriminate.
+         */
+        const images = attachments.filter((entry): entry is ImageAttachment => entry.kind === 'image');
+        const documents = attachments.filter((entry): entry is TextAttachment => entry.kind === 'text');
+        if (images.length > 0) {
+          this.taskService.attachImages(task.id, images.map((image) => ({
+            mediaType: image.mediaType,
+            dataUrl: image.dataUrl,
+          })));
+        }
+        if (documents.length > 0) {
+          this.taskService.attachDocuments(task.id, documents.map((document) => ({
+            name: document.name,
+            mediaType: document.mediaType,
+            text: document.text,
+          })));
+        }
       }
     } catch (cause) {
       const errorText = cause instanceof Error ? cause.message.slice(0, 240) : 'Agent task creation failed.';

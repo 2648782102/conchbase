@@ -259,6 +259,7 @@ export class TaskService {
    * which is correct — the task it belonged to is `interrupted` anyway.
    */
   private readonly imagesByTaskId = new Map<string, readonly { mediaType: string; dataUrl: string }[]>();
+  private readonly documentsByTaskId = new Map<string, readonly { name: string; mediaType: string; text: string }[]>();
   private readonly sliceBudgetByTaskId = new Map<string, number>();
   /**
    * Bounded, renderable previews computed when a tool request is created.
@@ -594,6 +595,21 @@ export class TaskService {
       return;
     }
     this.imagesByTaskId.set(taskId, Object.freeze([...images]));
+  }
+
+  /**
+   * Attaches text documents to a task that has not started.
+   *
+   * Same reasoning as images: user content with no audit value after the turn,
+   * and megabytes of log text in the event log would bloat every export.
+   */
+  attachDocuments(taskId: string, documents: readonly { name: string; mediaType: string; text: string }[]): void {
+    if (!this.store.getTask(taskId)) throw new TaskNotFoundError();
+    if (documents.length === 0) {
+      this.documentsByTaskId.delete(taskId);
+      return;
+    }
+    this.documentsByTaskId.set(taskId, Object.freeze([...documents]));
   }
 
   async createAgentTask(input: unknown): Promise<TaskSnapshot> {
@@ -1051,6 +1067,7 @@ export class TaskService {
     const current = this.store.getTask(taskId);
     if (!current || isTerminalTaskState(current.state)) {
       this.imagesByTaskId.delete(taskId);
+      this.documentsByTaskId.delete(taskId);
       this.effortByTaskId.delete(taskId);
     }
     for (const listener of this.eventListeners) {
@@ -1229,6 +1246,7 @@ export class TaskService {
         role: 'user' as const,
         content: task.prompt,
         ...(this.imagesByTaskId.has(task.id) ? { images: this.imagesByTaskId.get(task.id)! } : {}),
+        ...(this.documentsByTaskId.has(task.id) ? { documents: this.documentsByTaskId.get(task.id)! } : {}),
       },
     ];
   }

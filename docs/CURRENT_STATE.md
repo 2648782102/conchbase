@@ -38,8 +38,8 @@ Updated: 2026-11-21
   broken plugin is skipped, and `close()` stops every subprocess.
 - Recurring tasks via `/v1/schedules`; overlapping and missed runs are skipped,
   and a schedule with a missing Agent disables itself.
-- Image attachments (validated data URLs only) reach the provider as content
-  parts.
+- Attachments: images become content parts; text documents are inlined and
+  labelled as data. PDF and other binary formats are refused.
 - `TaskService.stop()` is bounded (5 s) and records `shutdownTimedOut`.
 - Runtime notices are authored `runtime`, not `assistant`, and are excluded from
   model context: they are the Runtime speaking and must not be replayed as one

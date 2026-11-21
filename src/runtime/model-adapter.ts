@@ -56,12 +56,15 @@ export type ProviderMessage =
     readonly role: 'user';
     readonly content: string;
     /**
-     * Inline images for this turn.
+     * Attachments for this turn.
      *
-     * Additive and optional: a provider that cannot take images simply ignores
-     * it, and every existing caller keeps producing the text-only shape.
+     * Additive and optional: every existing caller keeps producing the
+     * text-only shape. Images become content parts on the wire; text documents
+     * are inlined by the adapter, because no chat provider accepts a document
+     * part and pretending otherwise would drop them silently.
      */
     readonly images?: readonly ProviderImage[];
+    readonly documents?: readonly ProviderDocument[];
   }
   | { readonly role: 'assistant'; readonly content: string; readonly toolCalls?: readonly ProviderToolCall[] }
   | { readonly role: 'tool'; readonly toolCallId: string; readonly content: string };
@@ -70,6 +73,13 @@ export interface ProviderImage {
   readonly mediaType: string;
   /** A `data:` URL, already validated by the attachment layer. */
   readonly dataUrl: string;
+}
+
+export interface ProviderDocument {
+  readonly name: string;
+  readonly mediaType: string;
+  /** UTF-8 text, already bounded by the attachment layer. */
+  readonly text: string;
 }
 
 export interface ProviderToolCall {
