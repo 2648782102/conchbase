@@ -21,6 +21,12 @@ Updated: 2026-11-21
   retry: an interrupted reply shows as failed, and once the retried attempt
   succeeds the same message is re-projected to the real output. A message with
   no task (a queued turn) is the only one a restart marks failed on its own.
+- The Runtime publishes one effective approval policy, `permissionLevel`, next
+  to the legacy `executionMode` it was configured with and
+  `executionModeIsLegacy: true`. The two could disagree — `strict` with the
+  default mode published `restricted`, which reads like the opposite of what
+  was enforced — so a client should read the level, never infer policy from the
+  mode.
 - Runtime notices are authored `runtime`, not `assistant`, and are excluded from
   model context: they are the Runtime speaking and must not be replayed as one
   of the Agent's own turns. Only user turns and non-empty assistant turns reach
@@ -61,7 +67,9 @@ Updated: 2026-11-21
   production remote pairing experience. Background lifecycle is script-level
   (`start`/`stop`/`status`/`logs`), not an OS service. Backups now run on a
   timer (default daily, 7 kept, `CONCHBASE_BACKUP_INTERVAL_MS=0` disables) on
-  the live connection, alongside the manual `backup`/`verify-backup` verbs.
+  the live connection, alongside the manual `backup`/`verify-backup`/
+  `restore-backup` verbs. Restore validates before replacing and keeps the
+  previous database file.
 - SQLite has a single runtime owner. Multi-process operation and broad crash
   testing are not complete product features.
 - Magpie is the only gateway exercised against a real service. A provider

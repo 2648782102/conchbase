@@ -1050,6 +1050,15 @@ export class TaskService {
         { error: message.slice(0, 500) },
       );
       this.store.saveLoopState(task.id, null);
+      /*
+       * A failure is a transition too.
+       *
+       * Every other terminal path notifies; this one only wrote to the store,
+       * so a conversation whose reply failed never heard about it. The user saw
+       * "thinking" until they happened to reopen the conversation — and a
+       * queued turn behind it never started at all.
+       */
+      this.notifyChange(task.id);
     }
   }
 

@@ -3061,13 +3061,29 @@ components:
           type: string
         state:
           const: ready
+        permissionLevel:
+          type: string
+          enum: [strict, standard, trusted]
+          description: >-
+            The effective approval policy, resolved once at process start. `strict` requires approval for every
+            tool including reads, `standard` for writes and external calls, `trusted` for none. No level waives
+            the Agent capability grant list or the workspace boundary. This is the field a client should read to
+            describe the Runtime's policy.
         executionMode:
           type: string
           enum: [restricted, unrestricted]
+          deprecated: true
           description: >-
-            Runtime-wide execution policy. In restricted mode tools declared write or external pause the task
-            in waiting_approval before executing; in unrestricted mode every granted tool executes immediately.
-            The mode is fixed at process start and cannot be changed by a client, task, Agent, or model.
+            The legacy two-value setting this Runtime was configured with. It only selects a default
+            `permissionLevel` (`restricted` → `standard`, `unrestricted` → `trusted`) and an explicit
+            CONCHBASE_PERMISSION_LEVEL overrides it, so it may disagree with the effective policy. Read
+            `permissionLevel`; this field is published for provenance only.
+        executionModeIsLegacy:
+          type: boolean
+          const: true
+          description: >-
+            Marks `executionMode` as a compatibility field so a client does not accidentally treat it as the
+            decision. Removed when the legacy setting is.
         loopBudget:
           $ref: '#/components/schemas/LoopBudget'
         globalWorkScheduler:

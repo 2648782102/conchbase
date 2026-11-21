@@ -41,12 +41,26 @@ export function registerRuntimeRoute(
   memoryEnabled = false,
   scheduler?: { readonly globalActiveWork: number; readonly perProjectActiveWork: number },
 ): void {
+  /*
+   * `permissionLevel` is the decision; `executionMode` is only how it was
+   * configured.
+   *
+   * Both used to be published as if they were independent. They are not:
+   * `CONCHBASE_PERMISSION_LEVEL=strict` with the default
+   * `CONCHBASE_EXECUTION_MODE=restricted` published `executionMode:
+   * "restricted"`, which reads like "approval is on" while every action was
+   * actually being denied. A client cannot be asked to reconcile two fields it
+   * was never told the precedence of, so the effective level is what gets
+   * published; the mode is labelled as provenance.
+   */
+  const level: PermissionLevel = permissionLevel ?? (executionMode === 'unrestricted' ? 'trusted' : 'standard');
   app.get('/v1/runtime', async () => ({
     name: 'Conchbase',
     version: '1.0.0',
     state: 'ready',
+    permissionLevel: level,
     executionMode,
-    ...(permissionLevel ? { permissionLevel } : {}),
+    executionModeIsLegacy: true,
     ...(loopBudget ? { loopBudget } : {}),
     ...(projectIdleMs === undefined ? {} : {
       projectConvergence: {

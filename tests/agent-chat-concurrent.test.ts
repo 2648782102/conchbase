@@ -653,3 +653,84 @@ test('a stale promotion release leaves a newer mark in place', async () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+/**
+ * A retry has to reach the conversation without a reader.
+ *
+ * Measured end to end: a reply failed, the task was retried through the public
+ * endpoint, the retried attempt succeeded — and the conversation still said
+ * "failed" until somebody opened it, because the service released its task
+ * subscription when the first attempt ended. The subscription now survives a
+ * retryable outcome, and a listener-driven settle writes a state change (but not
+ * every streamed token).
+ */
+test('a retried task updates its conversation message with nobody reading', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-retry-push-'));
+  let attempt = 0;
+  const providerFetch = (async (input: RequestInfo | URL) => {
+    if (String(input).endsWith('/v1/models')) {
+      return new Response(JSON.stringify({ data: [{ id: 'fixture/chat-model' }] }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    }
+    attempt += 1;
+    if (attempt === 1) {
+      return new Response(JSON.stringify({ error: 'upstream exploded' }), {
+        status: 500, headers: { 'content-type': 'application/json' },
+      });
+    }
+    return new Response(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: '重试成功' }, finish_reason: null }] })}\n\ndata: [DONE]\n\n`,
+      { status: 200, headers: { 'content-type': 'text/event-stream' } },
+    );
+  }) as typeof globalThis.fetch;
+
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: providerFetch,
+  });
+  const chat = new AgentChatService(taskService);
+  try {
+    const agent = await taskService.createAgent({
+      name: '重试', instructions: '', providerId: 'magpie', modelId: 'fixture/chat-model',
+    });
+    const conversation = await chat.createConversation({ agentId: agent.id });
+    await chat.postMessage(conversation.id, { text: '问题', idempotencyKey: 'r1' });
+
+    for (let tick = 0; tick < 200; tick += 1) {
+      if (taskService.store.getTask(taskService.store.listTasks()[0]?.id ?? '')?.state === 'failed') break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(taskService.store.listTasks()[0]?.state, 'failed', 'the first attempt fails');
+    // The failure must be durable on its own, not only when someone reads.
+    assert.equal(
+      taskService.store.agentChat.get(conversation.id)?.messages[1]?.state,
+      'failed',
+      'the failed outcome is persisted by the listener',
+    );
+
+    const taskId = taskService.store.listTasks()[0]!.id;
+    taskService.retryTask(taskId);
+    taskService.startTask(taskId);
+
+    // Deliberately no `view()` in this wait: the push has to do the work.
+    for (let tick = 0; tick < 200; tick += 1) {
+      if (taskService.store.getTask(taskId)?.state === 'succeeded') break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    for (let tick = 0; tick < 100; tick += 1) {
+      if (taskService.store.agentChat.get(conversation.id)?.messages[1]?.state === 'done') break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    const stored = taskService.store.agentChat.get(conversation.id)?.messages[1];
+    assert.equal(taskService.store.getTask(taskId)?.state, 'succeeded');
+    assert.equal(stored?.state, 'done', 'the persisted message follows the retry without a read');
+    assert.equal(stored?.body, '重试成功');
+  } finally {
+    chat.close();
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

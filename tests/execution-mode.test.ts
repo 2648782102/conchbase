@@ -197,12 +197,58 @@ test('runtime publishes the execution mode', async () => {
     const response = await app.inject({ method: 'GET', url: '/v1/runtime' });
     const body = response.json<{
       executionMode: string;
+      permissionLevel: string;
+      executionModeIsLegacy: boolean;
       capabilities: string[];
       loopBudget: { maxIterations: number; maxToolCallsPerTurn: number; deadlineMs: number };
     }>();
+    assert.equal(body.permissionLevel, 'trusted', 'the effective policy is what a client reads');
     assert.equal(body.executionMode, 'unrestricted');
+    assert.equal(body.executionModeIsLegacy, true, 'the legacy field is labelled');
     assert.ok(body.capabilities.includes('execution-modes'));
     assert.deepEqual(body.loopBudget, { maxIterations: 6, maxToolCallsPerTurn: 4, deadlineMs: 120_000 });
+  } finally {
+    await app.close();
+    await service.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+/**
+ * Two policy fields that disagree is worse than one field.
+ *
+ * Measured before this test: `CONCHBASE_PERMISSION_LEVEL=strict` with the
+ * default execution mode published `executionMode: "restricted"`, which a
+ * reader takes to mean "writes and external calls need approval". The Runtime
+ * was actually denying every action, including reads. The published level must
+ * be the one the kernel used.
+ */
+test('an explicit level overrides the legacy mode in what is published', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-exec-publish-level-'));
+  const config = loadRuntimeConfig({
+    CONCHBASE_PERMISSION_LEVEL: 'strict',
+    CONCHBASE_DB: path.join(directory, 'runtime.sqlite'),
+  });
+  const service = new TaskService(
+    new SqliteTaskStore(config.databasePath),
+    {
+      magpieBaseUrl: config.magpieBaseUrl,
+      defaultModel: config.defaultModel,
+      executionMode: config.executionMode,
+      ...(config.permissionLevel ? { permissionLevel: config.permissionLevel } : {}),
+    },
+    catalog(),
+  );
+  const app = createApp({ logger: false, taskService: service, config });
+  try {
+    const body = (await app.inject({ method: 'GET', url: '/v1/runtime' })).json<{
+      executionMode: string;
+      permissionLevel: string;
+      executionModeIsLegacy: boolean;
+    }>();
+    assert.equal(body.permissionLevel, 'strict');
+    assert.equal(body.executionMode, 'restricted', 'the configured legacy value is still reported');
+    assert.equal(body.executionModeIsLegacy, true, 'and it is explicitly marked as not the decision');
   } finally {
     await app.close();
     await service.stop();

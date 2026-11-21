@@ -43,6 +43,7 @@ Usage:
   conchbase logs [lines]         Show the background Runtime's recent log
   conchbase backup <path>        Write a consistent snapshot of the database
   conchbase verify-backup <path> Check a backup's tables, rows, and integrity
+  conchbase restore-backup <path>  Replace the live database with a verified snapshot
   conchbase export-project <id> <path>  Export one project to a JSON file
   conchbase config               Show the active configuration revision
   conchbase config-revisions     List configuration revision summaries
@@ -162,6 +163,30 @@ async function main(argv: readonly string[]): Promise<void> {
     const report = inspectBackup(target);
     process.stdout.write(formatBackupReport(report));
     process.exitCode = report.ok ? 0 : 1;
+    return;
+  }
+
+  if (command === 'restore-backup') {
+    const { restoreBackup, formatBackupReport } = await import('./runtime/backup.js');
+    const { probeRuntimeStatus } = await import('./runtime/runtime-probe.js');
+    const source = args[0];
+    if (!source) throw new Error('Usage: conchbase restore-backup <path>');
+    // A live owner holds the only write connection and keeps writing to the
+    // inode this command is about to replace, so restoring under it would
+    // silently lose whatever it wrote next. `running` (not `healthy`) is the
+    // right test: a process answering 503 still owns the file.
+    const status = await probeRuntimeStatus({ baseUrl: `http://${config.host}:${config.port}` });
+    if (status.running) {
+      throw new Error('a Runtime is serving on this database; run `conchbase stop` first.');
+    }
+    mkdirSync(path.dirname(config.databasePath), { recursive: true });
+    const result = restoreBackup(source, config.databasePath);
+    process.stdout.write([
+      `restored ${path.resolve(source)} → ${path.resolve(config.databasePath)}`,
+      ...(result.movedPreviousTo ? [`previous database kept at ${result.movedPreviousTo}`] : []),
+      formatBackupReport(result.report).trimEnd(),
+      '',
+    ].join('\n'));
     return;
   }
 

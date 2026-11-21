@@ -12,7 +12,7 @@ Conchbase owns this contract; Pagurus and other clients consume it.
 | Method and path | Behavior |
 |---|---|
 | `GET /v1/health` | Service health and API version `1`. |
-| `GET /v1/runtime` | Runtime identity, version `1.0.0`, and advertised capabilities including `durable-work-contract`. |
+| `GET /v1/runtime` | Runtime identity, version `1.0.0`, the effective `permissionLevel`, the configured `executionMode` (marked `executionModeIsLegacy`), and advertised capabilities including `durable-work-contract`. |
 | `GET /v1/models` | Chat model ids from the configured local Magpie gateway; `502` when the catalog is unavailable. |
 | `GET /v1/model-catalog` | Provider-neutral model references with normalized capabilities; currently the `magpie` compatibility adapter; `502` when unavailable. |
 | `GET /v1/agents` | Runtime-local Agent collection and current revisions. |

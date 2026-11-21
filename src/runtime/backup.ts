@@ -5,7 +5,7 @@
  * copying a half-written file, which is what a plain `cp` would do. Inspection
  * reopens the copy read-only and reports what it contains.
  */
-import { existsSync, readdirSync, unlinkSync } from 'node:fs';
+import { copyFileSync, existsSync, readdirSync, renameSync, unlinkSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 
 export interface BackupReport {
@@ -103,4 +103,43 @@ export function rotateBackups(directory: string, keep: number): {
 /** A timestamped backup filename, safe on every supported platform. */
 export function backupFileName(stamp: string): string {
   return `runtime-${stamp.replace(/[:.]/g, '-')}.sqlite`;
+}
+
+export interface RestoreReport {
+  readonly restored: boolean;
+  /** Where the previous live database was moved, or null when there was none. */
+  readonly movedPreviousTo: string | null;
+  readonly report: BackupReport;
+}
+
+/**
+ * Replaces a live database with a snapshot, after proving the snapshot is one.
+ *
+ * The documented rollback used to be `cp backup live`, which has two failure
+ * modes that matter at the worst possible moment: it overwrites the current
+ * database before anyone has checked the backup is readable, and a `cp` killed
+ * halfway leaves a truncated file that only fails on the next start. This
+ * validates first, then moves the live file aside instead of destroying it, and
+ * finally renames the copy into place — a rename within one directory is atomic,
+ * so the live path is either the old file or the restored one, never a partial.
+ *
+ * It refuses to run while a Runtime owns the database, because that owner holds
+ * the only connection and would keep writing to the replaced inode.
+ */
+export function restoreBackup(source: string, target: string): RestoreReport {
+  const report = inspectBackup(source);
+  if (!report.ok) {
+    throw new Error(`refusing to restore from an unreadable backup: ${report.error ?? 'unknown error'}`);
+  }
+  const staged = `${target}.restoring`;
+  copyFileSync(source, staged);
+  const stagedReport = inspectBackup(staged);
+  if (!stagedReport.ok) {
+    unlinkSync(staged);
+    throw new Error(`restored copy failed verification: ${stagedReport.error ?? 'unknown error'}`);
+  }
+  const previous = existsSync(target) ? `${target}.before-restore-${Date.now()}` : null;
+  if (previous) renameSync(target, previous);
+  renameSync(staged, target);
+  return { restored: true, movedPreviousTo: previous, report: stagedReport };
 }

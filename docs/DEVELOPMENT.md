@@ -41,8 +41,8 @@ npm run test:suite -- --suite domain
 ```
 
 `npm run smoke` starts the real Runtime on a free port with a temp database,
-checks health/runtime/discovery, creates one task (skipped with a clear note
-when no Magpie gateway is running), and confirms a clean SIGTERM shutdown.
+checks health/runtime/discovery, creates one task (skipped without a gateway),
+and confirms a clean SIGTERM shutdown.
 
 ## Change loop
 
@@ -57,15 +57,13 @@ when no Magpie gateway is running), and confirms a clean SIGTERM shutdown.
 ## Boundaries
 
 - `src/runtime/` owns domain behavior and must not depend on Fastify.
-- `src/http/` owns transport, request parsing, response envelopes, and route
+- `src/http/` owns transport, parsing, response envelopes, and route
   registration; it must not read private files directly.
 - Provider adapters own provider-specific HTTP and wire formats.
-- Stores own SQLite details; callers use typed store methods.
-- Client code uses the published Runtime API and never opens the database.
+- Stores own SQLite details; clients use the published API, never the database.
 - Tool providers return bounded, typed, untrusted observations. They do not
   grant themselves permission.
-- Configuration, Agent instructions, Skill text, and model output are data;
-  none of them silently install code or expand permissions.
+- Configuration, Agent instructions, Skill text, and model output are data.
 
 ## When to change the API
 
@@ -94,9 +92,8 @@ End each coding task with:
 
 ## Upgrading and rolling back
 
-The schema has one supported version per release. An older database is upgraded
-in place on open; a newer one is refused with a clear error rather than being
-half-read.
+The schema has one version per release. An older database is upgraded in place
+on open; a newer one is refused with a clear error rather than half-read.
 
 Before an upgrade, take a snapshot and confirm it:
 
@@ -109,11 +106,14 @@ Then start the new version. It migrates forward automatically. To roll back:
 
 ```sh
 conchbase stop
-# restore the snapshot over the live database, then start the OLD version
-cp ./runtime-before-upgrade.sqlite .conchbase/runtime.sqlite
+# verify the snapshot, replace the live database, then start the OLD version
+conchbase restore-backup ./runtime-before-upgrade.sqlite
 conchbase start
 ```
 
-A backup taken by an older release is readable by that older release; do not
-point a newer binary at a database a newer binary already migrated and then
-expect to downgrade it — restore the pre-upgrade snapshot instead.
+`restore-backup` verifies before replacing, re-verifies the staged copy, keeps
+the previous database as `<database>.before-restore-<timestamp>`, and refuses to
+run while a Runtime owns that file.
+
+A backup from an older release is readable by that release. Never expect a
+newer binary's migrated file to downgrade — restore the pre-upgrade snapshot.

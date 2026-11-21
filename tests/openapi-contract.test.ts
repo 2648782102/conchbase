@@ -365,6 +365,8 @@ test('live injected responses equal the documented response fixtures', async () 
         }
         : {}),
       executionMode: runtime.json().executionMode,
+      permissionLevel: runtime.json().permissionLevel,
+      executionModeIsLegacy: runtime.json().executionModeIsLegacy,
     });
   } finally {
     await app.close();

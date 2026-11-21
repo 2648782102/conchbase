@@ -15,6 +15,7 @@ import {
   NONTERMINAL_STATES,
   parseReasoningEffort as parseReasoningEffortShared,
   phaseForState,
+  terminalMessageState,
   taskStateToMessageState,
   terminalTaskState,
   unavailableBody,
@@ -293,14 +294,24 @@ export class AgentChatService {
   private promotionToken = 0;
 
   /**
-   * One task-change subscription per conversation that currently has a queue.
+   * One task-change subscription per conversation that needs one.
    *
-   * A queue has to advance on its own: settling it only when a client reads
-   * means a conversation nobody is polling never runs its queued turn, and the
-   * Runtime would be depending on a reader to drive its own state machine. The
-   * subscription exists only while a queue does, so it cannot outlive the
-   * conversation or accumulate — a service instance that is discarded with an
-   * empty queue leaves no listener behind.
+   * A conversation needs one for either of two reasons, and one listener serves
+   * both:
+   *
+   * - it has a queue, which has to advance without a reader. Settling only on
+   *   read would mean a conversation nobody is polling never runs its queued
+   *   turn, making the Runtime depend on a client to drive its own state
+   *   machine;
+   * - a message it holds still presents a live task. A message *is* the
+   *   presentation of its task, so the terminal transition — including a retry
+   *   through `POST /v1/tasks/{id}/retry` — must reach the record without
+   *   anyone opening the conversation. Otherwise the database says `succeeded`
+   *   while the conversation, and any SSE client, still sees the old failure.
+   *
+   * It exists exactly while one of those holds, so an idle conversation holds
+   * none and a discarded service leaves none behind. That property is asserted
+   * by `agent-chat-concurrent.test.ts` and `agent-chat-stream.test.ts`.
    */
   private readonly queueWatchers = new Map<string, () => void>();
 
@@ -321,7 +332,7 @@ export class AgentChatService {
     // made shutdown observable; the lazy path is both simpler and bounded.
   }
 
-  private settleRecord(record: ConversationRecord): void {
+  private settleRecord(record: ConversationRecord, settledOnly = false): void {
     let changed = false;
     for (const message of [...record.messages]) {
       const task = message.taskId ? this.taskService.store.getTask(message.taskId) : null;
@@ -332,6 +343,19 @@ export class AgentChatService {
         now: this.now(),
       });
       if (!projected) continue;
+      /*
+       * The task bus fires on every streamed delta, not only on a transition.
+       * Persisting each projected body rewrote the whole conversation once per
+       * token — quadratic work in the middle of a stream that starved the event
+       * loop, measured as the process going unresponsive during one reply.
+       *
+       * A listener-driven settle therefore writes only when the *state* or the
+       * error changes: a partial body needs no write, because the read path and
+       * the SSE pump both project it from `task.partialOutput` on demand. State
+       * still changes on retry (`failed → thinking → done`), which is exactly
+       * the case a "task must be finished" gate missed.
+       */
+      if (settledOnly && projected.state === message.state && projected.error === message.error) continue;
       this.replaceMessage(record, message.id, projected);
       changed = true;
     }
@@ -344,6 +368,55 @@ export class AgentChatService {
      * a second start.
      */
     this.startNextQueuedTurn(record);
+    // Resync only outside a listener callback. Resyncing from inside one made
+    // `watchQueue`/`unwatchQueue` alternate on every notification, which is why
+    // the listener path could never settle: the subscription it needed was
+    // being removed by the settle that used it. The subscription checks its own
+    // reason to live at the end of a notification instead.
+    if (!settledOnly) this.syncTaskWatch();
+  }
+
+  /**
+   * Holds a conversation's subscription exactly while a task it presents can
+   * still move.
+   *
+   * Three cases need it: a queued turn (which must advance without a reader), a
+   * task still running behind a message, and a task that finished in a state
+   * the user may retry. The third one is what makes a retry visible: releasing
+   * on `failed` meant the retry's transitions reached nobody, so the
+   * conversation kept showing the failure while the database held the answer.
+   *
+   * A task that ended `succeeded` or `cancelled` is retryable too, but nothing
+   * currently retries it without the user asking, and keeping a subscription
+   * alive for every completed turn would make an idle runtime hold one per
+   * cached conversation. The read path still follows the task, so that case is
+   * correct, just not push-driven.
+   */
+  private syncTaskWatch(): void {
+    for (const record of [...this.conversations.values()]) {
+      const queued = (this.queuedTurns.get(record.id)?.length ?? 0) > 0;
+      if (queued || this.hasRetryableTask(record)) this.watchQueue(record);
+      else this.unwatchQueue(record.id);
+    }
+  }
+
+  /**
+   * Whether a task this conversation presents can still change on its own.
+   *
+   * Running counts, and so does a finished-but-retryable task: a retry of the
+   * same id moves it back to `running` and then to `succeeded`, and only a
+   * subscription at that moment makes the conversation follow. Measured: with
+   * the subscription released on `failed`, the retried task succeeded in the
+   * database while the message stayed "failed" forever for a reader who never
+   * reopened it.
+   */
+  private hasRetryableTask(record: ConversationRecord): boolean {
+    return record.messages.some((message) => {
+      if (message.author !== 'assistant' || message.taskId === null) return false;
+      if (!terminalMessageState(message.state)) return true;
+      const task = this.taskService.store.getTask(message.taskId);
+      return task !== null && (task.state === 'failed' || task.state === 'interrupted');
+    });
   }
 
   /**
@@ -363,7 +436,10 @@ export class AgentChatService {
     for (;;) {
       const queue = this.queuedTurns.get(record.id);
       if (!queue || queue.length === 0) {
-        this.unwatchQueue(record.id);
+        // An empty queue is one reason for a subscription to exist, not the
+        // only one. Releasing here unconditionally is what dropped the watch on
+        // a task that had just failed — the very task a user retries.
+        if (!this.hasRetryableTask(record)) this.unwatchQueue(record.id);
         return;
       }
       // The queued turn itself is not live yet, so only its predecessor can be.
@@ -373,7 +449,6 @@ export class AgentChatService {
       if (!next) return;
       if (queue.length === 0) {
         this.queuedTurns.delete(record.id);
-        this.unwatchQueue(record.id);
       }
 
       userMessage = record.messages.find((message) => message.id === next!.userMessageId);
@@ -440,14 +515,9 @@ export class AgentChatService {
   private watchQueue(record: ConversationRecord): void {
     if (this.queueWatchers.has(record.id)) return;
     const unsubscribe = this.taskService.onChange((taskId) => {
-      const queued = this.queuedTurns.get(record.id);
-      if (!queued || queued.length === 0) {
-        this.unwatchQueue(record.id);
-        return;
-      }
       /*
        * Only react to a task this conversation owns. A transition elsewhere is
-       * not a reason to touch this queue, and reacting to it would start a turn
+       * not a reason to touch this record, and reacting to it would start a turn
        * while its own predecessor is still running.
        */
       const owned = record.messages.some((message) => message.taskId === taskId);
@@ -457,10 +527,28 @@ export class AgentChatService {
        * this conversation's assistant message only learns the body when it is
        * projected. Promoting before that would build the next prompt from a
        * transcript whose previous reply is still empty.
-       *
-       * `settleRecord` promotes on its own, so this does not call it again.
        */
-      this.settleRecord(record);
+      this.settleRecord(record, true);
+      /*
+       * Leave when nothing is left to follow.
+       *
+       * The check lives here rather than calling `syncTaskWatch`, because that
+       * wider sync also re-adds the subscription and the pair oscillated on
+       * every notification. Releasing from inside this callback is safe:
+       * `TaskService.notifyChange` iterates a `Set`, so deleting the entry it is
+       * currently on does not skip the next one.
+       */
+      const queuedLeft = (this.queuedTurns.get(record.id)?.length ?? 0) > 0;
+      /*
+       * One definition of "may still move", shared with `syncTaskWatch`.
+       *
+       * An earlier version tested the message's terminal flag here and
+       * released on `failed` — which is exactly the state a user retries from,
+       * so the retry's transitions reached nobody. `hasRetryableTask` also asks
+       * whether the task behind the message is retryable, and it is the rule
+       * that matters.
+       */
+      if (!queuedLeft && !this.hasRetryableTask(record)) this.unwatchQueue(record.id);
     });
     this.queueWatchers.set(record.id, unsubscribe);
   }
@@ -597,6 +685,7 @@ export class AgentChatService {
     });
     this.queuedTurns.set(record.id, queue);
     this.watchQueue(record);
+    this.syncTaskWatch();
 
     return Object.freeze({
       version: AGENT_CHAT_CONTRACT_VERSION,
@@ -819,6 +908,10 @@ export class AgentChatService {
       this.persist(record);
     }
     this.projectForRead(record);
+    // `projectForRead` settles but does not necessarily create the
+    // subscription this turn needs; without this a single-turn conversation
+    // would never hear that its task finished.
+    this.syncTaskWatch();
     return Object.freeze({
       version: AGENT_CHAT_CONTRACT_VERSION,
       conversationId,
@@ -1438,5 +1531,10 @@ export class AgentChatService {
       idempotency: Object.freeze([...record.idempotency.entries()].map(([key, value]) =>
         Object.freeze([key, value] as const))),
     });
+  }
+
+  /** Releases the task subscription. Call when the service is discarded. */
+  close(): void {
+    for (const conversationId of [...this.queueWatchers.keys()]) this.unwatchQueue(conversationId);
   }
 }

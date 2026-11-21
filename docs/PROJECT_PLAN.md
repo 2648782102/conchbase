@@ -273,7 +273,9 @@ coding model does not redo finished work.
   (`tests/task-state-machine.test.ts`); cancellation/retry/timeout races are
   covered (`tests/task-race.test.ts`, which also found and fixed an unbounded
   single-turn deadline); event replay is gap-free and cursor-stable; backup and
-  verify-backup exist; legacy databases upgrade in place; the single-process
+  verify-backup exist, and `restore-backup` validates a snapshot, stages and
+  re-verifies the copy, then keeps the previous database
+  (`tests/backup.test.ts`); legacy databases upgrade in place; the single-process
   model is documented with an actionable owner error; errors are categorized and
   request logs exclude prompts.
 - **Phase 2 — done.** `model-provider.ts` defines the provider contract;

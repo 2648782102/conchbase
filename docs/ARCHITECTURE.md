@@ -164,6 +164,24 @@ Two consequences, both of which were observed as bugs before they were rules:
   `updatedAt` would differ — which is what keeps a read from writing a row on
   every request.
 
+### Who drives a settle
+
+Two callers project a message: a read (returns, does not persist) and a task
+subscription (persists). The subscription is held per conversation while that
+conversation has a queued turn, a task still running, or a task ended in a
+retryable state (`failed`, `interrupted`). The last case is what makes a retry
+visible without a reader; releasing on `failed` left the conversation showing
+the old failure while the database held the answer.
+
+The task bus fires on every streamed delta, so a listener-driven settle writes
+only when the projected *state* or error changes. Persisting each partial body
+rewrote the whole transcript once per token — quadratic work that starved the
+event loop and made the Runtime unresponsive during a single reply.
+
+A listener releases its own subscription when nothing is left to follow. It must
+not call the wider resync from inside the callback: that both removes and
+re-adds the subscription, and the pair oscillates on every notification.
+
 ### Rule of thumb
 
 A client never invents a transition. If a UI needs a new state, it is a Runtime
@@ -222,6 +240,10 @@ a task, Agent revision, model output, or request. `CONCHBASE_EXECUTION_MODE`
 still works: `restricted` → `standard`, `unrestricted` → `trusted`. There is no
 level that waives grants: a level answers "how much ceremony surrounds an
 allowed action", never "what may this Agent touch".
+
+`GET /v1/runtime` publishes the resolved `permissionLevel`. `executionMode` is
+still there, marked `executionModeIsLegacy`, because a client that read it as
+policy would be wrong whenever an explicit level overrode the default mode.
 
 `decidePolicy` resolves in a fixed order, and the order is the contract:
 boundary → grants → approval. Reversing it would let a level waive a boundary
@@ -388,6 +410,7 @@ Lifecycle verbs on top of that choice:
 | `conchbase status` | is something healthy answering on the configured port |
 | `conchbase logs [n]` | last n lines of the background log |
 | `conchbase stop` | SIGTERM, then SIGKILL after the timeout; clears the pid file |
+| `conchbase restore-backup <path>` | verify a snapshot, replace the live database, keep the old file |
 
 One pid file per database. Because the database is single-owner, `start` refuses
 when a live pid already holds that database — the same rule as a foreground

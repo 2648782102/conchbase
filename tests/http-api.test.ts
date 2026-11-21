@@ -26,7 +26,9 @@ test('read-only status routes return the documented API shapes', async () => {
       name: 'Conchbase',
       version: '1.0.0',
       state: 'ready',
+      permissionLevel: 'standard',
       executionMode: 'restricted',
+      executionModeIsLegacy: true,
       capabilities: [],
     });
 

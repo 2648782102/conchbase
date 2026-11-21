@@ -30,6 +30,17 @@ export function nonterminalMessageState(state: AgentChatMessageState): boolean {
   return NONTERMINAL_STATES.includes(state);
 }
 
+/**
+ * Whether the message has reached a state nothing will advance again.
+ *
+ * Not the same set as `NONTERMINAL_STATES`: `waiting_attention` is a human wait
+ * that a later projection may still replace, while `done` and `replied` are the
+ * two views of one finished reply.
+ */
+export function terminalMessageState(state: AgentChatMessageState): boolean {
+  return !NONTERMINAL_STATES.includes(state) && state !== 'waiting_attention';
+}
+
 export function taskStateToMessageState(task: TaskSnapshot): AgentChatMessageState {
   // A finished task is `done` (unread) until the user reads the conversation.
   // Returning `replied` here would skip the distinction entirely.
