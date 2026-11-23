@@ -18,6 +18,7 @@ import {
   ModelProviderError,
   OpenAiChatCompletionsProvider,
 } from '../runtime/magpie-provider.js';
+import { categorizeError } from '../runtime/error-categories.js';
 
 const SECRET_PATTERNS: readonly RegExp[] = Object.freeze([
   /sk-[a-zA-Z0-9_-]{8,}/g,
@@ -36,9 +37,9 @@ export function redactProviderOutput(value: string): string {
 }
 
 function classify(cause: unknown): string {
-  if (cause instanceof ModelProviderError) return cause.kind;
+  if (cause instanceof ModelProviderError) return categorizeError(cause);
   if (cause instanceof Error && /unavailable|invalid JSON|no response stream/i.test(cause.message)) return 'unavailable';
-  return 'upstream-failure';
+  return categorizeError(cause);
 }
 
 export interface ProviderProbeStream {
@@ -120,13 +121,13 @@ export async function runProviderContract(options: ProviderProbeOptions = {}): P
     const failureStarted = Date.now();
     let failure: { readonly category: string; readonly message: string };
     try {
-      await adapter('conchbase-unknown-model-probe').streamTurn({
+    await adapter('conchbase-unknown-model-probe').streamTurn({
         taskId: 'provider-contract-failure-probe',
         prompt: 'Reply with exactly: PROBE_OK',
         turnIndex: 0,
         onOutputDelta() {},
       });
-      failure = { category: 'invalid-request', message: 'The endpoint accepted an unknown model.' };
+    failure = { category: 'validation', message: 'The endpoint accepted an unknown model.' };
     } catch (cause) {
       failure = {
         category: classify(cause),

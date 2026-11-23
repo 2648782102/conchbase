@@ -156,7 +156,7 @@ Provider observation documents are transient, untrusted normalization inputs. A 
 Runtime's own catalog and streaming adapters. It uses
 `CONCHBASE_PROVIDER_ENDPOINTS` for `openai-compatible` (or
 `CONCHBASE_MAGPIE_URL` for the default provider), prints model count, stream
-latency, and the classified `invalid-request` failure for an unknown model, and
+latency, and the classified `validation` failure for an unknown model, and
 redacts token-shaped values from every line. Missing configuration exits `2`;
 a failed live contract check exits `1`. The full catalog/stream/failure path is
 covered in-process with an injected fetch, so tests do not need a real gateway.

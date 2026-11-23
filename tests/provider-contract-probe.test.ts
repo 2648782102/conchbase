@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { runProviderContract } from '../src/cli/provider-contract-probe.js';
+import { categorizeError } from '../src/runtime/error-categories.js';
 
 const repositoryRoot = fileURLToPath(new URL('../', import.meta.url));
 const scriptPath = path.join(repositoryRoot, 'scripts/provider-contract.mjs');
@@ -98,6 +99,50 @@ test('the provider probe exercises the catalog, a stream, and a classified failu
   assert.equal(status, 0, stderr.lines.join('\n'));
   assert.match(stdout.lines.join('\n'), /catalog\s+1 model\(s\)/);
   assert.match(stdout.lines.join('\n'), /streaming\s+\d+ms; PROBE_OK/);
-  assert.match(stdout.lines.join('\n'), /failure-category\s+invalid-request/);
+  assert.match(stdout.lines.join('\n'), /failure-category\s+validation/);
   assert.doesNotMatch([...stdout.lines, ...stderr.lines].join('\n'), /sk-secret-should-not-print/);
+});
+
+test('the probe classifies failures with the canonical Runtime categories', async () => {
+  assert.equal(categorizeError({ kind: 'invalid-request' }), 'validation');
+  assert.equal(categorizeError({ kind: 'upstream-failure' }), 'provider');
+  assert.equal(categorizeError({ kind: 'unavailable' }), 'unavailable');
+
+  const stdout = collector();
+  const stderr = collector();
+  let call = 0;
+  const fetchImpl = (async (input: RequestInfo | URL) => {
+    if (String(input).endsWith('/v1/models')) {
+      return new Response(JSON.stringify({ data: [{ id: 'probe-model' }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    call += 1;
+    if (call === 1) {
+      return new Response(
+        `data: ${JSON.stringify({ choices: [{ delta: { content: 'PROBE_OK' } }] })}\n\ndata: [DONE]\n\n`,
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      );
+    }
+    return new Response(JSON.stringify({ error: { message: 'unknown model' } }), {
+      status: 404,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as typeof globalThis.fetch;
+
+  const status = await runProviderContract({
+    env: {
+      ...process.env,
+      CONCHBASE_PROVIDER_ENDPOINTS: '',
+      CONCHBASE_MAGPIE_URL: 'http://127.0.0.1:3425',
+      CONCHBASE_MODEL: 'probe-model',
+    } as NodeJS.ProcessEnv,
+    fetchImpl,
+    stdout: stdout.stream,
+    stderr: stderr.stream,
+  });
+  assert.equal(status, 0, stderr.lines.join('\n'));
+  assert.match(stdout.lines.join('\n'), /failure-category\s+validation/);
+  assert.doesNotMatch(stdout.lines.join('\n'), /failure-category\s+invalid-request/);
 });
