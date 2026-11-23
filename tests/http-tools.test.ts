@@ -164,6 +164,34 @@ test('the shared fetch boundary refuses non-textual content before consuming the
   );
 });
 
+test('the raw fetch tool accepts XHTML as a textual response', async () => {
+  const provider = tools({
+    fetch: (async () => new Response('<html/>', {
+      status: 200,
+      headers: { 'content-type': 'application/xhtml+xml' },
+    })) as typeof globalThis.fetch,
+  });
+  const result = await provider.invoke('http_fetch', { url: 'https://example.com/page.xhtml' });
+  assert.equal(result.ok, true);
+  assert.equal(String(result.summary), '<html/>');
+});
+
+test('a content-type error withholds secret-like response header details', async () => {
+  const provider = tools({
+    fetch: (async () => new Response('binary', {
+      status: 200,
+      headers: { 'content-type': 'application/octet-stream; token=sk-abcdefghijklmnop' },
+    })) as typeof globalThis.fetch,
+  });
+  await assert.rejects(
+    async () => provider.invoke('http_fetch', { url: 'https://example.com/a.bin' }),
+    (cause: unknown) => {
+      assert.doesNotMatch(String(cause), /sk-abcdefghijklmnop/);
+      return String(cause).includes('content-type');
+    },
+  );
+});
+
 test('an HTTP error surfaces the status instead of pretending success', async () => {
   const provider = tools({
     fetch: (async () => new Response('not found', {

@@ -108,7 +108,8 @@ export function createBoundedResourceFetcher(options: HttpFetchOptions = {}) {
   const timeoutMs = Math.min(MAX_TIMEOUT_MS, Math.max(1_000, options.timeoutMs ?? DEFAULT_TIMEOUT_MS));
   const maxBytes = Math.max(1_024, Math.min(MAX_HTTP_BYTES, options.maxBytes ?? MAX_HTTP_BYTES));
   const allowPrivateNetworks = options.allowPrivateNetworks === true;
-  const allowedContentTypes = options.allowedContentTypes ?? /^(text\/|application\/(json|xml|javascript|x-ndjson)\b)/i;
+  const allowedContentTypes = options.allowedContentTypes
+    ?? /^(text\/|application\/(json|xhtml\+xml|xml|javascript|x-ndjson)\b)/i;
   const resolveHost = options.resolve ?? (async (host: string) => {
     const records = await lookup(host, { all: true, verbatim: true });
     return records.map((record) => record.address);
@@ -147,9 +148,10 @@ export function createBoundedResourceFetcher(options: HttpFetchOptions = {}) {
         });
       }
       if (!isErrorResponse && !allowedContentTypes.test(contentType)) {
+        const boundedType = contentType.slice(0, 80);
         throw new ToolRejectedError(
           'unsupported_content_type',
-          `response content-type is ${contentType.slice(0, 80) || 'missing'}; only textual responses are returned.`,
+          `response content-type is ${containsSecretLike(boundedType) ? '(withheld)' : boundedType || 'missing'}; only textual responses are returned.`,
         );
       }
       const body = await readBounded(response, maxBytes);

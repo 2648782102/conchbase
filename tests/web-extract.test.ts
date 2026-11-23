@@ -184,6 +184,20 @@ test('web_extract bounds the whole summary by maxChars and reports extraction tr
   assert.equal(result.truncated, true);
 });
 
+test('web_extract reports truncation when link budget cuts body text', async () => {
+  const longLink = `https://example.com/${'x'.repeat(700)}`;
+  const provider = tools({
+    fetch: htmlFetch(`<html><body><a href="${longLink}">link</a><p>${'body '.repeat(200)}</p></body></html>`),
+  });
+  const result = await provider.invoke('web_extract', {
+    url: 'https://example.com/',
+    maxChars: MIN_EXTRACT_CHARS,
+    linkLimit: 1,
+  });
+  assert.equal(result.evidence?.facts.status, 'too_large');
+  assert.equal(result.truncated, true);
+});
+
 test('web_extract withholds secret-like HTTP error details', async () => {
   const provider = tools({
     fetch: (async () => new Response('password: hunter2', {

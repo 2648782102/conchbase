@@ -55,7 +55,6 @@ export function createBuiltinWebExtractTool(options: HttpFetchOptions = {}): Too
 
     const html = /^(text\/html\b|application\/xhtml\+xml\b)/i.test(resource.contentType);
     const extracted = html ? extractHtml(resource.body) : extractPlain(resource.body);
-    const truncated = resource.truncated || extracted.text.length > maxChars;
     const title = truncateChars(extracted.title, Math.min(MAX_TITLE_CHARS, maxChars));
     const remaining = maxChars - title.length;
     const links = html
@@ -64,6 +63,10 @@ export function createBuiltinWebExtractTool(options: HttpFetchOptions = {}): Too
     const linkChars = links.reduce((total, link) => total + link.length + 2, 0);
     const bodyBudget = Math.max(0, remaining - linkChars);
     const bodyText = truncateChars(extracted.text, bodyBudget);
+    const truncated = resource.truncated
+      || extracted.text.length > bodyBudget
+      || extracted.title.length > title.length
+      || links.length >= linkLimit;
     const status = bodyText.length === 0 && links.length === 0 && extracted.title.length === 0
       ? 'empty'
       : truncated ? 'too_large' : 'ok';
@@ -109,7 +112,7 @@ export function createBuiltinWebExtractTool(options: HttpFetchOptions = {}): Too
       links.length > 0 ? `Links:\n${links.map((link) => `- ${link}`).join('\n')}` : null,
       status === 'empty' ? '[no readable text found]' : null,
       resource.truncated ? `[truncated at ${resource.bytes} bytes of raw response]` : null,
-      truncated && !resource.truncated ? `[truncated at ${maxChars} characters]` : null,
+      truncated && !resource.truncated ? '[truncated to fit the extraction budget]' : null,
     ].filter((line): line is string => line !== null);
     const boundedSummary = truncateChars(lines.join('\n'), maxChars);
     const result = Object.freeze({
