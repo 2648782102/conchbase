@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -145,4 +146,65 @@ test('the probe classifies failures with the canonical Runtime categories', asyn
   assert.equal(status, 0, stderr.lines.join('\n'));
   assert.match(stdout.lines.join('\n'), /failure-category\s+validation/);
   assert.doesNotMatch(stdout.lines.join('\n'), /failure-category\s+invalid-request/);
+});
+
+test('the probe completes a real loopback HTTP catalog, stream, and failure round trip', async () => {
+  const requests: string[] = [];
+  const server = createServer((request, response) => {
+    const chunks: Buffer[] = [];
+    request.on('data', (chunk: Buffer) => chunks.push(chunk));
+    request.on('end', () => {
+      const body = Buffer.concat(chunks).toString('utf8');
+      const model = body.length > 0 ? JSON.parse(body).model as string : '';
+      requests.push(`${request.method} ${request.url} ${model}`);
+      const authorization = request.headers.authorization ?? '';
+      assert.equal(authorization, 'Bearer sk-fixture-token');
+      if (request.url === '/v1/models') {
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ data: [{ id: 'probe-model' }] }));
+        return;
+      }
+      if (model === 'conchbase-unknown-model-probe') {
+        response.writeHead(404, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ error: { message: 'unknown model' } }));
+        return;
+      }
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      response.end(
+        `data: ${JSON.stringify({ choices: [{ delta: { content: 'PROBE_OK' } }] })}\n\ndata: [DONE]\n\n`,
+      );
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === 'object');
+  try {
+    const stdout = collector();
+    const stderr = collector();
+    const status = await runProviderContract({
+      env: {
+        ...process.env,
+        CONCHBASE_PROVIDER_ENDPOINTS: JSON.stringify({
+          'openai-compatible': {
+            baseUrl: `http://127.0.0.1:${address.port}`,
+            appKey: 'sk-fixture-token',
+          },
+        }),
+        CONCHBASE_MODEL: 'probe-model',
+      } as NodeJS.ProcessEnv,
+      stdout: stdout.stream,
+      stderr: stderr.stream,
+    });
+    assert.equal(status, 0, stderr.lines.join('\n'));
+    assert.match(stdout.lines.join('\n'), /catalog\s+1 model\(s\)/);
+    assert.match(stdout.lines.join('\n'), /streaming\s+\d+ms; PROBE_OK/);
+    assert.match(stdout.lines.join('\n'), /failure-category\s+validation/);
+    assert.deepEqual(
+      requests.map((entry) => entry.replace(/^POST \/v1\/chat\/completions /, 'POST ')),
+      ['GET /v1/models ', 'POST probe-model', 'POST conchbase-unknown-model-probe'],
+    );
+    assert.doesNotMatch([...stdout.lines, ...stderr.lines].join('\n'), /sk-fixture-token/);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
 });

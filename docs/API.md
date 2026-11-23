@@ -160,6 +160,9 @@ latency, and the classified `validation` failure for an unknown model, and
 redacts token-shaped values from every line. Missing configuration exits `2`;
 a failed live contract check exits `1`. The full catalog/stream/failure path is
 covered in-process with an injected fetch, so tests do not need a real gateway.
+The same catalog/stream/failure path also runs against a temporary loopback
+HTTP server, so SSE framing and request routing are covered over a real socket
+without a real provider credential.
 
 Durable work documents are deterministic, topology-neutral state from the Runtime work contract. A Trigger request contains bounded `source`, `trigger`, `mandate`, provider-neutral `model`, and pinned revision ids; all digests are `sha256:<64 lowercase hex>`. `POST /v1/work/triggers` parses its raw `application/json` body and delegates exact shape validation to the pure domain contract, so top-level or nested unknown fields, malformed JSON, and unsupported shape changes return `400` before persistence. The `trigger.triggerId` is stored as `sourceEventId`, while the Runtime derives an opaque `trg_` id. An exact replay returns the stored envelope without new rows or events. A later Trigger with the same `threadKey` must carry the same Mandate and Assignment proposal; it adds context to the Thread but creates no second WorkItem, Mandate, Assignment, Outbox record, or DeliveryReceipt. A changed proposal returns `409`. Version-2 WorkItem, Assignment, Outbox, and DeliveryReceipt states have widened enums; all evidence remains digest-only and is not proof of an external write. The runtime advertises `durable-work-contract`, `authenticated-pairing`, `asynchronous-work-control`, `local-source-policy`, `capability-directory`, and `write-only-secret-handles`; clients must gate features on those capabilities. The Runtime adds start/stop/complete, recovery, delivery decisions, local Source events, capability records, and write-only SecretHandle routes.
 
