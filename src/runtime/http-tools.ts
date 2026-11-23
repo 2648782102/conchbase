@@ -34,6 +34,7 @@ import {
 } from './tool-provider.js';
 import { optionalString, requiredString } from './tool-parameter.js';
 import { createBuiltinWebExtractTool } from './web-extract.js';
+import { containsSecretLike } from './secret-filter.js';
 
 export const MAX_HTTP_BYTES = 64 * 1024;
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -228,9 +229,13 @@ export function createBoundedResourceFetcher(options: HttpToolsOptions = {}) {
       }
       const body = await readBounded(response, maxBytes);
       if (!response.ok) {
+        const boundedDetail = body.text.slice(0, 200);
+        const detail = body.text.length === 0
+          ? ''
+          : containsSecretLike(boundedDetail) ? ' [response body withheld]' : `: ${boundedDetail}`;
         throw new ToolRejectedError(
           'http_error',
-          `HTTP ${response.status}${body.text.length > 0 ? `: ${body.text.slice(0, 200)}` : ''}`,
+          `HTTP ${response.status}${detail}`,
         );
       }
       return Object.freeze({
