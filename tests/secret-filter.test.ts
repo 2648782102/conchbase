@@ -93,4 +93,11 @@ test('URL-local credentials are detected without flagging ordinary paths', () =>
     assert.equal(containsSensitiveUrlTarget(value), true, `must detect: ${value}`);
   }
   assert.equal(containsSensitiveUrlTarget('https://example.com/docs/getting-started'), false);
+  for (const value of [
+    'https://example.com/blog/2026-11-24-summer-release',
+    'https://example.com/docs/typescript-2026-guide',
+    'https://example.com/keyboard123456',
+  ]) {
+    assert.equal(containsSensitiveUrlTarget(value), false, `must not flag: ${value}`);
+  }
 });
