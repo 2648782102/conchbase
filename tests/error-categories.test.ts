@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { categorizeError, formatErrorLog, safeMessage, toErrorRecord } from '../src/runtime/error-categories.js';
+import { categorizeError, formatErrorLog, safeMessage, safeTaskError, toErrorRecord } from '../src/runtime/error-categories.js';
 import { ProviderError } from '../src/runtime/model-provider.js';
 
 /**
@@ -63,6 +63,13 @@ test('control characters are stripped and length is bounded', () => {
   const clean = safeMessage(messy, 50);
   assert.equal(clean.includes('\u0000'), false);
   assert.equal(clean.length <= 50, true);
+});
+
+test('durable task error text withholds secret-like details', () => {
+  const safe = safeTaskError(new Error('credential sk-abcdefghijklmnop was rejected'));
+  assert.equal(safe.includes('sk-abcdefghijklmnop'), false);
+  assert.match(safe, /withheld/i);
+  assert.equal(safeTaskError(new Error('plain failure')), 'plain failure');
 });
 
 test('the log line carries identifiers but never raw prompts or arguments', () => {

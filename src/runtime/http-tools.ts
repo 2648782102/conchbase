@@ -41,7 +41,7 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_TIMEOUT_MS = 30_000;
 const MAX_REDIRECTS = 3;
 const ALLOWED_METHODS = Object.freeze(['GET', 'HEAD'] as const);
-const TEXTUAL = /^(text\/|application\/(json|xml|javascript|x-ndjson)\b)/i;
+const TEXTUAL = /^(text\/|application\/(json|xhtml\+xml|xml|javascript|x-ndjson)\b)/i;
 
 export interface HttpToolsOptions {
   readonly fetch?: typeof globalThis.fetch;

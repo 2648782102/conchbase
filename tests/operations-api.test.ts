@@ -22,6 +22,12 @@ test('the data-location route reports path, size, and schema version', async () 
     logger: false, taskService: service,
     config: {
       host: '127.0.0.1', port: 4318, databasePath, magpieBaseUrl: 'http://127.0.0.1:3425',
+      providerEndpoints: {
+        'openai-compatible': {
+          baseUrl: 'http://127.0.0.1:3426',
+          appKey: 'sk-operations-token-must-not-print',
+        },
+      },
       defaultModel: 'fixture/model', workspaceRoot: directory, executionMode: 'restricted',
       loopBudget: { maxIterations: 6, maxToolCallsPerTurn: 4, deadlineMs: 120_000 },
       workerSliceIterations: 0, projectIdleMs: 1_800_000, globalActiveWork: 8,
@@ -135,6 +141,7 @@ test('the diagnostics route returns check names and remedies, never prompts or s
       assert.ok(['ok', 'warn', 'fail'].includes(check.status));
       assert.equal(typeof check.detail, 'string');
     }
+    assert.ok(body.checks.some((check: { id: string }) => check.id === 'providers'));
     assert.equal(JSON.stringify(body).includes('sk-'), false);
   } finally {
     service.close();

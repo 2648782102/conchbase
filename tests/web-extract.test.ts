@@ -209,3 +209,16 @@ test('web_extract refuses content types outside its extraction allowlist', async
     );
   }
 });
+
+test('web_extract extracts XHTML content declared by the operator contract', async () => {
+  const provider = tools({
+    fetch: htmlFetch(
+      '<html xmlns="http://www.w3.org/1999/xhtml"><body><p>XHTML body</p></body></html>',
+      'application/xhtml+xml',
+    ),
+  });
+  const result = await provider.invoke('web_extract', { url: 'https://example.com/' });
+  assert.equal(result.ok, true);
+  assert.equal(result.evidence?.facts.status, 'ok');
+  assert.match(String(result.summary), /XHTML body/);
+});

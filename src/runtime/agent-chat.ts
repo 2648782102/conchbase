@@ -23,6 +23,7 @@ import {
 import { projectMessage } from './agent-chat-projection.js';
 import { isTerminalTaskState } from './task-lifecycle.js';
 import { containsSecretLike } from './secret-filter.js';
+import { safeTaskError } from './error-categories.js';
 import {
   NONTERMINAL_STATES,
   phaseForState,
@@ -783,13 +784,13 @@ export class AgentChatService {
           ...assistantMessage,
           body: 'Runtime 无法启动 Agent 任务。',
           state: 'failed',
-          error: cause instanceof Error ? cause.message.slice(0, 240) : 'Task start failed.',
+          error: cause instanceof Error ? safeTaskError(cause, 240) : 'Task start failed.',
           updatedAt: this.now(),
         });
         this.persist(record);
       }
     } catch (cause) {
-      const errorText = cause instanceof Error ? cause.message.slice(0, 240) : 'Agent task creation failed.';
+      const errorText = cause instanceof Error ? safeTaskError(cause, 240) : 'Agent task creation failed.';
       this.replaceMessage(record, assistantMessage.id, {
         ...assistantMessage,
         body: unavailableError(errorText)

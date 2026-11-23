@@ -312,7 +312,11 @@ coding model does not redo finished work.
   approval-gated commit that shows the staged preview and accepts no caller
   subcommand. `web_extract` is the second: owner is the Runtime tool layer, it
   needs no credential, the existing external approval and side-effect ledger
-  give recovery/audit evidence, and `CONCHBASE_ENABLE_HTTP_TOOLS=0` disables it.
+  give recovery/audit evidence, and `CONCHBASE_ENABLE_HTTP_TOOLS=0` disables
+  it. Its rate limit is structural: GET/HEAD only, no cookies or redirects into
+  private networks, one request per call, 64 KiB raw body, 8k characters by
+  default (20k hard cap), and 10 links by default (25 hard cap); the Runtime
+  task loop still bounds iterations and tool calls per turn.
   Calendar, email, search, and trackers stay blocked until each has an owner,
   credential boundary, rate limit, recovery path, audit evidence, and disable
   path.

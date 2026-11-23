@@ -79,6 +79,7 @@ export function registerOperationsRoutes(
     port: config!.port,
     host: config!.host,
     magpieBaseUrl: config!.magpieBaseUrl,
+    ...(config!.providerEndpoints ? { providerEndpoints: config!.providerEndpoints } : {}),
     consolePort: consolePortFor(config!.port),
   }));
 
