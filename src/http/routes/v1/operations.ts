@@ -13,6 +13,7 @@ import type { TaskService } from '../../../runtime/task-service.js';
 import { backupOpenDatabase, inspectBackup } from '../../../runtime/backup.js';
 import { buildDiagnosticChecks, consolePortFor, defaultDiagnosticContext } from '../../../runtime/diagnostics.js';
 import { buildSupportBundle } from '../../../runtime/support-bundle.js';
+import { CURRENT_DATABASE_SCHEMA_VERSION } from '../../../runtime/task-store-migrations.js';
 import type { RuntimeConfig } from '../../../config/runtime-config.js';
 
 export function registerOperationsRoutes(
@@ -34,7 +35,7 @@ export function registerOperationsRoutes(
       sizeBytes,
       // The schema version is what a support flow needs to know before advising
       // an upgrade; it is not sensitive.
-      schemaVersion: 9,
+      schemaVersion: CURRENT_DATABASE_SCHEMA_VERSION,
       exists,
     });
   });

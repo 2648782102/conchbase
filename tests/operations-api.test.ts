@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { createApp } from '../src/http/create-app.js';
 import { createTaskService } from '../src/runtime/task-service.js';
+import { CURRENT_DATABASE_SCHEMA_VERSION } from '../src/runtime/task-store-migrations.js';
 
 function sse(): string {
   return 'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n';
@@ -32,7 +33,7 @@ test('the data-location route reports path, size, and schema version', async () 
     assert.equal(response.statusCode, 200);
     const body = response.json();
     assert.equal(body.databasePath, databasePath);
-    assert.equal(body.schemaVersion, 9);
+    assert.equal(body.schemaVersion, CURRENT_DATABASE_SCHEMA_VERSION);
     assert.equal(typeof body.sizeBytes, 'number');
     assert.equal(JSON.stringify(body).includes('prompt'), false);
   } finally {
