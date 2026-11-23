@@ -163,7 +163,7 @@ test('web_extract handles empty, truncated, plain-text, and binary responses', a
     async () => tools({
       fetch: htmlFetch('binary', 'application/octet-stream'),
     }).invoke('web_extract', { url: 'https://example.com/file' }),
-    /only accepts HTML, plain text, JSON, or XML/i,
+    /unsupported_content_type|only textual responses are returned/i,
   );
 });
 
@@ -205,7 +205,7 @@ test('web_extract refuses content types outside its extraction allowlist', async
     await assert.rejects(
       async () => tools({ fetch: htmlFetch('body', contentType) })
         .invoke('web_extract', { url: 'https://example.com/' }),
-      /only accepts HTML, plain text, JSON, or XML responses/i,
+      /unsupported_content_type|only textual responses are returned/i,
     );
   }
 });

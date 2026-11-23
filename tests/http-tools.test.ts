@@ -150,6 +150,20 @@ test('the shared fetch boundary bounds bytes before parsing', async () => {
   assert.equal(resource.status, 200);
 });
 
+test('the shared fetch boundary refuses non-textual content before consuming the body', async () => {
+  const fetchResource = createBoundedResourceFetcher({
+    resolve: publicResolve,
+    fetch: (async () => new Response('binary', {
+      status: 200,
+      headers: { 'content-type': 'application/octet-stream', 'x-boundary-probe': '1' },
+    })) as typeof globalThis.fetch,
+  });
+  await assert.rejects(
+    async () => fetchResource('https://example.com/file', 'GET'),
+    /content-type/i,
+  );
+});
+
 test('an HTTP error surfaces the status instead of pretending success', async () => {
   const provider = tools({
     fetch: (async () => new Response('not found', {

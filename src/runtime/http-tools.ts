@@ -18,8 +18,6 @@ export { isForbiddenAddress, MAX_HTTP_BYTES } from './http-fetch-boundary.js';
 export type HttpToolsOptions = HttpFetchOptions;
 
 const ALLOWED_METHODS = Object.freeze(['GET', 'HEAD'] as const);
-const TEXTUAL = /^(text\/|application\/(json|xhtml\+xml|xml|javascript|x-ndjson)\b)/i;
-
 export function createBuiltinHttpTools(options: HttpToolsOptions = {}): ToolProvider {
   const fetchBoundedResource = createBoundedResourceFetcher(options);
   const maxBytes = Math.max(1_024, Math.min(MAX_HTTP_BYTES, options.maxBytes ?? MAX_HTTP_BYTES));
@@ -56,12 +54,6 @@ export function createBuiltinHttpTools(options: HttpToolsOptions = {}): ToolProv
     }
     const method = methodRaw as 'GET' | 'HEAD';
     const resource = await fetchBoundedResource(raw, method);
-    if (method === 'GET' && !TEXTUAL.test(resource.contentType)) {
-      throw new ToolRejectedError(
-        'unsupported_content_type',
-        `response content-type is ${resource.contentType.slice(0, 80) || 'missing'}; only textual responses are returned.`,
-      );
-    }
     if (method === 'HEAD') {
       return Object.freeze({
         ok: true,

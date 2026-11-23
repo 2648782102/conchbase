@@ -14,6 +14,7 @@ export interface HttpFetchOptions {
   readonly maxBytes?: number;
   readonly allowPrivateNetworks?: boolean;
   readonly resolve?: (hostname: string) => Promise<readonly string[]>;
+  readonly allowedContentTypes?: RegExp;
 }
 
 export interface BoundedResource {
@@ -107,6 +108,7 @@ export function createBoundedResourceFetcher(options: HttpFetchOptions = {}) {
   const timeoutMs = Math.min(MAX_TIMEOUT_MS, Math.max(1_000, options.timeoutMs ?? DEFAULT_TIMEOUT_MS));
   const maxBytes = Math.max(1_024, Math.min(MAX_HTTP_BYTES, options.maxBytes ?? MAX_HTTP_BYTES));
   const allowPrivateNetworks = options.allowPrivateNetworks === true;
+  const allowedContentTypes = options.allowedContentTypes ?? /^(text\/|application\/(json|xml|javascript|x-ndjson)\b)/i;
   const resolveHost = options.resolve ?? (async (host: string) => {
     const records = await lookup(host, { all: true, verbatim: true });
     return records.map((record) => record.address);
@@ -137,11 +139,18 @@ export function createBoundedResourceFetcher(options: HttpFetchOptions = {}) {
       }
 
       const contentType = response.headers.get('content-type') ?? '';
+      const isErrorResponse = !response.ok;
       if (method === 'HEAD') {
         return Object.freeze({
           body: '', bytes: 0, truncated: false, contentType,
           status: response.status, finalUrl: target.url, redirects,
         });
+      }
+      if (!isErrorResponse && !allowedContentTypes.test(contentType)) {
+        throw new ToolRejectedError(
+          'unsupported_content_type',
+          `response content-type is ${contentType.slice(0, 80) || 'missing'}; only textual responses are returned.`,
+        );
       }
       const body = await readBounded(response, maxBytes);
       if (!response.ok) {

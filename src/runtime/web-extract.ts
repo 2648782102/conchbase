@@ -32,7 +32,10 @@ interface Extraction {
 }
 
 export function createBuiltinWebExtractTool(options: HttpFetchOptions = {}): ToolProvider {
-  const fetchResource = createBoundedResourceFetcher(options);
+  const fetchResource = createBoundedResourceFetcher({
+    ...options,
+    allowedContentTypes: EXTRACT_CONTENT_TYPE,
+  });
 
   async function extractOnce(args: ToolArguments): Promise<ToolExecutionResult> {
     const url = requiredString(args, 'url');
@@ -49,12 +52,6 @@ export function createBuiltinWebExtractTool(options: HttpFetchOptions = {}): Too
     const resource = await fetchResource(url, 'GET');
     let contentType = resource.contentType.slice(0, 120);
     if (containsSecretLike(contentType)) contentType = '(content type withheld)';
-    if (!EXTRACT_CONTENT_TYPE.test(resource.contentType)) {
-      throw new ToolRejectedError(
-        'unsupported_content_type',
-        `web_extract only accepts HTML, plain text, JSON, or XML responses; got ${contentType.slice(0, 80) || 'missing'}.`,
-      );
-    }
 
     const html = /^(text\/html\b|application\/xhtml\+xml\b)/i.test(resource.contentType);
     const extracted = html ? extractHtml(resource.body) : extractPlain(resource.body);
