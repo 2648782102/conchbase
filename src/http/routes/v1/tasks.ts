@@ -31,6 +31,11 @@ const createTaskSchema = {
   },
 } as const;
 
+export const CREATE_TASK_REQUEST_FIELDS = Object.freeze(Object.keys(createTaskSchema.properties));
+export const CREATE_TASK_MODEL_OVERRIDE_FIELDS = Object.freeze(
+  Object.keys(createTaskSchema.properties.modelOverride.properties),
+);
+
 function unavailable(reply: {
   code(status: number): { send(payload: unknown): unknown };
 }) {

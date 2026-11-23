@@ -316,7 +316,7 @@ coding model does not redo finished work.
 
 ## Current next task
 
-### T1 — Prove the `openai-compatible` adapter against a real endpoint
+### T1 — Prove the `openai-compatible` adapter against a real endpoint — probe landed, live run pending
 
 **Goal:** One documented command takes a real OpenAI-compatible endpoint and
 proves the adapter works end to end, so `openai-compatible` stops being a
@@ -338,6 +338,12 @@ catalogue, makes one streaming call, and classifies one deliberate failure
 `npm run probe:provider`. No change to task or domain code: if the script needs
 one, the adapter is leaking provider detail and that is the finding.
 
+**Landed:** `scripts/provider-contract.mjs` uses the compiled Runtime config,
+registry, catalog, and streaming adapter, with an injected-fetch test covering
+the complete catalog/stream/failure path and CLI tests covering missing config
+and redaction. The only outstanding acceptance step is the manual run against
+an actual endpoint, which this checkout does not have configured.
+
 **Tests first:** a test that the script refuses a missing endpoint with an
 actionable message and redacts a token-shaped value from every output line;
 then the live run itself is a manual check with its result recorded here.
@@ -349,12 +355,12 @@ a category (`auth`, `unavailable`, …) rather than a stack trace or the secret.
 **Do not:** add a provider selector to the product, log request bodies, or treat
 this as a reason to touch the task schema.
 
-### T2 — Keep the published contract honest as it grows
+### T2 — Keep the published contract honest as it grows — done
 
 **Goal:** A field the Runtime accepts or returns cannot be missing from
 `docs/openapi.yaml` without a test failing.
 
-**Why it is next:** this already happened once. `postMessage` grew
+**Why it was next:** this already happened once. `postMessage` grew
 `attachments`, `reasoningEffort`, and `modelOverride` while
 `AgentChatMessageRequest` stayed at two properties with
 `additionalProperties: false`, and nothing failed. The guards added on
@@ -369,9 +375,17 @@ unknown fields themselves (`CreateTaskRequest`, tool requests, configuration
 apply). Keep each list beside the validator that enforces it, not in the test.
 
 **Tests first:** add one failing comparison per body before exporting the list.
+The comparisons were written first and failed because the field lists were not
+exported yet.
 
 **Acceptance:** `npm test` fails if a request field is added to a route without
 being documented, and `docs/API.md` states which bodies are covered.
+
+**Landed:** the route files export the field lists beside their validators for
+`CreateTaskRequest` and its model override, `CreateToolRequest`,
+`ToolCallProposal`, `ToolRequestDecisionRequest`, and
+`ApplyConfigurationRequest`. `tests/openapi-contract.test.ts` compares each
+list with the matching schema, and `docs/API.md` names every covered body.
 
 **Do not:** generate the whole spec from TypeScript, or add a schema-validation
 dependency for this.

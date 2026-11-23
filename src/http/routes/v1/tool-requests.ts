@@ -27,6 +27,11 @@ const createRequestSchema = {
   },
 } as const;
 
+export const CREATE_TOOL_REQUEST_FIELDS = Object.freeze(Object.keys(createRequestSchema.properties));
+export const TOOL_REQUEST_TOOL_CALL_FIELDS = Object.freeze(
+  Object.keys(createRequestSchema.properties.toolCall.properties),
+);
+
 const decisionSchema = {
   type: 'object',
   additionalProperties: false,
@@ -36,6 +41,8 @@ const decisionSchema = {
     reason: { type: 'string', minLength: 1, maxLength: 500 },
   },
 } as const;
+
+export const TOOL_REQUEST_DECISION_FIELDS = Object.freeze(Object.keys(decisionSchema.properties));
 
 function unavailable(reply: {
   code(status: number): { send(payload: unknown): unknown };

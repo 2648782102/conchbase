@@ -8,6 +8,18 @@ import {
   AGENT_CHAT_CONTRACT_VERSION,
 } from '../src/runtime/agent-chat.js';
 import {
+  APPLY_CONFIGURATION_REQUEST_FIELDS,
+} from '../src/http/routes/v1/configuration.js';
+import {
+  CREATE_TASK_MODEL_OVERRIDE_FIELDS,
+  CREATE_TASK_REQUEST_FIELDS,
+} from '../src/http/routes/v1/tasks.js';
+import {
+  CREATE_TOOL_REQUEST_FIELDS,
+  TOOL_REQUEST_DECISION_FIELDS,
+  TOOL_REQUEST_TOOL_CALL_FIELDS,
+} from '../src/http/routes/v1/tool-requests.js';
+import {
   AGENT_CHAT_PATHS_FIXTURE,
   CONVERSATION_PATHS_FIXTURE,
   EXECUTION_PATHS_FIXTURE,
@@ -64,6 +76,11 @@ function schemaSection(schemaName: string): string {
   const remainingSpec = spec.slice(start + 3);
   const nextSchema = /\n {4}[A-Za-z]/.exec(remainingSpec);
   return spec.slice(start, nextSchema === null ? undefined : start + 3 + nextSchema.index);
+}
+
+function schemaPropertyNames(schemaName: string): string[] {
+  return [...schemaSection(schemaName).matchAll(/^ {8}([A-Za-z][A-Za-z0-9]*):$/gm)]
+    .map((match) => match[1]!);
 }
 
 test('components declare each section once, and every $ref resolves', () => {
@@ -124,6 +141,41 @@ test('the Agent Chat request schema names every field the Runtime accepts', () =
     [...properties].sort(),
     [...AGENT_CHAT_MESSAGE_REQUEST_FIELDS].sort(),
     'docs/openapi.yaml AgentChatMessageRequest must document exactly the accepted fields',
+  );
+});
+
+test('the create task request schema names every field the route accepts', () => {
+  assert.deepEqual(
+    schemaPropertyNames('CreateTaskRequest').sort(),
+    [...CREATE_TASK_REQUEST_FIELDS].sort(),
+    'docs/openapi.yaml CreateTaskRequest must document exactly the accepted fields',
+  );
+  assert.deepEqual(
+    schemaPropertyNames('AgentReference').sort(),
+    [...CREATE_TASK_MODEL_OVERRIDE_FIELDS].sort(),
+    'docs/openapi.yaml AgentReference must document every accepted model override field',
+  );
+});
+
+test('the tool request schemas name every field the routes accept', () => {
+  assert.deepEqual(
+    schemaPropertyNames('CreateToolRequest').sort(),
+    [...CREATE_TOOL_REQUEST_FIELDS].sort(),
+  );
+  assert.deepEqual(
+    schemaPropertyNames('ToolCallProposal').sort(),
+    [...TOOL_REQUEST_TOOL_CALL_FIELDS].sort(),
+  );
+  assert.deepEqual(
+    schemaPropertyNames('ToolRequestDecisionRequest').sort(),
+    [...TOOL_REQUEST_DECISION_FIELDS].sort(),
+  );
+});
+
+test('the configuration apply schema names every field the route accepts', () => {
+  assert.deepEqual(
+    schemaPropertyNames('ApplyConfigurationRequest').sort(),
+    [...APPLY_CONFIGURATION_REQUEST_FIELDS].sort(),
   );
 });
 

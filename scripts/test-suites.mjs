@@ -51,7 +51,7 @@ const SUITES = Object.freeze({
     'provider-message-wire-format.test.ts', 'wire-conformance.test.ts',
     'provider-observation-api.test.ts',
     'model-provider.test.ts', 'provider-registry.test.ts', 'fake-provider.test.ts',
-    'error-categories.test.ts', 'provider-routing.test.ts',
+    'error-categories.test.ts', 'provider-routing.test.ts', 'provider-contract-probe.test.ts',
   ],
   boss: [
     'organization-intent-parser.test.ts', 'boss-mode-service.test.ts',

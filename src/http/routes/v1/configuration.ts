@@ -25,6 +25,10 @@ const applyRequestSchema = {
   },
 } as const;
 
+export const APPLY_CONFIGURATION_REQUEST_FIELDS = Object.freeze(
+  Object.keys(applyRequestSchema.properties),
+);
+
 const revisionParamsSchema = {
   type: 'object',
   additionalProperties: false,

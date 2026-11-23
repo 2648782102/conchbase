@@ -7,6 +7,13 @@ checkout derives one from its branch, so parallel worktrees never collide
 machine-readable source of truth for all routes is [`openapi.yaml`](openapi.yaml).
 Conchbase owns this contract; Pagurus and other clients consume it.
 
+The contract tests compare the documented fields against the field lists the
+Runtime validates with for `AgentChatMessageRequest`, `CreateTaskRequest` (and
+its `AgentReference` model override), `CreateToolRequest`,
+`ToolCallProposal`, `ToolRequestDecisionRequest`, and
+`ApplyConfigurationRequest`. Adding a field to one of those request bodies
+without documenting it fails `npm test`.
+
 ## Implemented routes
 
 | Method and path | Behavior |
@@ -143,6 +150,15 @@ Configuration documents use `schemaVersion: 1` or `schemaVersion: 2`. Both requi
 Tool request documents are provider-neutral data. A request includes `taskId`, `attempt`, `compositionNodeId`, and `toolCall` with a bounded `toolName` and scalar `arguments`. The runtime requires a v2 task in `queued`, `running`, or `waiting_approval`, derives `cmp_` identity and the pinned configuration revision, validates the node, stores an arguments digest and a composition-scoped idempotency key, and returns a pending record. An approval includes only `decision` and a bounded `reason`; the runtime stores a reason digest. Exact replay returns the same record without adding events; a conflicting decision returns `409`. See the tool-request validators and routes.
 
 Provider observation documents are transient, untrusted normalization inputs. A request has `version: 1`, `provider: 'openai-chat-completions'`, and one bounded plain-JSON `payload`. The route returns a `version: 1` observation with `providerToolCallId`, a normalized `toolCall`, and an `argumentsDigest`, or `null` for a no-tool-call response. It rejects unsupported providers, raw envelope fields, secret-like or absolute-URL data, streaming deltas, mixed answers, multiple calls, and malformed shapes with bounded `details`. A client that wants a durable ledger record must explicitly submit the normalized `toolCall` to `POST /v1/tool-requests` with task, attempt, and composition node identity. See the provider observation validators and route.
+
+`npm run probe:provider` checks a configured loopback endpoint with the
+Runtime's own catalog and streaming adapters. It uses
+`CONCHBASE_PROVIDER_ENDPOINTS` for `openai-compatible` (or
+`CONCHBASE_MAGPIE_URL` for the default provider), prints model count, stream
+latency, and the classified `invalid-request` failure for an unknown model, and
+redacts token-shaped values from every line. Missing configuration exits `2`;
+a failed live contract check exits `1`. The full catalog/stream/failure path is
+covered in-process with an injected fetch, so tests do not need a real gateway.
 
 Durable work documents are deterministic, topology-neutral state from the Runtime work contract. A Trigger request contains bounded `source`, `trigger`, `mandate`, provider-neutral `model`, and pinned revision ids; all digests are `sha256:<64 lowercase hex>`. `POST /v1/work/triggers` parses its raw `application/json` body and delegates exact shape validation to the pure domain contract, so top-level or nested unknown fields, malformed JSON, and unsupported shape changes return `400` before persistence. The `trigger.triggerId` is stored as `sourceEventId`, while the Runtime derives an opaque `trg_` id. An exact replay returns the stored envelope without new rows or events. A later Trigger with the same `threadKey` must carry the same Mandate and Assignment proposal; it adds context to the Thread but creates no second WorkItem, Mandate, Assignment, Outbox record, or DeliveryReceipt. A changed proposal returns `409`. Version-2 WorkItem, Assignment, Outbox, and DeliveryReceipt states have widened enums; all evidence remains digest-only and is not proof of an external write. The runtime advertises `durable-work-contract`, `authenticated-pairing`, `asynchronous-work-control`, `local-source-policy`, `capability-directory`, and `write-only-secret-handles`; clients must gate features on those capabilities. The Runtime adds start/stop/complete, recovery, delivery decisions, local Source events, capability records, and write-only SecretHandle routes.
 
