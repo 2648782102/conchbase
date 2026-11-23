@@ -199,6 +199,38 @@ test('web_extract reports truncation when link budget cuts body text', async () 
   assert.match(String(result.summary), /truncated to fit the extraction budget/);
 });
 
+test('web_extract honors linkLimit zero', async () => {
+  const provider = tools({
+    fetch: htmlFetch('<html><body><a href="https://example.com/one">one</a><p>Keep me</p></body></html>'),
+  });
+  const result = await provider.invoke('web_extract', {
+    url: 'https://example.com/',
+    linkLimit: 0,
+  });
+  assert.doesNotMatch(String(result.summary), /example\.com\/one/);
+  assert.match(String(result.summary), /Keep me/);
+  assert.notEqual(result.evidence?.facts.status, 'too_large');
+});
+
+test('web_extract removes unclosed hidden sections', async () => {
+  const provider = tools({
+    fetch: htmlFetch('<html><body><script>alert(1)</script><p>Keep me</p><style>bad{}'),
+  });
+  const result = await provider.invoke('web_extract', { url: 'https://example.com/' });
+  assert.notEqual(result.evidence?.facts.status, 'secret_withheld');
+  assert.doesNotMatch(String(result.summary), /alert\(1\)|bad\{\}/);
+  assert.match(String(result.summary), /Keep me/);
+});
+
+test('web_extract ignores out-of-range numeric HTML entities', async () => {
+  const provider = tools({
+    fetch: htmlFetch('<html><body>Before &#9999999; after</body></html>'),
+  });
+  const result = await provider.invoke('web_extract', { url: 'https://example.com/' });
+  assert.equal(result.ok, true);
+  assert.match(String(result.summary), /Before\s+after/);
+});
+
 test('web_extract withholds secret-like HTTP error details', async () => {
   const provider = tools({
     fetch: (async () => new Response('password: hunter2', {

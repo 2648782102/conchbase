@@ -152,6 +152,32 @@ test('an external approval with a secret-like URL withholds the durable target',
   );
 });
 
+test('an approval URL with a token query withholds the durable target', async () => {
+  const secretUrl = 'https://example.com/article?token=abcdefghijklmnop';
+  await withExternalUrlService(
+    scripted([() => toolCall('web_extract', { url: secretUrl })]),
+    async (service) => {
+      const agent = await service.createAgent({
+        name: '网页读取员', instructions: 'Read pages.', providerId: 'magpie', modelId: 'fixture/model',
+        grantedCapabilities: [{ kind: 'tool', name: 'web_extract' }],
+      });
+      const created = await service.createAgentTask({ prompt: 'read the page', agentId: agent.id });
+      service.startTask(created.id);
+      let task = service.store.getTask(created.id)!;
+      for (let attempt = 0; attempt < 100 && task.state !== 'waiting_approval'; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        task = service.store.getTask(created.id)!;
+      }
+      assert.equal(task.state, 'waiting_approval');
+      const events = service.store.listEvents(null)
+        .filter((event) => event.taskId === created.id && event.type === ('agent_loop.approval_requested' as never));
+      assert.equal(events.length, 1);
+      assert.doesNotMatch(JSON.stringify(events[0]?.data), /abcdefghijklmnop/);
+      assert.equal(events[0]?.data?.targetPath, '(url withheld)');
+    },
+  );
+});
+
 test('approving a pending write resumes the loop and executes it once', async () => {
   await withService(
     scripted([

@@ -66,7 +66,7 @@ export function createBuiltinWebExtractTool(options: HttpFetchOptions = {}): Too
     const truncated = resource.truncated
       || extracted.text.length > bodyBudget
       || extracted.title.length > title.length
-      || links.length >= linkLimit;
+      || (linkLimit > 0 && links.length >= linkLimit);
     const status = bodyText.length === 0 && links.length === 0 && extracted.title.length === 0
       ? 'empty'
       : truncated ? 'too_large' : 'ok';
@@ -196,6 +196,7 @@ function stripHtml(body: string): string {
   return body
     .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(new RegExp(`<(${[...STRIPPED_TAGS].join('|')})\\b[^>]*>[\\s\\S]*?<\\/\\1\\s*>`, 'gi'), ' ')
+    .replace(new RegExp(`<(${[...STRIPPED_TAGS].join('|')})\\b[^>]*>[\\s\\S]*$`, 'i'), ' ')
     .replace(/<\/(p|div|section|article|h[1-6]|li|br|tr)\s*>/gi, '\n')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<[^>]*>/g, ' ')
@@ -215,8 +216,8 @@ function decodeEntities(value: string): string {
     .replace(/&gt;/gi, '>')
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
-    .replace(/&#x([0-9a-f]{1,6});/gi, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
-    .replace(/&#(\d{1,7});/g, (_, decimal: string) => String.fromCodePoint(Number(decimal)));
+    .replace(/&#x([0-9a-f]{1,6});/gi, (_, hex: string) => decodeCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d{1,7});/g, (_, decimal: string) => decodeCodePoint(Number(decimal)));
   for (let round = 0; round < 3 && /&(?:#x[0-9a-f]+|#\d+|amp|lt|gt|quot|#39);/i.test(decoded); round += 1) {
     const next = decoded
       .replace(/&amp;/gi, '&')
@@ -224,12 +225,18 @@ function decodeEntities(value: string): string {
       .replace(/&gt;/gi, '>')
       .replace(/&quot;/gi, '"')
       .replace(/&#39;/gi, "'")
-      .replace(/&#x([0-9a-f]{1,6});/gi, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
-      .replace(/&#(\d{1,7});/g, (_, decimal: string) => String.fromCodePoint(Number(decimal)));
+      .replace(/&#x([0-9a-f]{1,6});/gi, (_, hex: string) => decodeCodePoint(parseInt(hex, 16)))
+      .replace(/&#(\d{1,7});/g, (_, decimal: string) => decodeCodePoint(Number(decimal)));
     if (next === decoded) break;
     decoded = next;
   }
   return decoded;
+}
+
+function decodeCodePoint(point: number): string {
+  if (!Number.isInteger(point) || point < 0 || point > 0x10ffff
+    || (point >= 0xd800 && point <= 0xdfff)) return '';
+  return String.fromCodePoint(point);
 }
 
 function cleanText(value: string): string {
@@ -239,6 +246,7 @@ function cleanText(value: string): string {
 function collectLinks(body: string, baseUrl: URL, limit: number, charBudget: number): readonly string[] {
   const links: string[] = [];
   const seen = new Set<string>();
+  if (limit === 0) return Object.freeze(links);
   const pattern = /<a\b[^>]*\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))[^>]*>/gi;
   for (const match of body.matchAll(pattern)) {
     const raw = cleanText(decodeEntities(match[1] ?? match[2] ?? match[3] ?? ''));

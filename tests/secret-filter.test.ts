@@ -66,7 +66,20 @@ test('ordinary prose about secrets is not automatically withheld', () => {
     'Describe the secret handshake used by the team.',
     'The credential flow needs an operator decision.',
     'This document explains API key rotation.',
+    'Use a password manager.',
   ]) {
     assert.equal(containsSecretLike(value), false, `must not flag: ${value}`);
+  }
+});
+
+test('credential keywords with values are detected in common formats', () => {
+  for (const value of [
+    'token=abcdefghijklmnop',
+    'secret abcdefghijklmnop',
+    'private key: abcdefghijklmnop',
+    'api key: abcdefghijklmnop',
+    'Authorization: Basic abcdefghijklmnop',
+  ]) {
+    assert.equal(containsSecretLike(value), true, `must detect: ${value}`);
   }
 });
