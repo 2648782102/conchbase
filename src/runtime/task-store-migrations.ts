@@ -13,9 +13,11 @@ import type { DatabaseSync } from 'node:sqlite';
  * refused rather than silently degraded.
  */
 
+export const CURRENT_DATABASE_SCHEMA_VERSION = 9;
+
 export function migrateAgentSchema(database: DatabaseSync): void {
     const versionRow = database.prepare('PRAGMA user_version').get() as { user_version: number };
-    if (versionRow.user_version > 9) {
+    if (versionRow.user_version > CURRENT_DATABASE_SCHEMA_VERSION) {
       throw new Error(`Database schema version ${versionRow.user_version} is newer than this runtime supports.`);
     }
     for (const [table, column] of [

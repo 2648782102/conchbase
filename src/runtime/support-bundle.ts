@@ -10,6 +10,7 @@
 import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { DiagnosticCheck, DiagnosticStatus } from './diagnostics.js';
+import { CURRENT_DATABASE_SCHEMA_VERSION } from './task-store-migrations.js';
 
 export interface SupportBundle {
   readonly format: 'conchbase-support-bundle';
@@ -54,7 +55,7 @@ export async function buildSupportBundle(input: {
     data: Object.freeze({
       databasePath,
       sizeBytes: existsSync(databasePath) ? statSync(databasePath).size : 0,
-      schemaVersion: 9,
+      schemaVersion: CURRENT_DATABASE_SCHEMA_VERSION,
     }),
     runtime: Object.freeze({ host: input.host, port: input.port, magpieBaseUrl: input.magpieBaseUrl }),
     checks: Object.freeze(input.checks.map((check) => Object.freeze({

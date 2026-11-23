@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { buildSupportBundle, formatSupportBundle } from '../src/runtime/support-bundle.js';
+import { CURRENT_DATABASE_SCHEMA_VERSION } from '../src/runtime/task-store-migrations.js';
 
 test('a bundle summarizes version, data, and checks without sensitive fields', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-bundle-'));
@@ -23,6 +24,7 @@ test('a bundle summarizes version, data, and checks without sensitive fields', a
     });
     assert.equal(bundle.version, '1.0.0');
     assert.equal(bundle.data.databasePath, path.join(directory, 'runtime.sqlite'));
+    assert.equal(bundle.data.schemaVersion, CURRENT_DATABASE_SCHEMA_VERSION);
     assert.equal(bundle.checks.length, 2);
     const json = JSON.stringify(bundle);
     for (const forbidden of ['prompt', 'messages', 'transcript', 'secret', 'sk-']) {

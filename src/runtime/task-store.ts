@@ -37,7 +37,10 @@ import { SqlitePlatformStore, migratePlatformSchema, type PlatformStore } from '
 import { SqliteOrganizationStore, migrateOrganizationSchema } from './organization-store.sqlite.js';
 import type { OrganizationStore } from './organization-store.js';
 import { SqliteAgentChatStore, migrateAgentChatSchema, type AgentChatStore } from './agent-chat-store.js';
-import { migrateAgentSchema } from './task-store-migrations.js';
+import {
+  CURRENT_DATABASE_SCHEMA_VERSION,
+  migrateAgentSchema,
+} from './task-store-migrations.js';
 import type {
   AgentRevisionRow,
   AgentRow,
@@ -489,7 +492,7 @@ export class SqliteTaskStore implements TaskStore {
       this.agentChat.initialize();
       this.schedules.initialize();
       this.database.exec('INSERT OR IGNORE INTO agent_state (singleton, default_agent_id) VALUES (1, NULL)');
-      this.database.exec('PRAGMA user_version = 9; COMMIT;');
+      this.database.exec(`PRAGMA user_version = ${CURRENT_DATABASE_SCHEMA_VERSION}; COMMIT;`);
       this.isOrganizationBootstrapTransaction = false;
       this.bootstrapConfiguration();
     } catch (cause) {
