@@ -114,7 +114,7 @@ interface ParsedTarget {
   readonly addresses: readonly string[];
 }
 
-interface BoundedResource {
+export interface BoundedResource {
   readonly body: string;
   readonly bytes: number;
   readonly truncated: boolean;
@@ -169,7 +169,7 @@ async function vetUrl(
   return { url, addresses };
 }
 
-export function createBuiltinHttpTools(options: HttpToolsOptions = {}): ToolProvider {
+export function createBoundedResourceFetcher(options: HttpToolsOptions = {}) {
   const fetchImpl = options.fetch ?? globalThis.fetch;
   const timeoutMs = Math.min(MAX_TIMEOUT_MS, Math.max(1_000, options.timeoutMs ?? DEFAULT_TIMEOUT_MS));
   const maxBytes = Math.max(1_024, Math.min(MAX_HTTP_BYTES, options.maxBytes ?? MAX_HTTP_BYTES));
@@ -243,6 +243,13 @@ export function createBuiltinHttpTools(options: HttpToolsOptions = {}): ToolProv
       });
     }
   };
+
+  return fetchBoundedResource;
+}
+
+export function createBuiltinHttpTools(options: HttpToolsOptions = {}): ToolProvider {
+  const fetchBoundedResource = createBoundedResourceFetcher(options);
+  const maxBytes = Math.max(1_024, Math.min(MAX_HTTP_BYTES, options.maxBytes ?? MAX_HTTP_BYTES));
 
   const definitions: readonly ToolDefinition[] = Object.freeze([
     Object.freeze({
