@@ -47,21 +47,21 @@
 - Consumes: existing `vetUrl`, `isForbiddenAddress`, `ToolRejectedError`, and `ToolExecutionResult`.
 - Produces: an internal `fetchBoundedResource` function returning `{ body, bytes, truncated, contentType, status, finalUrl, redirects }` for textual responses, while `http_fetch` keeps its exact public behavior.
 
-- [ ] **Step 1: Add failing tests that lock existing `http_fetch` behavior before refactor**
+- [x] **Step 1: Add failing tests that lock existing `http_fetch` behavior before refactor**
 
 In `tests/http-tools.test.ts`, add tests named `http_fetch keeps returning raw textual bodies with evidence` and `http_fetch still refuses a redirect into loopback`. Assert that a plain `text/plain` body appears verbatim in `summary`, evidence contains `url`, `status`, `contentType`, `bytes`, `truncated`, and `redirects`, and a `302` to `http://127.0.0.1:4318/v1/tasks` rejects without a second fetch.
 
-- [ ] **Step 2: Run focused tests**
+- [x] **Step 2: Run focused tests**
 
 Run: `node --import tsx --test tests/http-tools.test.ts`
 
 Expected: new tests fail until the shared pipeline preserves the result fields; if they already pass, keep them as regression locks.
 
-- [ ] **Step 3: Refactor `src/runtime/http-tools.ts`**
+- [x] **Step 3: Refactor `src/runtime/http-tools.ts`**
 
 Extract the existing URL validation, redirect loop, textual content-type check, streaming body read, and final URL/evidence construction into one internal function used by `http_fetch`. Do not change accepted methods, status handling, error codes, or result shape.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Run: `node --import tsx --test tests/http-tools.test.ts`
 
@@ -78,7 +78,7 @@ Expected: PASS, including all existing SSRF tests.
 - Consumes: `createBuiltinHttpTools`'s shared fetch pipeline options and `containsSecretLike` from `src/runtime/secret-filter.ts`.
 - Produces: `createBuiltinWebExtractTool(options: WebExtractToolOptions = {}): ToolProvider`, with tool id `web_extract`, `sideEffect: 'external'`, and bounded arguments `{ url, maxChars?, linkLimit? }`.
 
-- [ ] **Step 1: Write failing extraction tests**
+- [x] **Step 1: Write failing extraction tests**
 
 Create `tests/web-extract.test.ts`. Add tests named:
   - `web_extract returns title, readable text, and absolute links`
@@ -92,21 +92,21 @@ Create `tests/web-extract.test.ts`. Add tests named:
 
 Use an injected fetch plus `resolve: async () => ['93.184.216.34']`; assert exact status values `ok`, `empty`, `too_large`, and `secret_withheld`; assert `maxChars`/`linkLimit` boundary values from the Global Constraints.
 
-- [ ] **Step 2: Run focused tests to verify they fail**
+- [x] **Step 2: Run focused tests to verify they fail**
 
 Run: `node --import tsx --test tests/web-extract.test.ts`
 
 Expected: FAIL because `web-extract.ts` does not exist.
 
-- [ ] **Step 3: Implement `src/runtime/web-extract.ts`**
+- [x] **Step 3: Implement `src/runtime/web-extract.ts`**
 
 Implement the bounded HTML state machine from the design. Decode only the listed entities, collapse whitespace, strip disallowed sections, resolve safe relative links against the final post-redirect URL, and build the untrusted-data summary. Enforce the `web_extract` content-type allowlist separately from the broader `http_fetch` textual check. Check all model-visible strings, including evidence and error detail, with `containsSecretLike`; on any match return the sanitized `secret_withheld` result only.
 
-- [ ] **Step 4: Wire the tool into the HTTP provider**
+- [x] **Step 4: Wire the tool into the HTTP provider**
 
 In `src/runtime/http-tools.ts`, expose both tools from `createBuiltinHttpTools` when HTTP tools are enabled, while keeping `http_fetch` unchanged and adding `web_extract` to `has`/`invoke` dispatch.
 
-- [ ] **Step 5: Run focused tests**
+- [x] **Step 5: Run focused tests**
 
 Run: `node --import tsx --test tests/http-tools.test.ts tests/web-extract.test.ts`
 
@@ -128,29 +128,29 @@ Expected: PASS.
 - Consumes: `createBuiltinHttpTools` now exposes `web_extract`.
 - Produces: documented tool behavior and a regression test that no capability preset grants `web_extract`.
 
-- [ ] **Step 1: Write failing approval and opt-in tests**
+- [x] **Step 1: Write failing approval and opt-in tests**
 
 Add `external approval shows the tool id and URL target` to `tests/agent-chat.test.ts` and `web_extract is exposed only when HTTP tools are enabled` to `tests/tool-runtime.test.ts`. Assert that a `url`-only pending `web_extract` approval has a readable target and external wording, and that `createToolRuntime` lists `web_extract` only when `enableHttp: true`.
 
-- [ ] **Step 2: Write failing capability test**
+- [x] **Step 2: Write failing capability test**
 
 In `tests/capability-presets.test.ts`, add `no capability preset grants web_extract`. Call `grantsForPreset` for all four presets with a provider containing `web_extract`, and assert no returned grant name is `web_extract`.
 
-- [ ] **Step 3: Run focused tests**
+- [x] **Step 3: Run focused tests**
 
 Run: `node --import tsx --test tests/capability-presets.test.ts tests/tool-runtime.test.ts tests/agent-chat.test.ts tests/runtime-config.test.ts`
 
 Expected: FAIL for the new preset test if implementation accidentally grants the tool; otherwise PASS.
 
-- [ ] **Step 4: Implement approval display and opt-in wiring**
+- [x] **Step 4: Implement approval display and opt-in wiring**
 
 In `src/runtime/task-service.ts`, derive a bounded approval target from `url` when `path` is absent. In `src/runtime/agent-chat.ts`, extend the approval hint beyond `http_fetch` so any `external` tool uses external wording with its tool id. Verify `createToolRuntime` does not expose `web_extract` when `enableHttp` is false.
 
-- [ ] **Step 5: Update documentation**
+- [x] **Step 5: Update documentation**
 
 In `docs/ARCHITECTURE.md#tools`, add `web_extract` to the network row, describe extraction limits and untrusted-data markers, and state that it is not preset-granted. In `docs/CURRENT_STATE.md`, add web extraction to the tool list. In `docs/PROJECT_PLAN.md`, record this as a completed Phase 7 slice with owner, credential boundary, recovery path, audit evidence, and disable path.
 
-- [ ] **Step 6: Run focused tests**
+- [x] **Step 6: Run focused tests**
 
 Run: `node --import tsx --test tests/capability-presets.test.ts tests/tool-runtime.test.ts tests/agent-chat.test.ts tests/runtime-config.test.ts`
 
@@ -164,7 +164,7 @@ Expected: PASS.
 - Consumes: all changes from Tasks 1–3.
 - Produces: verification output proving the Runtime still type-checks, tests, and builds.
 
-- [ ] **Step 1: Run standard checks**
+- [x] **Step 1: Run standard checks**
 
 Run:
 ```bash
@@ -175,7 +175,7 @@ npm run build
 
 Expected: all pass; 932 pre-existing tests plus new web extraction tests.
 
-- [ ] **Step 2: Review the final diff**
+- [x] **Step 2: Review the final diff**
 
 Run: `git diff --check && git status --short`
 
