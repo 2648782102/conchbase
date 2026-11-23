@@ -2,8 +2,8 @@ import { contentDigest } from './digest.js';
 import { containsSecretLike } from './secret-filter.js';
 import {
   createBoundedResourceFetcher,
-  type HttpToolsOptions,
-} from './http-tools.js';
+  type HttpFetchOptions,
+} from './http-fetch-boundary.js';
 import {
   ToolRejectedError,
   type ToolArguments,
@@ -31,7 +31,7 @@ interface Extraction {
   readonly links: readonly string[];
 }
 
-export function createBuiltinWebExtractTool(options: HttpToolsOptions = {}): ToolProvider {
+export function createBuiltinWebExtractTool(options: HttpFetchOptions = {}): ToolProvider {
   const fetchResource = createBoundedResourceFetcher(options);
 
   async function extractOnce(args: ToolArguments): Promise<ToolExecutionResult> {

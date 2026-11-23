@@ -163,7 +163,7 @@ test('web_extract handles empty, truncated, plain-text, and binary responses', a
     async () => tools({
       fetch: htmlFetch('binary', 'application/octet-stream'),
     }).invoke('web_extract', { url: 'https://example.com/file' }),
-    /content-type/,
+    /only accepts HTML, plain text, JSON, or XML/i,
   );
 });
 

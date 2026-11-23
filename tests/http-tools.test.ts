@@ -5,6 +5,7 @@ import {
   createBuiltinHttpTools,
   isForbiddenAddress,
 } from '../src/runtime/http-tools.js';
+import { createBoundedResourceFetcher } from '../src/runtime/http-fetch-boundary.js';
 
 /**
  * An HTTP tool without an SSRF boundary is a request forwarder with extra steps.
@@ -132,6 +133,21 @@ test('a non-textual response is refused rather than dumped into context', async 
   await assert.rejects(
     async () => provider.invoke('http_fetch', { url: 'https://example.com/a.bin' }),
     /content-type/);
+});
+
+test('the shared fetch boundary bounds bytes before parsing', async () => {
+  const fetchResource = createBoundedResourceFetcher({
+    resolve: publicResolve,
+    maxBytes: 1_024,
+    fetch: (async () => new Response('x'.repeat(4_096), {
+      status: 200,
+      headers: { 'content-type': 'text/html' },
+    })) as typeof globalThis.fetch,
+  });
+  const resource = await fetchResource('https://example.com/page', 'GET');
+  assert.equal(resource.truncated, true);
+  assert.equal(resource.body.length, 1_024);
+  assert.equal(resource.status, 200);
 });
 
 test('an HTTP error surfaces the status instead of pretending success', async () => {

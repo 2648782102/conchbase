@@ -162,6 +162,14 @@ test('every runtime module is imported by something', () => {
   );
 });
 
+test('HTTP tools and web extraction do not import each other', () => {
+  const httpTools = read('src/runtime/http-tools.ts');
+  const webExtract = read('src/runtime/web-extract.ts');
+  assert.doesNotMatch(webExtract, /from '\.\/http-tools\.js'/, 'web extraction must depend on the shared boundary, not the tool wrapper');
+  // The wrapper still composes web_extract; the reverse edge is the cycle.
+  assert.match(httpTools, /from '\.\/web-extract\.js'/);
+});
+
 test('every script is wired to a command or a document', () => {
   const packageJson = read('package.json');
   const documentation = listTypeScriptFiles('docs').length > 0
