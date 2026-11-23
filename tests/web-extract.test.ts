@@ -196,6 +196,7 @@ test('web_extract reports truncation when link budget cuts body text', async () 
   });
   assert.equal(result.evidence?.facts.status, 'too_large');
   assert.equal(result.truncated, true);
+  assert.match(String(result.summary), /truncated to fit the extraction budget/);
 });
 
 test('web_extract withholds secret-like HTTP error details', async () => {
