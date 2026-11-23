@@ -10,6 +10,7 @@ import type {
 import { TaskService } from '../src/runtime/task-service.js';
 import { AgentConflictError } from '../src/runtime/agent-profile.js';
 import { DatabaseInstanceError, SqliteTaskStore } from '../src/runtime/task-store.js';
+import { ProviderError } from '../src/runtime/model-provider.js';
 
 function fixtureFetch(): typeof globalThis.fetch {
   const frames = ['data: ', JSON.stringify({
@@ -291,6 +292,32 @@ test('a v1 streaming tool-call observation fails visibly without executing or pe
     ]);
     assert.deepEqual(events.filter((event) => event.type.startsWith('tool.')), []);
     assert.equal(events.at(-1)?.type, 'task.failed');
+  } finally {
+    service.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('a failed task does not persist secret-like error text', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-secret-error-'));
+  const filename = path.join(directory, 'runtime.sqlite');
+  const fetchImpl = (async () => {
+    throw new Error('credential sk-abcdefghijklmnop was rejected');
+  }) as typeof globalThis.fetch;
+  const service = new TaskService(
+    new SqliteTaskStore(filename),
+    {
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/model',
+      fetch: fetchImpl,
+    },
+    modelCatalog,
+  );
+  try {
+    const failed = await service.createTaskAndWait({ prompt: 'hello' });
+    assert.equal(failed.state, 'failed');
+    assert.doesNotMatch(failed.error ?? '', /sk-abcdefghijklmnop/);
+    assert.doesNotMatch(JSON.stringify(service.store.listEvents(null)), /sk-abcdefghijklmnop/);
   } finally {
     service.close();
     rmSync(directory, { recursive: true, force: true });

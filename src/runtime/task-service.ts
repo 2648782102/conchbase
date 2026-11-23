@@ -93,7 +93,7 @@ import {
 import {
   createBuiltinReadTools, ToolRejectedError, type ToolProvider, type ToolSideEffect,
 } from './tool-provider.js';
-import { categorizeError } from './error-categories.js';
+import { categorizeError, safeTaskError } from './error-categories.js';
 import { contentDigest } from './digest.js';
 import type { ProviderMessage } from './model-adapter.js';
 import type { ProviderToolCall } from './model-adapter.js';
@@ -925,7 +925,7 @@ export class TaskService {
           ...this.eventInput(task, 'task.failed', 'failed', task.attempt),
           data: { category: categorizeError(cause) },
         },
-        { error: cause instanceof Error ? cause.message.slice(0, 500) : 'Approved tool failed.' },
+        { error: cause instanceof Error ? safeTaskError(cause) : 'Approved tool failed.' },
       );
     }
   }
@@ -1250,7 +1250,7 @@ export class TaskService {
         if (current && !isTerminalTaskState(current.state)) this.finishCancelled(task);
         return;
       }
-      const message = cause instanceof Error ? cause.message : 'Task failed.';
+      const message = cause instanceof Error ? safeTaskError(cause) : 'Task failed.';
       this.store.transitionTask(
         task.id,
         'failed',
@@ -1261,7 +1261,7 @@ export class TaskService {
           // from the error alone and carries no prompt, argument, or output.
           data: { category: categorizeError(cause) },
         },
-        { error: message.slice(0, 500) },
+        { error: message },
       );
       this.store.saveLoopState(task.id, null);
       /*

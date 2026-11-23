@@ -21,8 +21,8 @@ Updated: 2026-11-23
   shows as failed until a retry succeeds, and only a taskless queued turn is
   independently marked failed on restart.
 - One effective policy is published: `permissionLevel`, beside the legacy
-  `executionMode` marked `executionModeIsLegacy`. They could disagree, so read
-  the level.
+  `executionMode` marked `executionModeIsLegacy`; they can disagree, so read
+  the level. Model failures carry bounded categories and redacted detail.
 - A conversation may pin a stricter permission level than the Runtime; looser
   requests are clamped and reported. The level is fixed while an approval is
   pending, while model and effort may change between turns.
@@ -49,6 +49,7 @@ Updated: 2026-11-23
   of the Agent's own turns. Only user turns and non-empty assistant turns reach
   the model.
 - Approval requests name the tool, target path, and risk before anything runs.
+
 - A failed task records a bounded `category` (`auth`, `rate-limit`, `timeout`,
   `unavailable`, `provider`, …) on its `task.failed` event, derived from the
   classified provider error rather than the message text.
