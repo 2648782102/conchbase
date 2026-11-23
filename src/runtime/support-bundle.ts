@@ -11,6 +11,7 @@ import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { DiagnosticCheck, DiagnosticStatus } from './diagnostics.js';
 import { CURRENT_DATABASE_SCHEMA_VERSION } from './task-store-migrations.js';
+import { containsSecretLike } from './secret-filter.js';
 
 export interface SupportBundle {
   readonly format: 'conchbase-support-bundle';
@@ -48,6 +49,14 @@ export async function buildSupportBundle(input: {
   const warned = input.checks.filter((check) => check.status === 'warn');
   const status: DiagnosticStatus = failed.length > 0 ? 'fail' : warned.length > 0 ? 'warn' : 'ok';
   const firstIssue = failed[0] ?? warned[0];
+  const safeChecks = input.checks.map((check) => Object.freeze({
+    id: check.id,
+    status: check.status,
+    detail: containsSecretLike(check.detail) ? '(detail withheld: looks sensitive)' : check.detail,
+  }));
+  const safeFirstIssue = firstIssue
+    ? safeChecks.find((check) => check.id === firstIssue.id && check.status === firstIssue.status)
+    : undefined;
   return Object.freeze({
     format: 'conchbase-support-bundle',
     generatedAt: input.generatedAt ?? new Date().toISOString(),
@@ -58,12 +67,12 @@ export async function buildSupportBundle(input: {
       schemaVersion: CURRENT_DATABASE_SCHEMA_VERSION,
     }),
     runtime: Object.freeze({ host: input.host, port: input.port, magpieBaseUrl: input.magpieBaseUrl }),
-    checks: Object.freeze(input.checks.map((check) => Object.freeze({
-      id: check.id, status: check.status, detail: check.detail,
-    }))),
+    checks: Object.freeze(safeChecks),
     summary: Object.freeze({
       status,
-      nextStep: firstIssue ? `检查 ${firstIssue.id}：${firstIssue.detail}` : null,
+      nextStep: safeFirstIssue
+        ? `检查 ${safeFirstIssue.id}：${safeFirstIssue.detail}`
+        : null,
     }),
   });
 }

@@ -71,3 +71,21 @@ test('the text form is copy-pasteable and bounded', async () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('the text form withholds secret-like check details and next steps', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-bundle-'));
+  try {
+    const bundle = await buildSupportBundle({
+      version: '1.0.0', databasePath: path.join(directory, 'r.sqlite'), workspaceRoot: directory,
+      port: 4318, host: '127.0.0.1', magpieBaseUrl: 'http://127.0.0.1:3425',
+      checks: [{ id: 'gateway', status: 'fail', detail: 'token sk-abcdefghijklmnop was rejected' }],
+      generatedAt: '2026-11-20T00:00:00.000Z',
+    });
+    const text = formatSupportBundle(bundle);
+    assert.doesNotMatch(text, /sk-abcdefghijklmnop/);
+    assert.match(text, /detail withheld/i);
+    assert.doesNotMatch(bundle.summary.nextStep ?? '', /sk-abcdefghijklmnop/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
