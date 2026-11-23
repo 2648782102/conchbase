@@ -93,15 +93,16 @@ export function createScheduleRunner(options: ScheduleRunnerOptions): ScheduleRu
     }
   }
 
-  async function runOnce(): Promise<readonly ScheduleRunResult[]> {
+  function runOnce(): Promise<readonly ScheduleRunResult[]> {
     if (inFlight) return inFlight;
-    inFlight = (async () => {
+    const pass = (async () => {
       const at = now();
       const due = options.store.list().filter((schedule) => isDue(schedule, at));
       const results: ScheduleRunResult[] = [];
       for (const schedule of due) results.push(await fire(schedule, at));
       return Object.freeze(results);
     })().finally(() => { inFlight = null; });
+    inFlight = pass;
     return inFlight;
   }
 

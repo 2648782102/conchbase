@@ -11,6 +11,7 @@ import {
   parseScheduleInput,
 } from '../src/runtime/schedule.js';
 import { createScheduleRunner } from '../src/runtime/schedule-runner.js';
+import type { Schedule, ScheduleStore } from '../src/runtime/schedule.js';
 import { SqliteTaskStore } from '../src/runtime/task-store.js';
 import { TaskService } from '../src/runtime/task-service.js';
 import type { ModelCatalogClient } from '../src/runtime/model-catalog.js';
@@ -167,4 +168,78 @@ test('a schedule whose Agent disappeared disables itself instead of retrying for
     await service.stop();
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test('a schedule skips a firing while its previous task is still active', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-schedule-overlap-'));
+  const service = new TaskService(
+    new SqliteTaskStore(path.join(directory, 'runtime.sqlite')),
+    { magpieBaseUrl: 'http://127.0.0.1:3425', defaultModel: 'fixture/chat-model' },
+    catalog,
+  );
+  try {
+    const agent = await service.createAgent({
+      name: '重叠员', instructions: '', providerId: 'magpie', modelId: 'fixture/chat-model',
+    });
+    const active = await service.createAgentTask({ agentId: agent.id, prompt: 'still running' });
+    const input = parseScheduleInput(
+      { name: '重叠', agentId: agent.id, prompt: '报告', intervalMs: 60_000, startAt: now },
+      now,
+    );
+    const schedule = service.store.schedules.create(input, now);
+    service.store.schedules.update(schedule.id, { lastTaskId: active.id });
+    const runner = createScheduleRunner({
+      store: service.store.schedules,
+      taskService: service,
+      now: () => now,
+    });
+
+    const results = await runner.runOnce();
+    assert.deepEqual(results.map((result) => result.outcome), ['skipped']);
+    assert.match(results[0]?.detail ?? '', /previous run still active/i);
+    assert.equal(service.store.schedules.get(schedule.id)?.lastTaskId, active.id);
+    assert.ok(Date.parse(service.store.schedules.get(schedule.id)!.nextRunAt) > Date.parse(now));
+  } finally {
+    await service.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('concurrent runOnce calls share one in-flight pass', async () => {
+  const due = Object.freeze({
+    id: 'sch_concurrent',
+    name: '并发',
+    agentId: 'agt_x',
+    prompt: 'report',
+    intervalMs: 60_000,
+    enabled: true,
+    lastRunAt: null,
+    lastTaskId: null,
+    nextRunAt: now,
+    createdAt: now,
+  } satisfies Schedule);
+  let updates = 0;
+  const store: ScheduleStore = {
+    initialize() {},
+    list: () => [due],
+    get: () => due,
+    create: () => due,
+    update: () => { updates += 1; return due; },
+    remove: () => true,
+  };
+  let release!: (task: { id: string }) => void;
+  const taskService = {
+    store: { getTask: () => undefined },
+    createAgentTask: async () => new Promise<{ id: string }>((resolve) => { release = resolve; }),
+    startTask: () => {},
+  } as unknown as TaskService;
+  const runner = createScheduleRunner({ store, taskService, now: () => now });
+
+  const first = runner.runOnce();
+  const second = runner.runOnce();
+  assert.equal(first, second, 'a second tick must join the running pass, not start another one');
+  release({ id: 'task_concurrent' });
+  const results = await first;
+  assert.deepEqual(results.map((result) => result.outcome), ['created']);
+  assert.equal(updates, 1);
 });
