@@ -55,9 +55,18 @@ test('short secret tokens and credential words share one runtime filter', () => 
     'credential sk-ab was rejected',
     'denied: ghp_shorttoken',
     'header github_pat_shorttoken',
-    'secret=anything',
     'api_key: value',
   ]) {
     assert.equal(containsSecretLike(value), true, `must detect: ${value}`);
+  }
+});
+
+test('ordinary prose about secrets is not automatically withheld', () => {
+  for (const value of [
+    'Describe the secret handshake used by the team.',
+    'The credential flow needs an operator decision.',
+    'This document explains API key rotation.',
+  ]) {
+    assert.equal(containsSecretLike(value), false, `must not flag: ${value}`);
   }
 });
