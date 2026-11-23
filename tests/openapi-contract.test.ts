@@ -20,6 +20,12 @@ import {
   TOOL_REQUEST_TOOL_CALL_FIELDS,
 } from '../src/http/routes/v1/tool-requests.js';
 import {
+  SCHEDULE_PATCH_FIELDS,
+} from '../src/http/routes/v1/schedules.js';
+import {
+  SCHEDULE_INPUT_FIELDS,
+} from '../src/runtime/schedule.js';
+import {
   AGENT_CHAT_PATHS_FIXTURE,
   CONVERSATION_PATHS_FIXTURE,
   EXECUTION_PATHS_FIXTURE,
@@ -176,6 +182,17 @@ test('the configuration apply schema names every field the route accepts', () =>
   assert.deepEqual(
     schemaPropertyNames('ApplyConfigurationRequest').sort(),
     [...APPLY_CONFIGURATION_REQUEST_FIELDS].sort(),
+  );
+});
+
+test('the schedule schemas name every field the routes accept', () => {
+  assert.deepEqual(
+    schemaPropertyNames('CreateScheduleRequest').sort(),
+    [...SCHEDULE_INPUT_FIELDS].sort(),
+  );
+  assert.deepEqual(
+    schemaPropertyNames('UpdateScheduleRequest').sort(),
+    [...SCHEDULE_PATCH_FIELDS].sort(),
   );
 });
 

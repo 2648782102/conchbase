@@ -11,8 +11,9 @@ The contract tests compare the documented fields against the field lists the
 Runtime validates with for `AgentChatMessageRequest`, `CreateTaskRequest` (and
 its `AgentReference` model override), `CreateToolRequest`,
 `ToolCallProposal`, `ToolRequestDecisionRequest`, and
-`ApplyConfigurationRequest`. Adding a field to one of those request bodies
-without documenting it fails `npm test`.
+`ApplyConfigurationRequest`, `CreateScheduleRequest`, and
+`UpdateScheduleRequest`. Adding a field to one of those request bodies without
+documenting it fails `npm test`.
 
 ## Implemented routes
 

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import {
+  SCHEDULE_INPUT_FIELDS,
   ScheduleValidationError,
   parseScheduleInput,
   SCHEDULE_CONTRACT_VERSION,
@@ -11,6 +12,8 @@ export const SCHEDULE_PUBLIC_PATHS = Object.freeze([
   '/v1/schedules',
   '/v1/schedules/{scheduleId}',
 ] as const);
+
+export const SCHEDULE_PATCH_FIELDS = Object.freeze(['enabled'] as const);
 
 /**
  * Recurring tasks, as data.
@@ -80,7 +83,8 @@ export function registerScheduleRoutes(
       return reply.code(400).send({ error: 'Body must be an object.' });
     }
     const record = body as Record<string, unknown>;
-    const unknown = Object.keys(record).filter((key) => key !== 'enabled');
+    const allowed = new Set<string>(SCHEDULE_PATCH_FIELDS);
+    const unknown = Object.keys(record).filter((key) => !allowed.has(key));
     if (unknown.length > 0) return reply.code(400).send({ error: `Unknown fields: ${unknown.sort().join(', ')}.` });
     if (typeof record.enabled !== 'boolean') {
       return reply.code(400).send({ error: 'enabled must be a boolean.' });

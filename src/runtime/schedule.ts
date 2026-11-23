@@ -28,6 +28,14 @@ export const SCHEDULE_CONTRACT_VERSION = 1;
 /** The smallest interval worth supporting: anything shorter is a loop, not a schedule. */
 export const MIN_INTERVAL_MS = 60_000;
 export const MAX_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000;
+export const SCHEDULE_INPUT_FIELDS = Object.freeze([
+  'name',
+  'agentId',
+  'prompt',
+  'intervalMs',
+  'enabled',
+  'startAt',
+] as const);
 
 export interface Schedule {
   readonly id: string;
@@ -67,7 +75,7 @@ export function parseScheduleInput(input: unknown, now: string): ScheduleInput {
     throw new ScheduleValidationError('Schedule must be an object.');
   }
   const record = input as Record<string, unknown>;
-  const allowed = new Set(['name', 'agentId', 'prompt', 'intervalMs', 'enabled', 'startAt']);
+  const allowed = new Set<string>(SCHEDULE_INPUT_FIELDS);
   const unknown = Object.keys(record).filter((key) => !allowed.has(key));
   if (unknown.length > 0) throw new ScheduleValidationError(`Unknown fields: ${unknown.sort().join(', ')}.`);
 

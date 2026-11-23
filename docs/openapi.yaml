@@ -2415,12 +2415,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: false
-              required: [enabled]
-              properties:
-                enabled:
-                  type: boolean
+              $ref: '#/components/schemas/UpdateScheduleRequest'
       responses:
         '200':
           description: Updated.
@@ -5778,6 +5773,13 @@ components:
           type: boolean
         startAt:
           type: string
+    UpdateScheduleRequest:
+      type: object
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
     AgentChatStreamFrame:
       type: object
       additionalProperties: false
