@@ -49,3 +49,15 @@ test('a token embedded in a longer string is still detected', () => {
   assert.equal(containsSecretLike('use this key: sk-abcd1234 for the call'), true);
   assert.equal(containsSecretLike('header was Bearer abcdefghijklmnopqrst'), true);
 });
+
+test('short secret tokens and credential words share one runtime filter', () => {
+  for (const value of [
+    'credential sk-ab was rejected',
+    'denied: ghp_shorttoken',
+    'header github_pat_shorttoken',
+    'secret=anything',
+    'api_key: value',
+  ]) {
+    assert.equal(containsSecretLike(value), true, `must detect: ${value}`);
+  }
+});

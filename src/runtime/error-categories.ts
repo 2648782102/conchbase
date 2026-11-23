@@ -52,9 +52,11 @@ export function safeMessage(value: unknown, max = 300): string {
  * quoted header, URL, or provider sentence, so any match withholds the whole
  * detail and leaves the categorized event as the actionable record.
  */
+import { containsSecretLike } from './secret-filter.js';
+
 export function safeTaskError(value: unknown, max = 500): string {
   const bounded = safeMessage(value, max);
-  return /(?:^|[^A-Za-z0-9])(?:sk-[A-Za-z0-9_-]{2,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})|\bBearer\s+[A-Za-z0-9._-]{10,}|\b(?:password|api[_-]?key|private[_-]?key|secret|credential)\b/i.test(bounded)
+  return containsSecretLike(bounded)
     ? 'Task failed; details withheld because they look sensitive.'
     : bounded;
 }

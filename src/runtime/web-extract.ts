@@ -88,7 +88,7 @@ export function createBuiltinWebExtractTool(options: HttpFetchOptions = {}): Too
       const sanitizedUrl = safeEvidenceUrl(resource.finalUrl);
       const sanitized = Object.freeze({
         ok: true as const,
-        summary: '[web content withheld: secret-like content detected]',
+        summary: '[web content withheld: sensitive-looking content detected]',
         digest: contentDigest('web_extract:secret_withheld'),
         bytes: 0,
         evidence: Object.freeze({
