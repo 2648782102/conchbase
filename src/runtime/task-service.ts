@@ -33,7 +33,7 @@ import {
 import { drainToolCalls as drainToolCallsImpl, type AgentLoopToolContext } from './agent-loop-tools.js';
 import { digestArguments } from './tool-arguments.js';
 import { buildToolRequestPreview } from './tool-request-preview.js';
-import { containsSecretLike } from './secret-filter.js';
+import { containsSecretLike, containsSensitiveUrlTarget } from './secret-filter.js';
 import { projectSkills, projectToolProvider } from './capability-grants.js';
 import type { ExecutionMode, LoopBudget } from '../config/runtime-config.js';
 import { narrowPermissionLevel, type PermissionLevel } from '../kernel/policy.js';
@@ -238,11 +238,12 @@ function validatePrompt(prompt: unknown): string {
 
 function approvalUrlTarget(raw: string): string {
   const bounded = raw.slice(0, 2_000);
-  if (containsSecretLike(bounded)) return '(url withheld)';
+  if (containsSensitiveUrlTarget(bounded)) return '(url withheld)';
   try {
     const parsed = new URL(bounded);
     if (parsed.username !== '' || parsed.password !== '') return '(url withheld)';
-    return `${parsed.origin}${parsed.pathname.slice(0, 200)}`;
+    const target = `${parsed.origin}${parsed.pathname.slice(0, 200)}`;
+    return containsSensitiveUrlTarget(target) ? '(url withheld)' : target;
   } catch {
     return '(invalid url)';
   }

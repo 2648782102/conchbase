@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { containsSecretLike } from '../src/runtime/secret-filter.js';
+import { containsSecretLike, containsSensitiveUrlTarget } from '../src/runtime/secret-filter.js';
 
 test('provider tokens and credential words are detected', () => {
   // This filter is the last line of defence before text reaches a prompt, a
@@ -82,4 +82,15 @@ test('credential keywords with values are detected in common formats', () => {
   ]) {
     assert.equal(containsSecretLike(value), true, `must detect: ${value}`);
   }
+});
+
+test('URL-local credentials are detected without flagging ordinary paths', () => {
+  for (const value of [
+    'https://example.com/sk_live_abc123def456/article',
+    'https://example.com/a#token=abcdefghijklmnop',
+    'https://example.com/ghp_abcdefghijklmnopqrstuvwx',
+  ]) {
+    assert.equal(containsSensitiveUrlTarget(value), true, `must detect: ${value}`);
+  }
+  assert.equal(containsSensitiveUrlTarget('https://example.com/docs/getting-started'), false);
 });
