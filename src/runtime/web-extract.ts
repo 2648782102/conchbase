@@ -1,5 +1,5 @@
 import { contentDigest } from './digest.js';
-import { containsSecretLike } from './secret-filter.js';
+import { containsSecretLike, containsSensitiveUrlTarget } from './secret-filter.js';
 import {
   createBoundedResourceFetcher,
   type HttpFetchOptions,
@@ -168,7 +168,10 @@ function integerArgument(args: ToolArguments, key: string, fallback: number): nu
 }
 
 function secretIn(value: unknown): boolean {
-  if (typeof value === 'string') return containsSecretLike(value);
+  if (typeof value === 'string') {
+    return containsSecretLike(value)
+      || (/^https?:\/\//i.test(value) && containsSensitiveUrlTarget(value));
+  }
   if (Array.isArray(value)) return value.some(secretIn);
   if (value && typeof value === 'object') return Object.values(value).some(secretIn);
   return false;

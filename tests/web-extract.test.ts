@@ -140,6 +140,17 @@ test('web_extract withholds secret-like output everywhere it could leak', async 
   assert.equal(result.bytes, 0);
 });
 
+test('web_extract withholds secret-like URL paths and links', async () => {
+  const provider = tools({
+    fetch: htmlFetch('<html><body><a href="https://cdn.example.com/sk_live_abc123def456/file">asset</a><p>Safe body</p></body></html>'),
+  });
+  const result = await provider.invoke('web_extract', {
+    url: 'https://example.com/sk_live_abc123def456/article',
+  });
+  assert.equal(result.evidence?.facts.status, 'secret_withheld');
+  assert.doesNotMatch(JSON.stringify(result), /sk_live_abc123def456/);
+});
+
 test('web_extract handles empty, truncated, plain-text, and binary responses', async () => {
   const empty = await tools({ fetch: htmlFetch('<html><body></body></html>') })
     .invoke('web_extract', { url: 'https://example.com/' });
