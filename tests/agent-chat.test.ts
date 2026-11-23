@@ -159,6 +159,16 @@ test('agent chat starts a configured Agent conversation and publishes a real mod
     assert.equal(conversation.json().messages.length, 2);
     assert.equal(conversation.json().messages[1]?.state, 'replied');
     assert.match(conversation.json().messages[1]?.body ?? '', /配置好的 Agent/);
+    // The key set a client sees must match what `docs/openapi.yaml` documents;
+    // `modelReference` was added for mid-conversation model switches.
+    assert.deepEqual(
+      Object.keys(conversation.json().messages[1] as object).sort(),
+      [
+        'activity', 'author', 'body', 'error', 'id', 'modelReference', 'phase',
+        'progress', 'replyToId', 'sequence', 'state', 'taskId', 'updatedAt',
+      ],
+    );
+    assert.equal(conversation.json().messages[1]?.modelReference, 'magpie:fixture/chat-model');
     assert.doesNotMatch(JSON.stringify(conversation.json()), /runtime\.sqlite|\.conchbase\/|sk-|Bearer/i);
 
     const replay = await app.inject({
@@ -416,6 +426,62 @@ test('boss agent publishes a natural model reply for ordinary conversation', asy
     assert.doesNotMatch(view.json().messages[1]?.body ?? '', /意图已收到|已形成|模型未返回内容/);
     assert.equal(organization.get().projects.length, 0);
     assert.equal(taskService.store.listTasks().length, 0);
+  } finally {
+    await app.close();
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('a boss turn refuses attachments instead of validating and dropping them', async () => {
+  /*
+   * The Boss turn hands text to `BossModeService`, which starts its own worker
+   * tasks; there is nowhere for bytes to travel. Accepting the attachment would
+   * mean the reader sees the file uploaded and the model answers about nothing.
+   */
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-attachment-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: bossConversationFetch(),
+  });
+  const organization = new InMemoryOrganizationStore();
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/chat-model',
+    fetch: bossConversationFetch(),
+  });
+  const bossMode = new BossModeService(organization, taskService, { parser, waitForTasks: false });
+  const agentChat = new AgentChatService(taskService, bossMode);
+  const app = createApp({
+    logger: false,
+    taskService,
+    organizationStore: organization,
+    bossModeService: bossMode,
+    agentChatService: agentChat,
+  });
+  try {
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: 'boss-agent' },
+    });
+    const conversationId = created.json().id as string;
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: {
+        text: '看看这张图',
+        idempotencyKey: 'boss-attachment-1',
+        attachments: [{ kind: 'image', dataUrl: 'data:image/png;base64,iVBORw0KGgo=' }],
+      },
+    });
+    assert.equal(sent.statusCode, 409);
+    assert.match(sent.json().error, /老板对话/);
+    // Nothing was written: a refused turn must not leave a user message behind.
+    const view = await app.inject({
+      method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}`,
+    });
+    assert.equal(view.json().messages.length, 0);
+    assert.equal(organization.get().projects.length, 0);
   } finally {
     await app.close();
     await taskService.stop();

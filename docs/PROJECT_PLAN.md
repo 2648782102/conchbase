@@ -316,6 +316,66 @@ coding model does not redo finished work.
 
 ## Current next task
 
+### T1 — Prove the `openai-compatible` adapter against a real endpoint
+
+**Goal:** One documented command takes a real OpenAI-compatible endpoint and
+proves the adapter works end to end, so `openai-compatible` stops being a
+contract that has only met a fixture.
+
+**Why it is next:** `P2.5` is implemented and routing has its own tests
+(`tests/provider-routing.test.ts`), but every one of them uses a local fixture
+gateway. A real provider differs where it matters: SSE framing, tool-call
+shapes, error bodies, and the model catalogue.
+
+**Read:** `docs/DEVELOPMENT.md`, `docs/ARCHITECTURE.md#provider-retry`,
+`src/runtime/provider-registry.ts`, `src/runtime/magpie-provider.ts`,
+`src/runtime/diagnostics.ts`.
+
+**Change:** a `scripts/provider-contract.mjs` that reads the same
+`CONCHBASE_PROVIDER_ENDPOINTS` configuration the Runtime does, then lists the
+catalogue, makes one streaming call, and classifies one deliberate failure
+(an unknown model) without printing the credential. Wire it behind
+`npm run probe:provider`. No change to task or domain code: if the script needs
+one, the adapter is leaking provider detail and that is the finding.
+
+**Tests first:** a test that the script refuses a missing endpoint with an
+actionable message and redacts a token-shaped value from every output line;
+then the live run itself is a manual check with its result recorded here.
+
+**Acceptance:** the script exits `0` against a configured endpoint, reports
+latency and model count, and a wrong endpoint or credential exits non-zero with
+a category (`auth`, `unavailable`, …) rather than a stack trace or the secret.
+
+**Do not:** add a provider selector to the product, log request bodies, or treat
+this as a reason to touch the task schema.
+
+### T2 — Keep the published contract honest as it grows
+
+**Goal:** A field the Runtime accepts or returns cannot be missing from
+`docs/openapi.yaml` without a test failing.
+
+**Why it is next:** this already happened once. `postMessage` grew
+`attachments`, `reasoningEffort`, and `modelOverride` while
+`AgentChatMessageRequest` stayed at two properties with
+`additionalProperties: false`, and nothing failed. The guards added on
+2026-11-23 cover the Agent Chat message request and message object only.
+
+**Read:** `tests/openapi-contract.test.ts`, `docs/openapi.yaml`,
+`src/http/routes/v1/`.
+
+**Change:** extend the same pattern — runtime-exported field lists compared
+against the documented schema — to the remaining request bodies that validate
+unknown fields themselves (`CreateTaskRequest`, tool requests, configuration
+apply). Keep each list beside the validator that enforces it, not in the test.
+
+**Tests first:** add one failing comparison per body before exporting the list.
+
+**Acceptance:** `npm test` fails if a request field is added to a route without
+being documented, and `docs/API.md` states which bodies are covered.
+
+**Do not:** generate the whole spec from TypeScript, or add a schema-validation
+dependency for this.
+
 ## Hardening added after Phases 0–6
 
 The following landed as one pass because each was a structural gap rather than a
@@ -329,6 +389,16 @@ future work:
 - plugin installation from `CONCHBASE_PLUGINS_DIR`;
 - recurring tasks (`/v1/schedules`) and image attachments;
 - a bounded `TaskService.stop()`.
+- one `components.schemas` block. The document carried two for a long time;
+  YAML keeps the last one, so 23 schemas (Agent, capability, and definition
+  references) were present in the file but invisible to every reader, and
+  `$ref` targets for them did not resolve. They are merged, and a test now
+  refuses a duplicate section header or an unresolvable `$ref`.
+- the Agent Chat request/message schema. A message could switch model and carry
+  attachments while the published request schema still listed two fields with
+  `additionalProperties: false`. Fields, attachments, and `modelReference` are
+  documented, and the test compares the document against the list the Runtime
+  validates with.
 
 Phases 0–6 are complete. The approval slice is done on both sides: the Runtime
 publishes the pending change and its bounded preview on the `waiting_approval`

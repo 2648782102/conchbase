@@ -1,6 +1,6 @@
 # Current state
 
-Updated: 2026-11-21
+Updated: 2026-11-23
 
 ## Working today
 
@@ -26,8 +26,8 @@ Updated: 2026-11-21
   the level.
 - A conversation may pin its own level, but only stricter than the Runtime's —
   looser requests are clamped and the response reports what applied. The choice
-  is fixed at creation, carried onto every task, and cannot loosen while an
-  approval is pending.
+  is fixed at creation and cannot loosen while an approval is pending; model and
+  effort may change between turns, each reply keeping its `modelReference`.
 - Prompts fit the window (`context-budget.ts`, 32k fallback) with reserved reply
   room and a visible `context_trimmed`; instructions are never dropped and the
   rest is summarised (`context-summary.ts`), else `summarized: false`.

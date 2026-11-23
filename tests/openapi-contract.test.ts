@@ -4,6 +4,10 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { createApp } from '../src/http/create-app.js';
 import {
+  AGENT_CHAT_MESSAGE_REQUEST_FIELDS,
+  AGENT_CHAT_CONTRACT_VERSION,
+} from '../src/runtime/agent-chat.js';
+import {
   AGENT_CHAT_PATHS_FIXTURE,
   CONVERSATION_PATHS_FIXTURE,
   EXECUTION_PATHS_FIXTURE,
@@ -52,6 +56,87 @@ function assertExactObject(
   assert.equal(Array.isArray(value), false);
   assert.deepEqual(Object.keys(value as object).sort(), [...requiredFields].sort());
 }
+
+function schemaSection(schemaName: string): string {
+  const spec = readOpenApi();
+  const start = spec.indexOf(`  ${schemaName}:`);
+  assert.notEqual(start, -1, `${schemaName} must exist in docs/openapi.yaml`);
+  const remainingSpec = spec.slice(start + 3);
+  const nextSchema = /\n {4}[A-Za-z]/.exec(remainingSpec);
+  return spec.slice(start, nextSchema === null ? undefined : start + 3 + nextSchema.index);
+}
+
+test('components declare each section once, and every $ref resolves', () => {
+  /*
+   * The document had two `components.schemas` blocks for a long time. YAML
+   * keeps the last one, so 23 schemas were silently invisible to any reader
+   * while still looking present in the file. A duplicate section header is
+   * never intentional here, and a broken `$ref` is worse than a missing field:
+   * a generator fails at build time with no clue which change caused it.
+   */
+  const spec = readOpenApi();
+  for (const section of ['schemas', 'parameters', 'responses']) {
+    assert.equal(
+      [...spec.matchAll(new RegExp(`^ {2}${section}:$`, 'gm'))].length,
+      1,
+      `components.${section} must be declared exactly once`,
+    );
+  }
+
+  const declared = (section: string): Set<string> => {
+    const start = spec.indexOf(`\n  ${section}:\n`);
+    assert.notEqual(start, -1, `components.${section} must exist`);
+    const rest = spec.slice(start + 1);
+    const nextTop = /\n {2}[a-zA-Z][A-Za-z]*:\n/.exec(rest);
+    const body = rest.slice(0, nextTop === null ? undefined : nextTop.index);
+    return new Set([...body.matchAll(/^ {4}([A-Za-z][A-Za-z0-9]*):$/gm)].map((match) => match[1]!));
+  };
+
+  for (const section of ['schemas', 'parameters', 'responses']) {
+    const names = declared(section);
+    const referenced = new Set(
+      [...spec.matchAll(new RegExp(`\\$ref: '#/components/${section}/([^']+)'`, 'g'))]
+        .map((match) => match[1]!),
+    );
+    const missing = [...referenced].filter((name) => !names.has(name) && !name.includes('/'));
+    assert.deepEqual(missing.sort(), [], `components.${section} is missing referenced entries`);
+  }
+});
+
+test('the Agent Chat request schema names every field the Runtime accepts', () => {
+  /*
+   * This is the guard the last change lacked. `postMessage` grew
+   * `attachments`, `reasoningEffort`, and `modelOverride` while
+   * `AgentChatMessageRequest` kept `additionalProperties: false` and only the
+   * original two fields, so a generated client was told the new fields did not
+   * exist. Comparing the exported list to the document makes that drift fail
+   * here instead of in a consumer.
+   */
+  const section = schemaSection('AgentChatMessageRequest');
+  const documented = /required: \[([^\]]+)\]/.exec(section)?.[1]
+    ?.split(',')
+    .map((field) => field.trim());
+  assert.deepEqual(documented, ['text', 'idempotencyKey']);
+
+  const properties = [...section.matchAll(/^ {8}([A-Za-z][A-Za-z0-9]*):$/gm)]
+    .map((match) => match[1]);
+  assert.deepEqual(
+    [...properties].sort(),
+    [...AGENT_CHAT_MESSAGE_REQUEST_FIELDS].sort(),
+    'docs/openapi.yaml AgentChatMessageRequest must document exactly the accepted fields',
+  );
+});
+
+test('the Agent Chat message schema carries the model that wrote each reply', () => {
+  const section = schemaSection('AgentChatMessage');
+  assert.match(section, /^ {8}modelReference:$/m);
+  assert.match(
+    section,
+    /required: \[[^\]]*\bmodelReference\b[^\]]*\]/,
+    'modelReference is always present on a message, as null when no model wrote it',
+  );
+  assert.match(readOpenApi(), new RegExp(`AgentChatVersion:\\n {6}type: string\\n {6}const: '${AGENT_CHAT_CONTRACT_VERSION.replaceAll('.', '\\.')}'`));
+});
 
 test('docs/openapi.yaml declares the versioned task, event, and status contract', () => {
   const spec = readOpenApi();

@@ -62,6 +62,22 @@ import {
 
 export const AGENT_CHAT_CONTRACT_VERSION = '1.9.0';
 
+/**
+ * The fields `POST …/messages` accepts.
+ *
+ * Exported so the contract test can compare it against `AgentChatMessageRequest`
+ * in `docs/openapi.yaml`. The last time this list grew, the implementation and
+ * the document drifted: the new fields worked, but a client generated from the
+ * spec was told they did not exist. A named list turns that into a test failure.
+ */
+export const AGENT_CHAT_MESSAGE_REQUEST_FIELDS = Object.freeze([
+  'text',
+  'idempotencyKey',
+  'attachments',
+  'reasoningEffort',
+  'modelOverride',
+]);
+
 export const AGENT_CHAT_PUBLIC_PATHS = Object.freeze([
   '/v1/agent-chat/agents',
   '/v1/agent-chat/conversations',
@@ -1116,7 +1132,7 @@ export class AgentChatService {
     const record = this.load(conversationId);
     if (!record) throw new AgentChatServiceError('Agent Chat conversation not found.', 404);
     if (!isRecord(input)) throw new AgentChatServiceError('Message input must be an object.');
-    const allowed = new Set(['text', 'idempotencyKey', 'attachments', 'reasoningEffort', 'modelOverride']);
+    const allowed = new Set<string>(AGENT_CHAT_MESSAGE_REQUEST_FIELDS);
     const unknown = Object.keys(input).filter((key) => !allowed.has(key));
     if (unknown.length > 0) throw new AgentChatServiceError(`Unknown fields: ${unknown.sort().join(', ')}.`);
     const text = boundedText(input.text, 'text').slice(0, 6000);
@@ -1214,7 +1230,24 @@ export class AgentChatService {
       }
     }
 
-    if (record.isBoss) return this.postBossMessage(record, text, idempotencyKey);
+    /*
+     * The Boss path resolves its own task, so it cannot attach bytes.
+     *
+     * It never could: `postBossMessage` hands text to `BossModeService`, which
+     * starts worker tasks of its own. Accepting `attachments` here would parse
+     * and validate them, then drop them — the reader would see the file
+     * uploaded while the model answered about nothing. The queue has the same
+     * limitation and refuses for the same reason.
+     */
+    if (record.isBoss) {
+      if (attachments.length > 0) {
+        throw new AgentChatServiceError(
+          '老板对话暂时不能附带文件；请切换到普通 Agent 对话再发送。',
+          409,
+        );
+      }
+      return this.postBossMessage(record, text, idempotencyKey);
+    }
 
     /*
      * A turn waits for the one before it.
