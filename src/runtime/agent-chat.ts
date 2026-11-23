@@ -184,8 +184,8 @@ export function approvalHintFor(message: AgentChatMessage): string {
   if (/git_push/.test(detail)) {
     return '【需要你的批准】这一步会把本机提交推送到远程仓库，远程无法撤销。请确认分支与提交，然后选择批准或拒绝。';
   }
-  if (/http_fetch|web_extract/.test(detail)) {
-    return '【需要你的批准】这一步会向外部地址发起网络请求或读取网页。请确认目标地址，然后选择批准或拒绝。';
+  if (/风险：external\b/.test(detail)) {
+    return '【需要你的批准】这一步会访问外部地址或产生外部效果。请确认目标，然后选择批准或拒绝。';
   }
   if (/workspace_delete/.test(detail)) {
     return '【需要你的批准】这一步会删除工作区中的内容，且无法撤销。请确认目标路径，然后选择批准或拒绝。';

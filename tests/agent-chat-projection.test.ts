@@ -68,12 +68,12 @@ test('an external approval hint names the tool and asks about the URL target', (
     activity: [{
       id: 'approval_1',
       kind: 'approval',
-      label: '等待审批：web_extract',
+      label: '等待审批：future_external_tool',
       state: 'waiting_approval',
-      detail: 'https://example.com/article',
+      detail: '风险：external；目标：https://example.com/article',
     }],
   }));
-  assert.match(hint, /web_extract|外部地址|网络请求或读取网页|目标地址/);
+  assert.match(hint, /外部地址|网络请求|目标地址/);
 });
 
 test('a successful task projects done with the real output', () => {
