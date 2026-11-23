@@ -42,6 +42,22 @@ test('unknown fields and bad timestamps are refused', () => {
   assert.throws(() => parseScheduleInput({ ...base, enabled: 'yes' }, now), /boolean/);
 });
 
+test('secret-like schedule names and prompts are refused before persistence', () => {
+  const base = { name: 'daily', agentId: 'agt_x', prompt: 'report', intervalMs: 60_000 };
+  assert.throws(
+    () => parseScheduleInput({ ...base, name: 'daily sk-abcdefghijklmnop' }, now),
+    /secret-like/i,
+  );
+  assert.throws(
+    () => parseScheduleInput({ ...base, prompt: 'use password: hunter2' }, now),
+    /secret-like/i,
+  );
+  assert.throws(
+    () => parseScheduleInput({ ...base, agentId: 'Bearer abcdefghijklmnop' }, now),
+    /secret-like/i,
+  );
+});
+
 test('dueness follows the stored deadline, and the next run resumes the cadence', () => {
   const schedule = {
     enabled: true,

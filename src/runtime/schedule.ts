@@ -21,6 +21,7 @@
  *   longer than its interval should not build a backlog nobody asked for.
  */
 import type { DatabaseSync } from 'node:sqlite';
+import { containsSecretLike } from './secret-filter.js';
 
 export const SCHEDULE_CONTRACT_VERSION = 1;
 
@@ -98,7 +99,11 @@ function boundedString(value: unknown, label: string, max: number): string {
   if (typeof value !== 'string' || value.trim().length === 0 || value.length > max) {
     throw new ScheduleValidationError(`${label} must be a non-empty string of at most ${max} characters.`);
   }
-  return value.trim();
+  const trimmed = value.trim();
+  if (containsSecretLike(trimmed)) {
+    throw new ScheduleValidationError(`${label} contains secret-like content.`);
+  }
+  return trimmed;
 }
 
 function parseInstant(value: unknown, label: string): string {

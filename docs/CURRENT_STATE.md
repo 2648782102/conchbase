@@ -17,17 +17,15 @@ Updated: 2026-11-23
   inline approval for the supported tool path. A waiting approval carries the
   Runtime-computed summary, risk, and bounded preview, so the client can show
   the change without a second lookup.
-- A conversation message presents its task, so it follows the task across a
-  retry: an interrupted reply shows as failed, and once the retried attempt
-  succeeds the same message is re-projected to the real output. A message with
-  no task (a queued turn) is the only one a restart marks failed on its own.
+- A conversation message follows its task across a retry; an interrupted reply
+  shows as failed until a retry succeeds, and only a taskless queued turn is
+  independently marked failed on restart.
 - One effective policy is published: `permissionLevel`, beside the legacy
   `executionMode` marked `executionModeIsLegacy`. They could disagree, so read
   the level.
-- A conversation may pin its own level, but only stricter than the Runtime's —
-  looser requests are clamped and the response reports what applied. The choice
-  is fixed at creation and cannot loosen while an approval is pending; model and
-  effort may change between turns, each reply keeping its `modelReference`.
+- A conversation may pin a stricter permission level than the Runtime; looser
+  requests are clamped and reported. The level is fixed while an approval is
+  pending, while model and effort may change between turns.
 - Prompts fit the window (`context-budget.ts`, 32k fallback) with reserved reply
   room and a visible `context_trimmed`; instructions are never dropped and the
   rest is summarised (`context-summary.ts`), else `summarized: false`.
@@ -39,7 +37,8 @@ Updated: 2026-11-23
 - `CONCHBASE_PLUGINS_DIR` installs plugins, namespaced by plugin id; a broken
   plugin is skipped and `close()` stops every subprocess.
 - Recurring tasks via `/v1/schedules`; overlapping and missed runs are skipped,
-  a schedule with a missing Agent disables itself.
+  a schedule with a missing Agent disables itself; secret-like schedule fields
+  are refused.
 - Attachments: images become content parts; text documents are inlined and
   labelled as data; PDF and other binary formats are refused.
 - Tools cover read, search, write, delete, move, copy, git, opt-in `http_fetch`,
