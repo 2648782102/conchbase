@@ -114,6 +114,16 @@ interface ParsedTarget {
   readonly addresses: readonly string[];
 }
 
+interface BoundedResource {
+  readonly body: string;
+  readonly bytes: number;
+  readonly truncated: boolean;
+  readonly contentType: string;
+  readonly status: number;
+  readonly finalUrl: URL;
+  readonly redirects: number;
+}
+
 /**
  * Parses and vets one URL, resolving its hostname.
  *
@@ -169,6 +179,71 @@ export function createBuiltinHttpTools(options: HttpToolsOptions = {}): ToolProv
     return records.map((record) => record.address);
   });
 
+  const fetchBoundedResource = async (
+    raw: string,
+    method: 'GET' | 'HEAD',
+  ): Promise<BoundedResource> => {
+    const allowedTypes = TEXTUAL;
+    let target = await vetUrl(raw, { allowPrivateNetworks, resolve: resolveHost });
+    let redirects = 0;
+    for (;;) {
+      const response = await fetchImpl(target.url.toString(), {
+        method,
+        redirect: 'manual',
+        signal: AbortSignal.timeout(timeoutMs),
+        headers: {
+          'user-agent': 'Conchbase/1.0.0',
+          accept: 'text/*, application/json, application/xml;q=0.9, */*;q=0.1',
+        },
+      });
+      const location = response.headers.get('location');
+      if (response.status >= 300 && response.status < 400 && location !== null) {
+        if (redirects >= MAX_REDIRECTS) throw new ToolRejectedError('too_many_redirects');
+        redirects += 1;
+        target = await vetUrl(new URL(location, target.url).toString(), {
+          allowPrivateNetworks,
+          resolve: resolveHost,
+        });
+        continue;
+      }
+
+      const contentType = response.headers.get('content-type') ?? '';
+      if (method === 'HEAD') {
+        return Object.freeze({
+          body: '',
+          bytes: 0,
+          truncated: false,
+          contentType,
+          status: response.status,
+          finalUrl: target.url,
+          redirects,
+        });
+      }
+      if (!allowedTypes.test(contentType)) {
+        throw new ToolRejectedError(
+          'unsupported_content_type',
+          `response content-type is ${contentType.slice(0, 80) || 'missing'}; only textual responses are returned.`,
+        );
+      }
+      const body = await readBounded(response, maxBytes);
+      if (!response.ok) {
+        throw new ToolRejectedError(
+          'http_error',
+          `HTTP ${response.status}${body.text.length > 0 ? `: ${body.text.slice(0, 200)}` : ''}`,
+        );
+      }
+      return Object.freeze({
+        body: body.text,
+        bytes: body.text.length,
+        truncated: body.truncated,
+        contentType,
+        status: response.status,
+        finalUrl: target.url,
+        redirects,
+      });
+    }
+  };
+
   const definitions: readonly ToolDefinition[] = Object.freeze([
     Object.freeze({
       id: 'http_fetch',
@@ -199,86 +274,41 @@ export function createBuiltinHttpTools(options: HttpToolsOptions = {}): ToolProv
       throw new ToolRejectedError('unsupported_method', 'only GET and HEAD are allowed.');
     }
     const method = methodRaw as 'GET' | 'HEAD';
-
-    let target = await vetUrl(raw, { allowPrivateNetworks, resolve: resolveHost });
-    let redirects = 0;
-    for (;;) {
-      const response = await fetchImpl(target.url.toString(), {
-        method,
-        redirect: 'manual',
-        signal: AbortSignal.timeout(timeoutMs),
-        headers: {
-          // A stable identity, and no cookie jar: this is a request from the
-          // Runtime, not from the user's browser.
-          'user-agent': 'Conchbase/1.0.0',
-          accept: 'text/*, application/json, application/xml;q=0.9, */*;q=0.1',
-        },
-      });
-      const location = response.headers.get('location');
-      if (response.status >= 300 && response.status < 400 && location !== null) {
-        if (redirects >= MAX_REDIRECTS) throw new ToolRejectedError('too_many_redirects');
-        redirects += 1;
-        /*
-         * Re-vet the redirect target.
-         *
-         * This is the check that matters: a public host is free to answer `302
-         * Location: http://127.0.0.1:4318/`, and fetching it without a second
-         * look would hand the model this Runtime's own API.
-         */
-        target = await vetUrl(new URL(location, target.url).toString(), {
-          allowPrivateNetworks,
-          resolve: resolveHost,
-        });
-        continue;
-      }
-
-      const contentType = response.headers.get('content-type') ?? '';
-      if (method === 'HEAD') {
-        return Object.freeze({
-          ok: true,
-          summary: `HEAD ${target.url} → ${response.status}`,
-          digest: contentDigest(`http:${method}:${target.url}:${response.status}`),
-          bytes: 0,
-          evidence: {
-            facts: {
-              url: target.url.toString(),
-              status: response.status,
-              contentType: contentType.slice(0, 120),
-            },
-          },
-        });
-      }
-      if (!TEXTUAL.test(contentType)) {
-        throw new ToolRejectedError(
-          'unsupported_content_type',
-          `response content-type is ${contentType.slice(0, 80) || 'missing'}; only textual responses are returned.`,
-        );
-      }
-      const body = await readBounded(response, maxBytes);
-      if (!response.ok) {
-        throw new ToolRejectedError(
-          'http_error',
-          `HTTP ${response.status}${body.text.length > 0 ? `: ${body.text.slice(0, 200)}` : ''}`,
-        );
-      }
+    const resource = await fetchBoundedResource(raw, method);
+    if (method === 'HEAD') {
       return Object.freeze({
         ok: true,
-        summary: body.truncated ? `${body.text}\n\n[truncated at ${maxBytes} bytes]` : body.text,
-        digest: contentDigest(body.text),
-        bytes: body.text.length,
-        truncated: body.truncated,
+        summary: `HEAD ${resource.finalUrl} → ${resource.status}`,
+        digest: contentDigest(`http:${method}:${resource.finalUrl}:${resource.status}`),
+        bytes: 0,
         evidence: {
           facts: {
-            url: target.url.toString(),
-            status: response.status,
-            contentType: contentType.slice(0, 120),
-            bytes: body.text.length,
-            truncated: body.truncated,
-            redirects,
+            url: resource.finalUrl.toString(),
+            status: resource.status,
+            contentType: resource.contentType.slice(0, 120),
           },
         },
       });
     }
+    return Object.freeze({
+      ok: true,
+      summary: resource.truncated
+        ? `${resource.body}\n\n[truncated at ${maxBytes} bytes]`
+        : resource.body,
+      digest: contentDigest(resource.body),
+      bytes: resource.bytes,
+      truncated: resource.truncated,
+      evidence: {
+        facts: {
+          url: resource.finalUrl.toString(),
+          status: resource.status,
+          contentType: resource.contentType.slice(0, 120),
+          bytes: resource.bytes,
+          truncated: resource.truncated,
+          redirects: resource.redirects,
+        },
+      },
+    });
   }
 
   return Object.freeze({

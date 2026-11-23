@@ -189,3 +189,41 @@ test('the tool is external, so policy approves it at the standard level', () => 
   const fetchTool = definitions.find((definition) => definition.id === 'http_fetch');
   assert.equal(fetchTool?.sideEffect, 'external');
 });
+
+test('http_fetch keeps returning raw textual bodies with evidence', async () => {
+  const provider = tools({
+    fetch: (async () => new Response('raw body', {
+      status: 200,
+      headers: { 'content-type': 'text/plain' },
+    })) as typeof globalThis.fetch,
+  });
+  const result = await provider.invoke('http_fetch', { url: 'https://example.com/article' });
+  assert.equal(result.ok, true);
+  assert.equal(String(result.summary), 'raw body');
+  assert.deepEqual(result.evidence?.facts, {
+    url: 'https://example.com/article',
+    status: 200,
+    contentType: 'text/plain',
+    bytes: 8,
+    truncated: false,
+    redirects: 0,
+  });
+});
+
+test('http_fetch still refuses a redirect into loopback', async () => {
+  const seen: string[] = [];
+  const provider = tools({
+    fetch: (async (input: RequestInfo | URL) => {
+      seen.push(String(input));
+      return new Response(null, {
+        status: 302,
+        headers: { location: 'http://127.0.0.1:4318/v1/tasks' },
+      });
+    }) as typeof globalThis.fetch,
+  });
+  await assert.rejects(
+    async () => provider.invoke('http_fetch', { url: 'https://example.com/' }),
+    /private, loopback/i,
+  );
+  assert.deepEqual(seen, ['https://example.com/']);
+});
