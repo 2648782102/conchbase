@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { projectMessage } from '../src/runtime/agent-chat-projection.js';
+import { approvalHintFor } from '../src/runtime/agent-chat.js';
 import type { AgentChatMessage } from '../src/runtime/agent-chat-types.js';
 import type { TaskSnapshot } from '../src/runtime/task-store.js';
 
@@ -59,6 +60,20 @@ test('an unchanged running task projects nothing', () => {
     now,
   });
   assert.equal(projected, null);
+});
+
+test('an external approval hint names the tool and asks about the URL target', () => {
+  const hint = approvalHintFor(message({
+    state: 'waiting_approval',
+    activity: [{
+      id: 'approval_1',
+      kind: 'approval',
+      label: '等待审批：web_extract',
+      state: 'waiting_approval',
+      detail: 'https://example.com/article',
+    }],
+  }));
+  assert.match(hint, /web_extract|外部地址|网络请求或读取网页|目标地址/);
 });
 
 test('a successful task projects done with the real output', () => {

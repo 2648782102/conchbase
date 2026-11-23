@@ -250,7 +250,7 @@ boundary or the Agent's grant list.
 | git | `git_status`, `git_diff`, `git_log` | read |
 | git | `git_commit` | write |
 | git | `git_push` | external |
-| network | `http_fetch` (opt-in) | external |
+| network | `http_fetch`, `web_extract` (opt-in) | external |
 
 Two of the write tools have guards that are not about policy:
 
@@ -264,8 +264,8 @@ Two of the write tools have guards that are not about policy:
 
 ### Outbound HTTP
 
-`http_fetch` is the only tool whose failure mode is outside this machine, so it
-is opt-in and its boundary is enforced in three places:
+Network tools are the only ones whose failure mode is outside this machine, so
+they are opt-in and their boundary is enforced in three places:
 
 1. before the request, on the scheme, embedded credentials, and the resolved
    address of the hostname — a name that resolves to `127.0.0.1` is the same
@@ -274,6 +274,13 @@ is opt-in and its boundary is enforced in three places:
    `Location: http://127.0.0.1:4318/` and that is the standard bypass;
 3. on the response, capping bytes and refusing non-textual content types before
    anything reaches the model's context.
+
+`web_extract` shares this fetch boundary and adds bounded HTML-to-text
+extraction. It accepts HTML, XHTML, plain text, JSON, and XML only; caps the
+result at 8,000 characters by default (20,000 hard maximum) and links at 10 by
+default (25 hard maximum); labels extracted content as untrusted data; and
+withholds a whole result when any model-visible string is secret-like. It is
+not granted by a capability preset: an Agent revision must name it explicitly.
 
 Private, loopback, link-local, unique-local, carrier-grade NAT, and metadata
 ranges are refused for both v4 and v6, including IPv4-mapped v6 forms.

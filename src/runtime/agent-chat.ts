@@ -169,7 +169,7 @@ function withApprovalExplanation(message: AgentChatMessage): AgentChatMessage {
  * to approve has to know which of those they are allowing, so the wording comes
  * from the tool named in the message and falls back to the neutral form.
  */
-function approvalHintFor(message: AgentChatMessage): string {
+export function approvalHintFor(message: AgentChatMessage): string {
   /*
    * The tool name lives in different fields depending on the frame: the approval
    * entry carries it in `label` ("等待审批：http_fetch"), the tool entry in
@@ -183,8 +183,8 @@ function approvalHintFor(message: AgentChatMessage): string {
   if (/git_push/.test(detail)) {
     return '【需要你的批准】这一步会把本机提交推送到远程仓库，远程无法撤销。请确认分支与提交，然后选择批准或拒绝。';
   }
-  if (/http_fetch/.test(detail)) {
-    return '【需要你的批准】这一步会向外部地址发起网络请求。请确认目标地址，然后选择批准或拒绝。';
+  if (/http_fetch|web_extract/.test(detail)) {
+    return '【需要你的批准】这一步会向外部地址发起网络请求或读取网页。请确认目标地址，然后选择批准或拒绝。';
   }
   if (/workspace_delete/.test(detail)) {
     return '【需要你的批准】这一步会删除工作区中的内容，且无法撤销。请确认目标路径，然后选择批准或拒绝。';

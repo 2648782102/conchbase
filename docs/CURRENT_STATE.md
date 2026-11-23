@@ -42,9 +42,9 @@ Updated: 2026-11-23
   a schedule with a missing Agent disables itself.
 - Attachments: images become content parts; text documents are inlined and
   labelled as data; PDF and other binary formats are refused.
-- Tools cover read, search, write, delete, move, copy, git, opt-in `http_fetch`
-  and `git_push`, each bounded to the workspace or an explicit target; see
-  `ARCHITECTURE.md#tools`.
+- Tools cover read, search, write, delete, move, copy, git, opt-in `http_fetch`,
+  bounded `web_extract`, and `git_push`, each bounded to the workspace or an
+  explicit target; see `ARCHITECTURE.md#tools`.
 - Runtime notices are authored `runtime`, not `assistant`, and are excluded from
   model context: they are the Runtime speaking and must not be replayed as one
   of the Agent's own turns. Only user turns and non-empty assistant turns reach

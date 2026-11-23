@@ -1742,7 +1742,11 @@ export class TaskService {
         this.recordLoopEvent(task_, 'agent_loop.approval_requested', 'waiting_approval', {
           iteration: iteration_,
           toolId: call.name,
-          targetPath: typeof call.arguments.path === 'string' ? call.arguments.path : null,
+          targetPath: typeof call.arguments.path === 'string'
+            ? call.arguments.path
+            : typeof call.arguments.url === 'string'
+              ? call.arguments.url.slice(0, 2_000)
+              : null,
           argumentKeys: Object.keys(call.arguments).sort().join(',').slice(0, 200),
           risk: sideEffect,
           ...(preview

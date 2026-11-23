@@ -45,6 +45,24 @@ test('write tools are absent unless explicitly enabled', async () => {
   }
 });
 
+test('web_extract is exposed only when HTTP tools are enabled', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-tool-runtime-http-'));
+  try {
+    const readOnly = await createToolRuntime({ root: directory });
+    const readIds = readOnly.tools.list().map((tool) => tool.id);
+    assert.equal(readIds.includes('web_extract'), false);
+    await readOnly.close();
+
+    const withHttp = await createToolRuntime({ root: directory, enableHttp: true });
+    const httpIds = withHttp.tools.list().map((tool) => tool.id);
+    assert.ok(httpIds.includes('http_fetch'));
+    assert.ok(httpIds.includes('web_extract'));
+    await withHttp.close();
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('skills are empty when no directory is configured', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-tool-runtime-skills-'));
   try {

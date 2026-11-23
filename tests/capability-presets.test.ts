@@ -71,3 +71,11 @@ test('external-integrations never auto-grants skills', () => {
 test('an unknown preset yields no grants', () => {
   assert.deepEqual(grantsForPreset('nope' as never, tools(['workspace_read']), []), []);
 });
+
+test('no capability preset grants web_extract', () => {
+  const provider = tools(['workspace_read', 'web_extract']);
+  for (const preset of CAPABILITY_PRESETS) {
+    const grants = grantsForPreset(preset.id, provider, []);
+    assert.equal(grants.some((grant) => grant.name === 'web_extract'), false, `${preset.id} must not grant web_extract`);
+  }
+});

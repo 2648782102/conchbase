@@ -33,6 +33,7 @@ import {
   type ToolProvider,
 } from './tool-provider.js';
 import { optionalString, requiredString } from './tool-parameter.js';
+import { createBuiltinWebExtractTool } from './web-extract.js';
 
 export const MAX_HTTP_BYTES = 64 * 1024;
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -250,6 +251,7 @@ export function createBoundedResourceFetcher(options: HttpToolsOptions = {}) {
 export function createBuiltinHttpTools(options: HttpToolsOptions = {}): ToolProvider {
   const fetchBoundedResource = createBoundedResourceFetcher(options);
   const maxBytes = Math.max(1_024, Math.min(MAX_HTTP_BYTES, options.maxBytes ?? MAX_HTTP_BYTES));
+  const webExtract = createBuiltinWebExtractTool(options);
 
   const definitions: readonly ToolDefinition[] = Object.freeze([
     Object.freeze({
@@ -319,11 +321,12 @@ export function createBuiltinHttpTools(options: HttpToolsOptions = {}): ToolProv
   }
 
   return Object.freeze({
-    list: () => definitions,
-    has: (toolId: string) => toolId === 'http_fetch',
+    list: () => Object.freeze([...definitions, ...webExtract.list()]),
+    has: (toolId: string) => toolId === 'http_fetch' || toolId === 'web_extract',
     invoke: (toolId: string, args: ToolArguments) => {
-      if (toolId !== 'http_fetch') throw new ToolRejectedError('unknown_tool');
-      return fetchOnce(args);
+      if (toolId === 'web_extract') return webExtract.invoke(toolId, args);
+      if (toolId === 'http_fetch') return fetchOnce(args);
+      throw new ToolRejectedError('unknown_tool');
     },
   });
 }

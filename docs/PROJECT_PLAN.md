@@ -307,12 +307,15 @@ coding model does not redo finished work.
   degrade to SIGKILL after the grace period. `backup`, `verify-backup`,
   timestamped naming with rotation, upgrade/rollback guidance, and `npm run
   soak` complete the operator loop.
-- **Phase 7 — one integration done, the rest gated.** `git_commit` is the first
+- **Phase 7 — two integrations done, the rest gated.** `git_commit` is the first
   completed vertical slice: read-only `git_status`/`git_diff`/`git_log` plus an
   approval-gated commit that shows the staged preview and accepts no caller
-  subcommand. Calendar, email, search, and trackers stay blocked until each has
-  an owner, credential boundary, rate limit, recovery path, audit evidence, and
-  disable path.
+  subcommand. `web_extract` is the second: owner is the Runtime tool layer, it
+  needs no credential, the existing external approval and side-effect ledger
+  give recovery/audit evidence, and `CONCHBASE_ENABLE_HTTP_TOOLS=0` disables it.
+  Calendar, email, search, and trackers stay blocked until each has an owner,
+  credential boundary, rate limit, recovery path, audit evidence, and disable
+  path.
 
 ## Current next task
 
