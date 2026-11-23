@@ -7,6 +7,11 @@ import { accessSync, constants, existsSync, mkdirSync, statSync, unlinkSync, wri
 import { createConnection } from 'node:net';
 import path from 'node:path';
 import { checkNodeVersion } from './node-version.js';
+import {
+  isSupportedProvider,
+  resolveProviderEndpoint,
+  type ProviderEndpointsConfig,
+} from './provider-registry.js';
 
 export type DiagnosticStatus = 'ok' | 'warn' | 'fail';
 
@@ -23,6 +28,7 @@ export interface DiagnosticContext {
   readonly port: number;
   readonly host: string;
   readonly magpieBaseUrl: string;
+  readonly providerEndpoints?: Readonly<Record<string, { readonly baseUrl: string; readonly appKey?: string }>>;
   readonly consolePort: number;
   /** 'free' | 'busy' */
   readonly checkPort: (host: string, port: number) => Promise<'free' | 'busy'>;
@@ -145,6 +151,27 @@ export async function buildDiagnosticChecks(context: DiagnosticContext): Promise
       : `${context.magpieBaseUrl} is unreachable after ${latency}ms; real model calls will fail (tests do not need it).`,
   });
 
+  const endpointConfig: ProviderEndpointsConfig = {
+    magpieBaseUrl: context.magpieBaseUrl,
+    ...(context.providerEndpoints ? { providers: context.providerEndpoints } : {}),
+  };
+  const configuredProviders = Object.keys(context.providerEndpoints ?? {})
+    .filter(isSupportedProvider);
+  const unreachableProviders: string[] = [];
+  for (const providerId of configuredProviders) {
+    const endpoint = resolveProviderEndpoint(providerId, endpointConfig);
+    if (!endpoint) continue;
+    const state = await context.checkHttp(`${endpoint.baseUrl.replace(/\/$/, '')}/v1/models`);
+    if (state === 'unreachable') unreachableProviders.push(providerId);
+  }
+  checks.push({
+    id: 'providers',
+    status: unreachableProviders.length === 0 ? 'ok' : 'warn',
+    detail: unreachableProviders.length === 0
+      ? `${configuredProviders.length} provider(s) checked: ${configuredProviders.join(', ') || 'none'}.`
+      : `unreachable provider endpoint(s): ${unreachableProviders.join(', ')}.`,
+  });
+
   const consoleUrl = `http://127.0.0.1:${context.consolePort}/`;
   const consoleState = await context.checkHttp(consoleUrl);
   checks.push({
@@ -179,6 +206,7 @@ export function defaultDiagnosticContext(config: {
   port: number;
   host: string;
   magpieBaseUrl: string;
+  providerEndpoints?: Readonly<Record<string, { readonly baseUrl: string; readonly appKey?: string }>>;
   consolePort?: number;
 }): DiagnosticContext {
   return {
@@ -188,6 +216,7 @@ export function defaultDiagnosticContext(config: {
     port: config.port,
     host: config.host,
     magpieBaseUrl: config.magpieBaseUrl,
+    ...(config.providerEndpoints ? { providerEndpoints: config.providerEndpoints } : {}),
     consolePort: config.consolePort ?? consolePortFor(config.port),
     checkPort: probePort,
     checkHttp: probeHttp,
@@ -211,6 +240,7 @@ export async function runDiagnostics(config: {
   port: number;
   host: string;
   magpieBaseUrl: string;
+  providerEndpoints?: Readonly<Record<string, { readonly baseUrl: string; readonly appKey?: string }>>;
 }): Promise<number> {
   const checks = await buildDiagnosticChecks(defaultDiagnosticContext(config));
   process.stdout.write(formatDiagnostics(checks));

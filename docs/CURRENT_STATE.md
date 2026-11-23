@@ -70,9 +70,9 @@ Updated: 2026-11-23
   runtime-wide restricted/unrestricted execution modes. MCP tools discovered
   without a declared side effect default to `external` (approval + side-effect
   ledger); read-only must be opted into per server.
-- Pagurus-compatible API for Agent editing, tasks, organization views,
-  execution views, work controls, capability records, and write-only
-  SecretHandles.
+- Pagurus-compatible API for Agent editing, tasks, organization, execution,
+  work controls, capability records, and write-only SecretHandles. Diagnostics
+  also check configured non-default provider endpoints without credentials.
 
 ## Important limitations
 

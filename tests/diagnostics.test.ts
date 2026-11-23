@@ -127,3 +127,32 @@ test('console port derivation lives in one function', async () => {
   walk(path.join(import.meta.dirname, '..', 'src'));
   assert.deepEqual(offenders, [], 'derive the console port with consolePortFor()');
 });
+
+test('diagnostics checks every configured provider endpoint without printing credentials', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-diag-providers-'));
+  try {
+    const seen: string[] = [];
+    const context: DiagnosticContext = {
+      ...baseContext(directory),
+      providerEndpoints: {
+        'openai-compatible': {
+          baseUrl: 'http://127.0.0.1:3426',
+          appKey: 'sk-this-token-must-not-print',
+        },
+      },
+      checkHttp: async (url) => {
+        seen.push(url);
+        return 'reachable';
+      },
+      modelCount: async () => 3,
+    };
+    const checks = await buildDiagnosticChecks(context);
+    const providerCheck = checks.find((check) => check.id === 'providers');
+    assert.equal(providerCheck?.status, 'ok');
+    assert.match(providerCheck?.detail ?? '', /1 provider\(s\) checked.*openai-compatible/);
+    assert.ok(seen.some((url) => url.startsWith('http://127.0.0.1:3426')));
+    assert.doesNotMatch(formatDiagnostics(checks), /sk-this-token-must-not-print/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
