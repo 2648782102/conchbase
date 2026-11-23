@@ -8,6 +8,7 @@ import { SqliteTaskStore } from '../src/runtime/task-store.js';
 import { TaskService } from '../src/runtime/task-service.js';
 import { createBuiltinReadTools, type ToolProvider } from '../src/runtime/tool-provider.js';
 import { createBuiltinWriteTools } from '../src/runtime/write-tools.js';
+import { createBuiltinHttpTools } from '../src/runtime/http-tools.js';
 import type { ModelCatalogClient } from '../src/runtime/model-catalog.js';
 
 function catalog(): ModelCatalogClient {
@@ -48,6 +49,38 @@ function tools(root: string): ToolProvider {
     has: (id) => read.has(id) || write.has(id),
     invoke: (id, args) => read.has(id) ? read.invoke(id, args) : write.invoke(id, args),
   };
+}
+
+function externalUrlToolProvider(root: string): ToolProvider {
+  const read = createBuiltinReadTools({ root });
+  const http = createBuiltinHttpTools({
+    fetch: (async () => new Response('ok', { status: 200, headers: { 'content-type': 'text/plain' } })) as typeof globalThis.fetch,
+    resolve: async () => ['93.184.216.34'],
+  });
+  return {
+    list: () => Object.freeze([...read.list(), ...http.list()]),
+    has: (id) => read.has(id) || http.has(id),
+    invoke: (id, args) => read.has(id) ? read.invoke(id, args) : http.invoke(id, args),
+  };
+}
+
+async function withExternalUrlService(
+  fetch: typeof globalThis.fetch,
+  run: (service: TaskService) => Promise<void>,
+): Promise<void> {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-approval-url-'));
+  const service = new TaskService(
+    new SqliteTaskStore(path.join(directory, 'runtime.sqlite')),
+    { magpieBaseUrl: 'http://127.0.0.1:3425', defaultModel: 'fixture/model', fetch },
+    catalog(),
+    { tools: externalUrlToolProvider(directory) },
+  );
+  try {
+    await run(service);
+  } finally {
+    service.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
 }
 
 async function withService(
@@ -91,6 +124,32 @@ test('a write tool pauses the task for approval instead of executing', async () 
     assert.ok(events.some((event) => event.type === ('agent_loop.approval_requested' as never)));
     assert.equal(events.some((event) => event.type === ('agent_loop.tool_executed' as never)), false);
   });
+});
+
+test('an external approval with a secret-like URL withholds the durable target', async () => {
+  const secretUrl = 'https://example.com/?token=sk-abcdefghijklmnop';
+  await withExternalUrlService(
+    scripted([() => toolCall('web_extract', { url: secretUrl })]),
+    async (service) => {
+      const agent = await service.createAgent({
+        name: '网页读取员', instructions: 'Read pages.', providerId: 'magpie', modelId: 'fixture/model',
+        grantedCapabilities: [{ kind: 'tool', name: 'web_extract' }],
+      });
+      const created = await service.createAgentTask({ prompt: 'read the page', agentId: agent.id });
+      service.startTask(created.id);
+      let task = service.store.getTask(created.id)!;
+      for (let attempt = 0; attempt < 100 && task.state !== 'waiting_approval'; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        task = service.store.getTask(created.id)!;
+      }
+      assert.equal(task.state, 'waiting_approval');
+      const events = service.store.listEvents(null)
+        .filter((event) => event.taskId === created.id && event.type === ('agent_loop.approval_requested' as never));
+      assert.equal(events.length, 1);
+      assert.doesNotMatch(JSON.stringify(events[0]?.data), /sk-abcdefghijklmnop/);
+      assert.equal(events[0]?.data?.targetPath, '(url withheld)');
+    },
+  );
 });
 
 test('approving a pending write resumes the loop and executes it once', async () => {

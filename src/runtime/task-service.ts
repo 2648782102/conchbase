@@ -33,6 +33,7 @@ import {
 import { drainToolCalls as drainToolCallsImpl, type AgentLoopToolContext } from './agent-loop-tools.js';
 import { digestArguments } from './tool-arguments.js';
 import { buildToolRequestPreview } from './tool-request-preview.js';
+import { containsSecretLike } from './secret-filter.js';
 import { projectSkills, projectToolProvider } from './capability-grants.js';
 import type { ExecutionMode, LoopBudget } from '../config/runtime-config.js';
 import { narrowPermissionLevel, type PermissionLevel } from '../kernel/policy.js';
@@ -233,6 +234,18 @@ function validatePrompt(prompt: unknown): string {
     throw new TaskValidationError('prompt must not exceed 20000 characters.');
   }
   return prompt;
+}
+
+function approvalUrlTarget(raw: string): string {
+  const bounded = raw.slice(0, 2_000);
+  if (containsSecretLike(bounded)) return '(url withheld)';
+  try {
+    const parsed = new URL(bounded);
+    if (parsed.username !== '' || parsed.password !== '') return '(url withheld)';
+    return `${parsed.origin}${parsed.pathname.slice(0, 200)}`;
+  } catch {
+    return '(invalid url)';
+  }
 }
 
 export function createTaskService(
@@ -1745,7 +1758,7 @@ export class TaskService {
           targetPath: typeof call.arguments.path === 'string'
             ? call.arguments.path
             : typeof call.arguments.url === 'string'
-              ? call.arguments.url.slice(0, 2_000)
+              ? approvalUrlTarget(call.arguments.url)
               : null,
           argumentKeys: Object.keys(call.arguments).sort().join(',').slice(0, 200),
           risk: sideEffect,
