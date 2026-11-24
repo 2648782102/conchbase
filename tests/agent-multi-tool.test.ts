@@ -261,3 +261,74 @@ test('a mixed multi-turn chain feeds earlier tool evidence into later decisions'
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('a failed read can be corrected and the final answer uses the retry result', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-read-retry-'));
+  mkdirSync(path.join(directory, 'notes'));
+  const { writeFileSync } = await import('node:fs');
+  writeFileSync(path.join(directory, 'notes', 'a.txt'), 'beta target\n');
+  const bodies: string[] = [];
+  const fetchImpl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    bodies.push(typeof init?.body === 'string' ? init.body : '');
+    if (bodies.length === 1) return calls([{ name: 'workspace_read', args: { path: 'notes/missing.txt' } }]);
+    if (bodies.length === 2) return calls([{ name: 'workspace_list', args: { path: 'notes' } }]);
+    if (bodies.length === 3) return calls([{ name: 'workspace_read', args: { path: 'notes/a.txt' } }]);
+    return text('beta target is in notes/a.txt');
+  }) as typeof globalThis.fetch;
+  const service = createService(directory, fetchImpl);
+  try {
+    const agent = await service.createAgent({
+      name: '纠错员', instructions: 'Use tools.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [
+        { kind: 'tool', name: 'workspace_read' },
+        { kind: 'tool', name: 'workspace_list' },
+      ],
+    });
+    const created = await service.createAgentTask({ prompt: 'find beta', agentId: agent.id });
+    service.startTask(created.id);
+    const task = await service.waitForTask(created.id);
+    assert.equal(task.state, 'succeeded');
+    assert.match(task.output ?? '', /notes\/a\.txt/);
+    const events = service.store.listEvents(null);
+    assert.ok(events.some((event) => event.taskId === created.id
+      && event.type === ('agent_loop.tool_failed' as never)));
+    assert.match(bodies[2]!, /missing\.txt/);
+    assert.match(bodies[3]!, /a\.txt/);
+    assert.equal(bodies.length, 4);
+    assert.match(bodies[3]!, /beta target/);
+  } finally {
+    service.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('a write followed by a read in later iterations proves the file contents', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-write-read-'));
+  let turn = 0;
+  const fetchImpl = (async () => {
+    turn += 1;
+    if (turn === 1) return calls([{ name: 'workspace_write', args: { path: 'out.txt', content: 'persisted' } }]);
+    if (turn === 2) return calls([{ name: 'workspace_read', args: { path: 'out.txt' } }]);
+    return text('persisted');
+  }) as typeof globalThis.fetch;
+  const service = createService(directory, fetchImpl);
+  try {
+    const agent = await service.createAgent({
+      name: '写读员', instructions: 'Write then read.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_write' }, { kind: 'tool', name: 'workspace_read' }],
+    });
+    const created = await service.createAgentTask({ prompt: 'write and verify', agentId: agent.id });
+    service.startTask(created.id);
+    assert.equal(await waitFor(service, created.id, (state) => state === 'waiting_approval'), 'waiting_approval');
+    service.decideApproval(created.id, 'approved');
+    const task = await service.waitForTask(created.id);
+    assert.equal(task.state, 'succeeded');
+    assert.equal(readFileSync(path.join(directory, 'out.txt'), 'utf8'), 'persisted');
+    const events = service.store.listEvents(null)
+      .filter((event) => event.taskId === created.id && event.type === ('agent_loop.tool_executed' as never));
+    assert.deepEqual(events.map((event) => event.data.toolId), ['workspace_write', 'workspace_read']);
+  } finally {
+    service.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
