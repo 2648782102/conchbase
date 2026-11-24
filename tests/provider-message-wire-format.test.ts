@@ -74,3 +74,22 @@ test('plain messages are forwarded without tool fields', async () => {
     { role: 'user', content: 'hello' },
   ]);
 });
+
+test('images and text documents become ordered content parts on the wire', async () => {
+  const messages = await send([{
+    role: 'user',
+    content: 'compare these',
+    images: [{ mediaType: 'image/png', dataUrl: 'data:image/png;base64,AAAA' }],
+    documents: [{ name: 'note.txt', mediaType: 'text/plain', text: 'hello' }],
+  }]);
+  const parts = messages[0]!.content as Record<string, unknown>[];
+  assert.equal(Array.isArray(parts), true);
+  assert.equal(parts[0]!.type, 'text');
+  assert.match(String(parts[0]!.text), /compare these/);
+  assert.equal(parts[1]!.type, 'image_url');
+  const image = parts[1]!.image_url as Record<string, unknown>;
+  assert.equal(image.url, 'data:image/png;base64,AAAA');
+  assert.equal(parts[2]!.type, 'text');
+  assert.match(String(parts[2]!.text), /note\.txt/);
+  assert.match(String(parts[2]!.text), /hello/);
+});
