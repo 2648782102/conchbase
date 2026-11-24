@@ -7,6 +7,7 @@
  *   node scripts/probe-agent-chat.mjs --prompt "..." [--tools workspace_read,workspace_list]
  *                                     [--agent boss] [--base http://127.0.0.1:4318]
  *                                     [--effort low|medium|high|...]
+ *                                     [--auto-approve]
  *   --tools '' explicitly creates an Agent with no tools; omit --tools for the default pair.
  *
  * This is a development probe, not a test: it talks to a running Runtime and
@@ -76,10 +77,19 @@ try {
 
   const terminal = new Set(['replied', 'failed', 'unavailable', 'succeeded', 'cancelled']);
   let final = null;
+  const approved = new Set();
   for (let attempt = 0; attempt < 400; attempt += 1) {
     const view = await call('GET', `/v1/agent-chat/conversations/${conversationId}`);
     const assistant = (view.messages ?? []).filter((message) => message.author === 'assistant');
     const last = assistant.at(-1);
+    if (args.includes('--auto-approve') && last?.state === 'waiting_approval' && last.id && !approved.has(last.id)) {
+      approved.add(last.id);
+      await call('POST', `/v1/agent-chat/conversations/${conversationId}/approval`, {
+        assistantMessageId: last.id,
+        decision: 'approved',
+      });
+      continue;
+    }
     if (last && terminal.has(last.state)) {
       final = last;
       break;
@@ -102,6 +112,7 @@ try {
     toolExecutions: tools.length - reused.length,
     toolReused: reused.length,
     approvals: approvals.length,
+    approvalsHandled: approved.size,
     error: (final?.error ?? '').slice(0, 200) || null,
     body: (final?.body ?? '').slice(0, 400),
     activity: activity.map((entry) => `${entry.kind}:${entry.state}:${entry.label ?? ''}`),
