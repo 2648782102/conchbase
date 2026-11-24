@@ -133,3 +133,25 @@ test('catalog capabilities survive long realistic gateway responses', async () =
   assert.equal(last?.contextTokens, 32_119);
   assert.equal(last?.suitableForBoss, true);
 });
+
+test('models whose modalities exclude text are not advertised as chat-capable', async () => {
+  const catalog = new MagpieModelCatalog({
+    baseUrl: 'http://127.0.0.1:3425',
+    fetch: (async () => new Response(JSON.stringify({
+      data: [
+        { id: 'audio/only', modalities: { input: ['audio'] }, reasoning: true, reasoning_levels: ['low'] },
+        { id: 'mixed/text', modalities: { input: ['text', 'image'] }, reasoning: true, reasoning_levels: ['low'] },
+      ],
+    }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof globalThis.fetch,
+  });
+  const models = await catalog.listModels();
+  const audio = models.find((model) => model.id === 'audio/only');
+  const mixed = models.find((model) => model.id === 'mixed/text');
+  assert.equal(audio?.supportsStreaming, false);
+  assert.equal(audio?.supportsTools, false);
+  assert.equal(audio?.supportsReasoning, false);
+  assert.equal(audio?.reasoningLevels, undefined);
+  assert.equal(mixed?.supportsStreaming, true);
+  assert.equal(mixed?.supportsTools, true);
+  assert.equal(mixed?.supportsReasoning, true);
+});

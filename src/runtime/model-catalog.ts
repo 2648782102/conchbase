@@ -89,9 +89,11 @@ export class MagpieModelCatalog implements ModelCatalogClient {
         if (typeof record.id !== 'string' || record.id.length === 0) return [];
         const contextTokens = positiveInt(record.context_length) ?? positiveInt(record.context_window)
           ?? positiveInt(record.max_input_tokens);
-        const textOnly = Array.isArray(record.modalities)
-          ? (record.modalities as { input?: readonly string[] }).input?.includes('text') ?? true
-          : true;
+        const modalities = record.modalities as { input?: readonly string[] } | undefined;
+        const declaredInput = modalities && typeof modalities === 'object' && Array.isArray(modalities.input)
+          ? modalities.input
+          : undefined;
+        const acceptsText = declaredInput === undefined ? true : declaredInput.includes('text');
         /*
          * The gateway's own answer, not a guess from the model id.
          *
@@ -110,11 +112,11 @@ export class MagpieModelCatalog implements ModelCatalogClient {
             ? record.display_name
             : record.id,
           ...(contextTokens ? { contextTokens } : {}),
-          supportsStreaming: textOnly,
-          supportsTools: textOnly,
-          supportsReasoning: textOnly && claimsReasoning,
-          ...(textOnly && levels !== undefined ? { reasoningLevels: levels } : {}),
-          suitableForBoss: textOnly && (contextTokens ?? 0) >= 32_000,
+          supportsStreaming: acceptsText,
+          supportsTools: acceptsText,
+          supportsReasoning: acceptsText && claimsReasoning,
+          ...(acceptsText && levels !== undefined ? { reasoningLevels: levels } : {}),
+          suitableForBoss: acceptsText && (contextTokens ?? 0) >= 32_000,
         }];
       }));
     } catch {
