@@ -359,6 +359,82 @@ test('retry clears a stale continuation checkpoint', async () => {
   }
 });
 
+test('a ten-iteration run resumes mid-chain without replaying completed tools', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-long-resume-'));
+  const filename = path.join(directory, 'runtime.sqlite');
+  const space = workspace();
+  const calls: string[] = [];
+  let turn = 0;
+  const fetchUntilFourth = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    turn += 1;
+    calls.push(`first-${turn}`);
+    if (turn <= 4) {
+      return new Response(sseToolCall('workspace_list', { path: turn === 1 ? 'notes' : `notes/${turn}` }), {
+        status: 200, headers: { 'content-type': 'text/event-stream' },
+      });
+    }
+    const signal = init?.signal;
+    return new Promise<Response>((_resolve, reject) => {
+      if (signal?.aborted) { reject(new Error('aborted')); return; }
+      signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+    });
+  }) as typeof globalThis.fetch;
+  const loopOptions = { tools: createBuiltinReadTools({ root: space.root }) };
+  const first = new TaskService(
+    new SqliteTaskStore(filename),
+    {
+      magpieBaseUrl: 'http://127.0.0.1:3425', defaultModel: 'fixture/model', fetch: fetchUntilFourth,
+      loopBudget: { maxIterations: 10, maxToolCallsPerTurn: 1, deadlineMs: 120_000 },
+    },
+    catalogStub(),
+    loopOptions,
+  );
+  let taskId: string;
+  try {
+    const agent = await first.createAgent({
+      name: '长链员', instructions: 'Use tools.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_list' }],
+    });
+    const created = await first.createAgentTask({ prompt: 'long chain', agentId: agent.id });
+    taskId = created.id;
+    first.startTask(taskId);
+    const deadline = Date.now() + 2000;
+    while ((first.store.getTask(taskId)?.state !== 'running') && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    while (turn < 3 && Date.now() < deadline + 2000) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    assert.ok(first.store.getLoopState(taskId)?.includes('iteration'), 'a mid-chain checkpoint exists');
+  } finally {
+    await first.stop();
+  }
+
+  const second = new TaskService(
+    new SqliteTaskStore(filename),
+    {
+      magpieBaseUrl: 'http://127.0.0.1:3425', defaultModel: 'fixture/model', fetch: stubFetch(),
+      loopBudget: { maxIterations: 10, maxToolCallsPerTurn: 1, deadlineMs: 120_000 },
+    },
+    catalogStub(),
+    loopOptions,
+  );
+  try {
+    const finished = await second.waitForTask(taskId);
+    assert.equal(finished.state, 'succeeded', finished.error ?? '');
+    const executed = second.store.listEvents(null)
+      .filter((event) => event.taskId === taskId && event.type === ('agent_loop.tool_executed' as never));
+    assert.ok(executed.length >= 1, 'the completed iteration before the restart did execute');
+    assert.equal(calls.filter((call) => call.startsWith('first-')).length, 5);
+    const resumedEventTypes = second.store.listTaskEvents(taskId).map((event) => event.type);
+    assert.ok(resumedEventTypes.some((type) => type === 'task.resumed' || type === 'task.started' || type === 'task.queued'), resumedEventTypes.join(','));
+  } finally {
+    second.close();
+    space.cleanup();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('a legacy approval checkpoint is not treated as a resumable continuation', async () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-loop-legacy-'));
   const filename = path.join(directory, 'runtime.sqlite');
