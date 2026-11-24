@@ -92,6 +92,14 @@ try {
       });
       continue;
     }
+    if (args.includes('--auto-approve') && last?.state === 'waiting_approval' && last.id && !approved.has(last.id)) {
+      approved.add(last.id);
+      await call('POST', `/v1/agent-chat/conversations/${conversationId}/approval`, {
+        assistantMessageId: last.id,
+        decision: 'approved',
+      });
+      continue;
+    }
     if (last && terminal.has(last.state)) {
       final = last;
       break;
