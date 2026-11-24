@@ -729,6 +729,57 @@ test('a worker prompt advertises enabled web tools it can actually use', async (
   }
 });
 
+test('a worker prompt states write capability when the worker actually has it', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-write-prompt-'));
+  const prompts: string[] = [];
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture-model',
+    fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/v1/models')) {
+        return new Response(JSON.stringify({ data: [{ id: 'fixture-model' }] }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      }
+      const body = JSON.parse(String(init?.body ?? '{}')) as {
+        messages?: readonly { role: string; content: string }[];
+      };
+      const user = body.messages?.find((message) => message.role === 'user');
+      if (user) prompts.push(user.content);
+      return new Response(
+        `data: ${JSON.stringify({ choices: [{ delta: { content: '完成' } }] })}\n\ndata: [DONE]\n\n`,
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      );
+    }) as typeof globalThis.fetch,
+  });
+  try {
+    const store = new InMemoryOrganizationStore();
+    const writeTools: ToolProvider = {
+      list: () => Object.freeze([
+        { id: 'workspace_read', version: 1 as const, description: 'read', sideEffect: 'read' as const },
+        { id: 'workspace_write', version: 1 as const, description: 'write', sideEffect: 'write' as const },
+      ]),
+      has: (id) => id === 'workspace_read' || id === 'workspace_write',
+      invoke: () => ({ ok: true, summary: 'ok', digest: 'sha256:ok', bytes: 2 }),
+    };
+    const service = new BossModeService(store, taskService, {
+      parser: fixtureParser(),
+      waitForTasks: false,
+      workerCapabilityGrants: () => defaultWorkerGrants(writeTools, [], { allowWrites: true }),
+    });
+    await service.submit({ text: '开项目并派活', idempotencyKey: 'worker-write-prompt-1' });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const workerPrompt = prompts.find((prompt) => prompt.includes('为项目'));
+    assert.ok(workerPrompt);
+    assert.match(workerPrompt!, /实际可用工具：[^\n]*workspace_write/);
+    assert.match(workerPrompt!, /可以读写工作区/);
+    assert.match(workerPrompt!, /必须真的写出来/);
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('the final Boss reply reports what the worker actually returned', async () => {
   // Live failure: the Boss answer came from the model call that ran *before*
   // the worker, so it said "已准备" while a real result existed moments later.
