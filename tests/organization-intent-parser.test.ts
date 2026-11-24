@@ -787,6 +787,7 @@ test('the Boss system prompt describes worker-mediated capabilities when Runtime
       messages: readonly { role: string; content: string }[];
     };
     const system = body.messages.find((message) => message.role === 'system')?.content ?? '';
+    assert.match(system, /只是询问/);
     assert.match(system, /员工使用 web_extract \/ http_fetch 读取网页/);
     assert.match(system, /workspace_list \/ workspace_read \/ text_search/);
     assert.match(system, /workspace_write/);
