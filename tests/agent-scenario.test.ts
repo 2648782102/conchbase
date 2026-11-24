@@ -377,3 +377,29 @@ test('a write that fails leaves no partial file behind', async () => {
     run.cleanup();
   }
 });
+
+test('an oversized tool batch fails before any tool runs', async () => {
+  const run = await runScenario({
+    prompt: '一次请求过多工具',
+    files: { 'a.txt': '1', 'b.txt': '2', 'c.txt': '3' },
+    maxToolCallsPerTurn: 2,
+    turns: [
+      {
+        kind: 'tools',
+        calls: ['a.txt', 'b.txt', 'c.txt'].map((file) => ({
+          name: 'workspace_read', args: { path: file },
+        })),
+      },
+      { kind: 'final', text: 'done' },
+    ],
+  });
+  try {
+    assert.equal(run.state, 'failed');
+    assert.match(run.error ?? '', /at most 2 tool calls/i);
+    assert.equal(run.events.some((event) => event.type === 'agent_loop.tool_requested'), false,
+      'no tool may be partially executed when the batch is over the cap');
+    assert.equal(run.requests.length, 1, 'the oversized turn is rejected before another model call');
+  } finally {
+    run.cleanup();
+  }
+});
