@@ -110,6 +110,21 @@ test('primary relay includes meaningful facts but not routine progress', () => {
   assert.equal(plan.relays.some((relay) => relay.digest === 'sha256_progress'), false);
 });
 
+test('a Runtime-attested placeholder report is not relayed as a result', () => {
+  let snapshot = withWorkers(1);
+  snapshot = action(snapshot, { type: 'start_worker', projectId: 'project_alpha', workerId: 'worker_1' });
+  snapshot = action(snapshot, {
+    type: 'report_worker',
+    projectId: 'project_alpha',
+    workerId: 'worker_1',
+    reportId: 'runtime_report_worker_placeholder',
+    state: 'ready',
+    summaryDigest: 'sha256:runtime-attested',
+  });
+  const plan = planOrganizationExecution(snapshot, []);
+  assert.equal(plan.relays.length, 0, 'placeholder reports only release scheduler state');
+});
+
 test('planner emits only published work-control vocabulary and bounded values', () => {
   const snapshot = withWorkers(1);
   const plan = planOrganizationExecution(snapshot, [{

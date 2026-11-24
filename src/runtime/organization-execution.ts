@@ -67,6 +67,8 @@ function relayKind(event: OrganizationEvent): OrganizationRelay['kind'] | undefi
   const mapped = RELAY_EVENT_TYPES.get(event.type);
   if (mapped === 'result') {
     const state = scalar(event.data, 'reportState');
+    const reportId = scalar(event.data, 'reportId');
+    if (reportId.startsWith('runtime_report_worker_')) return undefined;
     if (state === 'ready') return 'result';
     if (state === 'attention') return 'attention';
     if (state === 'blocked') return 'blocked';
