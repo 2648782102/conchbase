@@ -79,6 +79,8 @@ export interface BossModeSubmitResult {
   }[];
   readonly relays: readonly OrganizationRelay[];
   readonly reply: string | null;
+  /** True only when this turn created an Attention request still awaiting a person. */
+  readonly needsAttention?: boolean;
 }
 
 export interface BossModeServiceOptions {
@@ -333,6 +335,8 @@ export class BossModeService {
     // start. Re-admit them in bounded rounds before composing the final reply.
     outcomes = [...outcomes, ...await this.drainHeldWorkers()];
     const coordination = this.coordinator.reconcile();
+    const needsAttention = coordination.relays.some((relay) => relay.kind === 'attention')
+      && this.store.get().attentionRequests.some((request) => request.state === 'open');
     // The model wrote `parsed.relay` before any worker ran, so it can only
     // describe intent ("I prepared..."). Once real results exist, the reply
     // must report those instead of the pre-execution promise.
@@ -347,6 +351,7 @@ export class BossModeService {
       holds: Object.freeze(this.mergeHolds(coordination.holds)),
       relays: coordination.relays,
       reply,
+      needsAttention,
     });
     if (this.store.get().events.some((event) =>
       event.type === 'organization.intent_recorded' && event.data.intentId === resolvedIntentId) === false) {

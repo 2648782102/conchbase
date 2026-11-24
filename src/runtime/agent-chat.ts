@@ -1854,7 +1854,7 @@ export class AgentChatService {
       // Acceptance is not completion: worker tasks may still be running. Record
       // the reply text and keep the message pending so a Boss that hired a
       // worker does not claim "done" while the work is in flight.
-      const waiting = submitted.relays.some((relay) => relay.kind === 'attention');
+      const waiting = submitted.needsAttention === true;
       const failed = submitted.executions.some((execution) => execution.status === 'failed');
       const dispatched = submitted.executions.some((execution) => execution.status === 'created-agent');
       this.replaceMessage(record, assistantMessage.id, {
