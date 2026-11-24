@@ -1336,6 +1336,10 @@ export class BossModeService {
         if (execution.status === 'dispatched') {
           applyAction(this.store, startAction);
           this.startedWorkers.add(record.workerId);
+          if (taskService.store.getTask(record.taskId)?.state === 'queued') {
+            taskService.setTaskSliceBudget(record.taskId, this.workerSliceIterations);
+            taskService.startTask(record.taskId);
+          }
         }
       }
       task = await this.waitForTerminalTask(record.taskId);
