@@ -332,3 +332,59 @@ test('a write followed by a read in later iterations proves the file contents', 
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('a mixed batch keeps exact call order and reports an unknown tool inline', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-mixed-batch-'));
+  mkdirSync(path.join(directory, 'notes'));
+  const { writeFileSync } = await import('node:fs');
+  writeFileSync(path.join(directory, 'notes', 'a.txt'), 'alpha\n');
+  const observed: string[] = [];
+  const fetchImpl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = typeof init?.body === 'string' ? init.body : '';
+    const parsed = body.length > 0 ? JSON.parse(body) as { messages?: readonly { role: string; content?: unknown }[] } : {};
+    const toolMessages = (parsed.messages ?? []).filter((message: { role: string; content?: unknown }) => message.role === 'tool');
+    const toolMessage = toolMessages[toolMessages.length - 1];
+    if (toolMessage) observed.push(String(toolMessage.content));
+    if (observed.length === 0) {
+      return calls([
+        { name: 'workspace_list', args: { path: 'notes' } },
+        { name: 'not_registered', args: {} },
+        { name: 'workspace_read', args: { path: 'notes/a.txt' } },
+      ]);
+    }
+    if (observed.length === 1) return calls([{ name: 'text_search', args: { path: 'notes', pattern: 'alpha' } }]);
+    return text('alpha confirmed');
+  }) as typeof globalThis.fetch;
+  const service = createService(directory, fetchImpl);
+  try {
+    const agent = await service.createAgent({
+      name: '混合批处理器', instructions: 'Use tools.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [
+        { kind: 'tool', name: 'workspace_list' },
+        { kind: 'tool', name: 'workspace_read' },
+        { kind: 'tool', name: 'text_search' },
+      ],
+    });
+    const created = await service.createAgentTask({ prompt: 'mixed batch', agentId: agent.id });
+    service.startTask(created.id);
+    const task = await service.waitForTask(created.id);
+    assert.equal(task.state, 'succeeded');
+    const events = service.store.listEvents(null).filter((event) => event.taskId === created.id);
+    const ordered = events
+      .filter((event) => ['agent_loop.tool_requested', 'agent_loop.tool_executed', 'agent_loop.tool_failed'].includes(String(event.type)))
+      .map((event) => `${event.type}:${event.data.toolId}`);
+    assert.deepEqual(ordered, [
+      'agent_loop.tool_requested:workspace_list',
+      'agent_loop.tool_executed:workspace_list',
+      'agent_loop.tool_requested:not_registered',
+      'agent_loop.tool_failed:not_registered',
+      'agent_loop.tool_requested:workspace_read',
+      'agent_loop.tool_executed:workspace_read',
+      'agent_loop.tool_requested:text_search',
+      'agent_loop.tool_executed:text_search',
+    ]);
+  } finally {
+    service.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
