@@ -6,7 +6,10 @@ import test from 'node:test';
 import { BossModeService } from '../src/runtime/boss-mode-service.js';
 import { InMemoryOrganizationStore } from '../src/runtime/organization-store.js';
 import { createTaskService } from '../src/runtime/task-service.js';
-import type { OrganizationIntentParser } from '../src/runtime/organization-intent-parser.js';
+import type {
+  OrganizationIntentParser,
+  OrganizationIntentParserInput,
+} from '../src/runtime/organization-intent-parser.js';
 import { parseOrganizationAction, type OrganizationAction } from '../src/runtime/organization-contract.js';
 import { defaultWorkerGrants } from '../src/runtime/capability-grants.js';
 import type { ToolProvider } from '../src/runtime/tool-provider.js';
@@ -55,6 +58,45 @@ function fixtureParser(): OrganizationIntentParser {
         intentId: input.intentId,
         actions,
         relay: 'Boss mode fixture created one worker.',
+      });
+    },
+  };
+}
+
+function twoWorkerParser(): OrganizationIntentParser {
+  const base = (input: OrganizationIntentParserInput) => {
+    const projectId = 'project_chain';
+    return {
+      open: parseOrganizationAction({
+        type: 'open_project', expectedSequence: input.expectedSequence, projectId,
+        originTriggerId: input.intentId,
+      }),
+      activate: parseOrganizationAction({
+        type: 'activate_project', expectedSequence: input.expectedSequence + 1, projectId,
+      }),
+      create: (workerId: string, displayName: string, offset: number) => parseOrganizationAction({
+        type: 'create_agent', expectedSequence: input.expectedSequence + offset, projectId,
+        workerId, delegationId: `del_${workerId}`, agentRevisionId: 'agr_placeholder',
+        displayName, instructionsDigest: 'sha256_instructions',
+        scope: ['project:chain'], capabilities: ['cap_read_context'],
+        model: { providerId: 'magpie', modelId: 'fixture-model' },
+        maxDelegationDepth: 0, ttlEvents: 100,
+      }),
+    };
+  };
+  return {
+    async parse(input) {
+      const actions = base(input);
+      return Object.freeze({
+        version: 1 as const,
+        intentId: input.intentId,
+        actions: Object.freeze([
+          actions.open,
+          actions.activate,
+          actions.create('wrk_writer', 'Writer', 2),
+          actions.create('wrk_reviewer', 'Reviewer', 3),
+        ]),
+        relay: 'hired two workers',
       });
     },
   };
@@ -1087,6 +1129,51 @@ test('a boss plan can carry two projects, mixed reports, attention, archive, and
     assert.ok(snapshot.projects.some((project) => project.id === 'project_beta' && project.state === 'archived'));
     assert.ok(store.get().events.some((event) => event.type === 'organization.attention_answered'));
     assert.ok(store.get().events.some((event) => event.type === 'organization.project_archived'));
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('a later worker receives the earlier worker report in its task prompt', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-dependency-'));
+  const prompts: string[] = [];
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture-model',
+    fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/v1/models')) {
+        return new Response(JSON.stringify({ data: [{ id: 'fixture-model' }] }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      }
+      const body = JSON.parse(String(init?.body ?? '{}')) as {
+        messages?: readonly { role: string; content: string }[];
+      };
+      const user = [...(body.messages ?? [])].reverse().find((message) => message.role === 'user');
+      if (user) prompts.push(user.content);
+      const output = prompts.at(-1)?.includes('上游汇报的五个要点') ? '三条问题' : '上游汇报的五个要点';
+      return new Response(
+        `data: ${JSON.stringify({ choices: [{ delta: { content: output } }] })}\n\ndata: [DONE]\n\n`,
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      );
+    }) as typeof globalThis.fetch,
+  });
+  try {
+    const store = new InMemoryOrganizationStore();
+    const service = new BossModeService(store, taskService, {
+      parser: twoWorkerParser(), waitForTasks: true, sequentialWorkers: true,
+    });
+    const result = await service.submit({
+      text: '写五条要点，再让质检员工审阅并提三个问题',
+      idempotencyKey: 'dependency-1',
+    });
+    assert.equal(result.executions.some((execution) => execution.status === 'failed'), false);
+    assert.equal(prompts.length, 2);
+    assert.ok(!prompts[0]?.includes('上游汇报的五个要点'));
+    assert.match(prompts[1] ?? '', /上游员工的汇报/);
+    assert.match(prompts[1] ?? '', /上游汇报的五个要点/);
+    assert.match(store.reportTexts().values().next().value ?? '', /上游汇报的五个要点/);
   } finally {
     await taskService.stop();
     rmSync(directory, { recursive: true, force: true });

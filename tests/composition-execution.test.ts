@@ -176,6 +176,7 @@ class CancelOnFirstNodeStore implements TaskStore {
   }
 
   createAgentTask(input: AgentTaskCreateInput): TaskSnapshot { return this.inner.createAgentTask(input); }
+  updateQueuedTaskPrompt(taskId: string, prompt: string): void { return this.inner.updateQueuedTaskPrompt(taskId, prompt); }
   createAgent(profile: AgentProfileInput): AgentDetail { return this.inner.createAgent(profile); }
   updateAgent(id: string, expected: string, profile: AgentProfileInput): AgentDetail {
     return this.inner.updateAgent(id, expected, profile);

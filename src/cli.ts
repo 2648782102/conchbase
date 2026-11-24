@@ -68,6 +68,7 @@ Configuration:
   CONCHBASE_PLUGINS_DIR          Directory of installed plugins (one plugin.json per subdirectory)
   CONCHBASE_CONTEXT_TOKENS       Prompt-token ceiling, overriding the model's reported window
   CONCHBASE_MAX_ITERATIONS       Agent loop iteration ceiling (default 6, max 64)
+  CONCHBASE_WORKER_SLICE_ITERATIONS  Worker iterations per slice; >0 also runs dependent workers in order
   CONCHBASE_MAX_TOOL_CALLS_PER_TURN   Tool calls per turn (default 4, max 16)
   CONCHBASE_LOOP_DEADLINE_MS     Agent loop wall-clock budget (default 120000)
 `;
@@ -118,6 +119,7 @@ function createBossModeService(
       perProjectActive: config.perProjectActiveWork,
     },
     workerSliceIterations: config.workerSliceIterations,
+    sequentialWorkers: config.workerSliceIterations > 0,
     workerCapabilityGrants: () => defaultWorkerGrants(toolRuntime.tools, toolRuntime.skills.skills, { allowWrites: config.allowToolWrites === true }),
     conversation: { recordIntentText: (intentId, text) => conversation.recordIntentText(intentId, text) },
   });

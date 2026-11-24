@@ -138,6 +138,8 @@ export interface ToolRequestDecisionResult {
 export interface TaskStore {
   createTask(input: TaskCreateInput): TaskSnapshot;
   createAgentTask(input: AgentTaskCreateInput): TaskSnapshot;
+  /** Rewrites a queued task's prompt before its first model call. */
+  updateQueuedTaskPrompt(taskId: string, prompt: string): void;
   createAgent(profile: AgentProfileInput): AgentDetail;
   updateAgent(agentId: string, expectedRevisionId: string, profile: AgentProfileInput): AgentDetail;
   duplicateAgent(agentId: string, revisionId?: string, profile?: AgentProfileInput): AgentDetail;
@@ -590,6 +592,11 @@ export class SqliteTaskStore implements TaskStore {
       throw cause;
     }
     return this.getTask(input.id)!;
+  }
+
+  updateQueuedTaskPrompt(taskId: string, prompt: string): void {
+    this.database.prepare('UPDATE tasks SET prompt = ? WHERE id = ? AND state = ?')
+      .run(prompt, taskId, 'queued');
   }
 
   createAgent(input: AgentProfileInput): AgentDetail {

@@ -11,8 +11,7 @@ Updated: 2026-11-24
 - Agent-backed tasks with pinned Agent revision, runtime configuration revision,
   provider/model, bounded loop budgets, cancellation, retry, and restart
   recovery/checkpoint behavior.
-- Boss Mode: one primary conversation can plan projects, delegate bounded work,
-  collect reports, surface Attention, and close out idle projects.
+- Boss Mode plans projects, delegates bounded work, collects reports, and closes idle projects. `CONCHBASE_WORKER_SLICE_ITERATIONS>0` runs workers in dispatch order and injects earlier reports into later worker prompts.
 - Agent Chat with persisted messages, streaming projection, resumable SSE, and
   inline approval for the supported tool path. A waiting approval carries the
   Runtime-computed summary, risk, and bounded preview, so the client can show

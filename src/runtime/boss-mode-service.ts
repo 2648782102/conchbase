@@ -121,6 +121,12 @@ export interface BossModeServiceOptions {
   readonly schedulerLimits?: SchedulerLimits;
   /** Worker loop iterations per cooperative slice; 0 disables yielding. */
   readonly workerSliceIterations?: number;
+  /**
+   * Run workers in dispatch order so a later worker can receive an earlier
+   * worker's durable report in its prompt. Independent workers are no longer
+   * concurrent when this is enabled.
+   */
+  readonly sequentialWorkers?: boolean;
 }
 
 function actionAt(action: OrganizationAction, expectedSequence: number): OrganizationAction {
@@ -144,10 +150,12 @@ export class BossModeService {
   private readonly bossMemory: BossMemory;
   private readonly workerExecutions = new Map<string, WorkerExecutionRecord>();
   private readonly startedWorkers = new Set<string>();
+  private currentDeferredStarts = new Set<string>();
   private readonly outcomeByTaskId = new Map<string, string>();
   private readonly reportSeqByTaskId = new Map<string, number>();
   private readonly schedulerLimits: SchedulerLimits | undefined;
   private readonly workerSliceIterations: number;
+  private readonly sequentialWorkers: boolean;
   private turnAdmissionHolds: {
     readonly workItemId: string;
     readonly projectId: string;
@@ -173,6 +181,7 @@ export class BossModeService {
     });
     this.schedulerLimits = options.schedulerLimits;
     this.workerSliceIterations = options.workerSliceIterations ?? 0;
+    this.sequentialWorkers = options.sequentialWorkers === true;
     this.restoreRecords();
     this.coordinator = new OrganizationCoordinator(store, {
       listWorkState: () => this.listWorkState(),
@@ -276,6 +285,7 @@ export class BossModeService {
     // finished so fast that it is already terminal by the time the next action
     // is applied.
     const dispatchedThisTurn = new Set<string>();
+    const deferredStarts = new Set<string>();
     let acceptedPublished = false;
     let sequence = snapshot.events.length;
 
@@ -289,11 +299,13 @@ export class BossModeService {
           createdWorkers,
           executions,
           dispatchedThisTurn,
+          deferredStarts,
         });
       } catch (cause) {
         executions.push(Object.freeze({ action, status: 'failed' as const, detail: boundedError(cause) }));
       }
     }
+    this.currentDeferredStarts = deferredStarts;
 
     const publishAccepted = () => {
       if (acceptedPublished) return;
@@ -340,7 +352,8 @@ export class BossModeService {
       event.type === 'organization.intent_recorded' && event.data.intentId === resolvedIntentId) === false) {
       this.recordIntent(resolvedIntentId, bodyDigest, actions.length);
     }
-    if (executions.length > 0 && executions.every((execution) => execution.status === 'failed')) {
+    const failedActions = executions.filter((execution) => execution.status === 'failed');
+    if (failedActions.length > 0 && failedActions.length === executions.length) {
       // Surface the first concrete reason. A summary that only says "failed"
       // forces the operator to go digging, and hides actionable causes such as
       // an inactive delegation or a closed project.
@@ -360,6 +373,7 @@ export class BossModeService {
       readonly createdWorkers: WorkerExecutionRecord[];
       readonly executions: BossModeExecution[];
       readonly dispatchedThisTurn: Set<string>;
+      readonly deferredStarts: Set<string>;
     },
   ): Promise<void> {
     if (action.type === 'record_intent') {
@@ -368,7 +382,9 @@ export class BossModeService {
     }
     if (action.type === 'create_agent') {
       if (!context.modelReference) throw new BossModeServiceError('Worker model reference is unavailable.');
-      const execution = await this.createDynamicAgent(action, context.modelReference);
+      const execution = await this.createDynamicAgent(action, context.modelReference, {
+        deferStart: this.sequentialWorkers && context.createdWorkers.length > 0,
+      });
       context.executions.push(execution);
       if (execution.status === 'created-agent') {
         const record = this.workerExecutions.get(action.workerId);
@@ -376,6 +392,9 @@ export class BossModeService {
         // `create_agent` also starts the worker, so a later explicit
         // `start_worker` in the same plan is a duplicate of this dispatch.
         context.dispatchedThisTurn.add(action.workerId);
+        if (this.sequentialWorkers && context.createdWorkers.length > 1) {
+          context.deferredStarts.add(action.workerId);
+        }
       }
       return;
     }
@@ -425,6 +444,7 @@ export class BossModeService {
       }
       const worker = this.store.get().workers.find((item) => item.id === action.workerId);
       const mutated = Boolean(worker && ['authorized', 'idle'].includes(worker.state));
+      if (mutated) this.refreshUpstreamReportInPrompt(action.projectId, action.workerId);
       const execution = this.ensureWorkItem(action);
       context.executions.push(execution);
       if (execution.status !== 'dispatched') {
@@ -437,7 +457,9 @@ export class BossModeService {
         // A re-run dispatches a new task; it must be awaited like a fresh hire,
         // otherwise the Boss reports on the old result and never sees the new one.
         const record = this.workerExecutions.get(action.workerId);
-        if (record) context.createdWorkers.push(record);
+        if (record && !context.createdWorkers.some((item) => item.workerId === record.workerId)) {
+          context.createdWorkers.push(record);
+        }
         context.dispatchedThisTurn.add(action.workerId);
       }
       return;
@@ -717,6 +739,7 @@ export class BossModeService {
   private async createDynamicAgent(
     action: Extract<OrganizationAction, { type: 'create_agent' }>,
     modelReference: { providerId: string; modelId: string },
+    options: { readonly deferStart?: boolean } = {},
   ): Promise<BossModeExecution> {
     const taskService = this.taskService;
     if (!taskService) return Object.freeze({ action, status: 'failed' as const, detail: 'Task service is unavailable.' });
@@ -751,7 +774,7 @@ export class BossModeService {
         workerId: action.workerId,
       });
       const worker = this.store.get().workers.find((item) => item.id === action.workerId);
-      if (worker && ['authorized', 'idle'].includes(worker.state)) {
+      if (worker && ['authorized', 'idle'].includes(worker.state) && !options.deferStart) {
         const execution = this.ensureWorkItem(start as Extract<OrganizationAction, { type: 'start_worker' }>);
         if (execution.status === 'failed') {
           return Object.freeze({
@@ -794,6 +817,21 @@ export class BossModeService {
       .map((grant) => grant.name);
     const toolSummary = grantedTools.length > 0 ? grantedTools.join('、') : '无工具';
     const hasExplicitFormat = (action.instructions ?? '').trim().length > 0;
+    /*
+     * Later workers often review or build on an earlier worker's result. That
+     * report lives in the Runtime ledger, not in the workspace, so telling a
+     * reviewer to search files for it can only exhaust its tool budget. Inject
+     * completed upstream reports by digest and keep the ledger authoritative.
+     */
+    const reportTexts = this.store.reportTexts?.() ?? new Map<string, string>();
+    const upstreamBodies = new Map<string, string>();
+    for (const [reportId, body] of reportTexts) {
+      const report = snapshot.reports.find((entry) => entry.id === reportId);
+      if (!report || report.projectId !== action.projectId || report.state !== 'ready'
+        || report.workerId === action.workerId || body.trim().length === 0) continue;
+      upstreamBodies.set(reportId, body.slice(0, 4_000));
+    }
+    const upstreamReports = [...upstreamBodies.values()];
     const prompt = [
       `你是${chineseAgentDisplayName(action.displayName)}，为项目 ${action.projectId} 执行限定任务。`,
       `项目目标：${projectPurpose}`,
@@ -801,6 +839,9 @@ export class BossModeService {
       `组织能力：${capabilities}`,
       `实际可用工具：${toolSummary}`,
       '组织结构（项目、员工、委派、汇报记录）只存在于 Runtime 里，不在工作区文件中，不要为找它们去翻文件。',
+      ...(upstreamReports.length > 0
+        ? [`上游员工的汇报（Runtime 注入，直接使用，不要再去工作区寻找）：\n${upstreamReports.join('\n---\n')}`]
+        : []),
       ...(this.workerCanWrite()
         ? ['你可以读写工作区：需要文件内容时用读取工具，需要产出文件时用 workspace_write 直接写入。任务要求交付文件时，必须真的写出来，不要只描述方案。']
         : ['项目数据在工作区：需要文件内容、目录列表或匹配项时，用可用的读取工具取得。',
@@ -1208,6 +1249,33 @@ export class BossModeService {
     }
   }
 
+  private refreshUpstreamReportInPrompt(projectId: string, workerId: string): void {
+    const taskService = this.taskService;
+    const record = this.workerExecutions.get(workerId);
+    if (!taskService || !record) return;
+    const task = taskService.store.getTask(record.taskId);
+    if (!task || task.state !== 'queued') return;
+    const marker = '上游员工的汇报（Runtime 注入，直接使用，不要再去工作区寻找）：';
+    const base = task.prompt.split(`\n${marker}`)[0] ?? task.prompt;
+    const reportTexts = this.store.reportTexts?.() ?? new Map<string, string>();
+    const snapshot = this.store.get();
+    const bodies: string[] = [];
+    for (const [reportId, body] of reportTexts) {
+      const report = snapshot.reports.find((entry) => entry.id === reportId);
+      if (!report || report.projectId !== projectId || report.state !== 'ready'
+        || report.workerId === workerId || body.trim().length === 0) continue;
+      bodies.push(body.slice(0, 4_000));
+    }
+    if (bodies.length === 0) return;
+    taskService.store.updateQueuedTaskPrompt(task.id, [
+      '你负责审核或继续处理同一项目里前一位员工已经完成的工作。',
+      '上游汇报和项目目标只存在于 Runtime 组织记录中，不在工作区文件里；这里已经为你注入，不要再用工具寻找。',
+      '严格按系统指令中的输出格式作答；不要输出 ATTENTION 行。',
+      `${marker}\n${bodies.join('\n---\n')}`,
+      '直接完成你的限定任务，通常一轮即可；不要重复调用搜索或列目录工具。',
+    ].join('\n'));
+  }
+
   /**
    * Waits for one task to reach a terminal state.
    *
@@ -1235,16 +1303,34 @@ export class BossModeService {
     const taskService = this.taskService;
     if (!taskService) return Object.freeze([]);
 
-    // Wait for all worker tasks in one batch concurrently, but keep the records
-    // in their original order. All writes below stay serial, so concurrency can
-    // never reorder organization events or make the reply timing-dependent.
-    const terminalTasks = await Promise.all(
-      records.map((record) => this.waitForTerminalTask(record.taskId)),
-    );
+    let terminalTasks: readonly (TaskSnapshot | null)[] = [];
+    if (this.currentDeferredStarts.size === 0) {
+      terminalTasks = await Promise.all(
+        records.map((record) => this.waitForTerminalTask(record.taskId)),
+      );
+    }
 
     const outcomes: WorkerOutcome[] = [];
     for (const [index, record] of records.entries()) {
-      const task = terminalTasks[index];
+      let task = terminalTasks[index] ?? taskService.store.getTask(record.taskId);
+      if (task && task.state !== 'failed' && task.state !== 'cancelled' && task.state !== 'interrupted') {
+        this.refreshUpstreamReportInPrompt(record.projectId, record.workerId);
+      }
+      if (this.currentDeferredStarts.has(record.workerId)) {
+        this.refreshUpstreamReportInPrompt(record.projectId, record.workerId);
+        const startAction = parseOrganizationAction({
+          type: 'start_worker',
+          expectedSequence: this.store.get().events.length,
+          projectId: record.projectId,
+          workerId: record.workerId,
+        }) as Extract<OrganizationAction, { type: 'start_worker' }>;
+        const execution = this.ensureWorkItem(startAction);
+        if (execution.status === 'dispatched') {
+          applyAction(this.store, startAction);
+          this.startedWorkers.add(record.workerId);
+        }
+      }
+      task = await this.waitForTerminalTask(record.taskId);
       if (!task) continue;
       const terminalState = task.state as WorkerOutcome['taskState'];
       const output = task.state === 'succeeded' ? task.output ?? '' : task.error ?? task.state;
