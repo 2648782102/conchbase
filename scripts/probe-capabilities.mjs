@@ -11,10 +11,13 @@
  * prints a compact pass/fail table. It never handles credentials itself.
  */
 import { spawnSync } from 'node:child_process';
+import { unlinkSync } from 'node:fs';
 import path from 'node:path';
 
 const base = process.env.CONCHBASE_URL ?? 'http://127.0.0.1:4318';
 const script = path.join(import.meta.dirname, 'probe-agent-chat.mjs');
+const workspace = process.env.CONCHBASE_WORKSPACE_ROOT ?? path.join(import.meta.dirname, '..');
+const writeTarget = 'capability-probe.txt';
 
 const scenarios = [
   {
@@ -47,6 +50,20 @@ const scenarios = [
       && result.activity.some((entry) => entry.includes('tool:failed'))
       && result.activity.filter((entry) => entry.includes('tool:succeeded')).length >= 2,
   },
+  {
+    name: 'write-approval-loop',
+    args: [
+      '--prompt', `请在当前工作区新建文件 ${writeTarget}，内容写 hello，然后读回第一行告诉我是否成功。`,
+      '--tools', 'workspace_write,workspace_read,workspace_list',
+      '--instructions', '你必须创建文件并读回验证。如果需要审批就等待批准；你只负责调用工具并回答结果。',
+      '--effort', 'high',
+      '--auto-approve',
+    ],
+    verify: (result) => result.state === 'replied'
+      && result.toolExecutions >= 2
+      && result.approvalsHandled >= 1
+      && /成功|一致|hello/i.test(result.body),
+  },
 ];
 
 let failures = 0;
@@ -66,6 +83,12 @@ for (const scenario of scenarios) {
   if (!ok) failures += 1;
   process.stdout.write(`${ok ? 'ok  ' : 'FAIL'}  ${scenario.name.padEnd(24)} ${result ? `${result.state} · ${result.elapsedMs}ms · tools ${result.toolExecutions}` : (child.stderr || child.stdout).slice(0, 200)}\n`);
   if (!ok && result) process.stdout.write(`${String(result.body).slice(0, 300)}\n`);
+}
+
+try {
+  unlinkSync(path.join(workspace, writeTarget));
+} catch {
+  // A probe that never created the file has nothing to clean up.
 }
 
 process.stdout.write(`\n${scenarios.length - failures}/${scenarios.length} capability probes passed\n`);
