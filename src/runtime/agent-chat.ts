@@ -1855,7 +1855,8 @@ export class AgentChatService {
       // the reply text and keep the message pending so a Boss that hired a
       // worker does not claim "done" while the work is in flight.
       const waiting = submitted.needsAttention === true;
-      const failed = submitted.executions.some((execution) => execution.status === 'failed');
+      const failed = submitted.executions.some((execution) => execution.status === 'failed')
+        && submitted.hasWorkerOutcome !== true;
       const dispatched = submitted.executions.some((execution) => execution.status === 'created-agent');
       this.replaceMessage(record, assistantMessage.id, {
         ...assistantMessage,
@@ -1920,7 +1921,8 @@ export class AgentChatService {
         // The submission settled: worker tasks have been awaited, so the reply
         // can now reflect the real outcome instead of the accepted snapshot.
         const waiting = settled.needsAttention === true;
-        const failed = settled.executions.some((execution) => execution.status === 'failed');
+        const failed = settled.executions.some((execution) => execution.status === 'failed')
+          && settled.hasWorkerOutcome !== true;
         this.replaceMessage(record, assistantMessage.id, {
           ...this.getMessage(record, assistantMessage.id)!,
           body: settled.reply ?? this.getMessage(record, assistantMessage.id)!.body,

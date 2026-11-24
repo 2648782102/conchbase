@@ -181,6 +181,68 @@ test('one invalid action does not fail the whole Boss turn', async () => {
   }
 });
 
+test('a failed duplicate action does not fail a turn whose worker succeeded', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-duplicate-failure-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture-model',
+    fetch: (async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/v1/models')) {
+        return new Response(JSON.stringify({ data: [{ id: 'fixture-model' }] }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response('data: {"choices":[{"delta":{"content":"done"},"finish_reason":null}]}\n\ndata: [DONE]\n\n', {
+        status: 200, headers: { 'content-type': 'text/event-stream' },
+      });
+    }) as typeof globalThis.fetch,
+  });
+  const parser: OrganizationIntentParser = {
+    async parse(input) {
+      return Object.freeze({
+        version: 1 as const,
+        intentId: input.intentId,
+        actions: Object.freeze([
+          parseOrganizationAction({
+            type: 'open_project', expectedSequence: input.expectedSequence,
+            projectId: 'project_dupe', originTriggerId: input.intentId,
+          }),
+          parseOrganizationAction({
+            type: 'activate_project', expectedSequence: input.expectedSequence + 1,
+            projectId: 'project_dupe',
+          }),
+          parseOrganizationAction({
+            type: 'create_agent', expectedSequence: input.expectedSequence + 2,
+            projectId: 'project_dupe', workerId: 'wrk_dupe', delegationId: 'del_dupe',
+            agentRevisionId: 'agr_placeholder', displayName: 'Worker Dupe',
+            instructionsDigest: 'sha256_instructions', scope: ['project:dupe'],
+            capabilities: ['cap_read_context'],
+            model: { providerId: 'magpie', modelId: 'fixture-model' },
+            maxDelegationDepth: 0, ttlEvents: 50,
+          }),
+          parseOrganizationAction({
+            type: 'start_worker', expectedSequence: input.expectedSequence + 3,
+            projectId: 'project_dupe', workerId: 'wrk_dupe',
+          }),
+        ]),
+        relay: '已开始。',
+      });
+    },
+  };
+  const service = new BossModeService(new InMemoryOrganizationStore(), taskService, {
+    parser, waitForTasks: true, sequentialWorkers: true,
+  });
+  try {
+    const result = await service.submit({ text: '开始', idempotencyKey: 'dupe-failure' });
+    assert.match(result.reply ?? '', /1 名中 1 名成功/);
+    assert.equal(result.executions.filter((entry) => entry.status === 'created-agent').length, 1);
+    assert.equal(result.hasWorkerOutcome, true);
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('boss mode creates a real Agent revision and binds durable work from one intent', async () => {
   await withService(async (service) => {
     const result = await service.submit({

@@ -81,6 +81,8 @@ export interface BossModeSubmitResult {
   readonly reply: string | null;
   /** True only when this turn created an Attention request still awaiting a person. */
   readonly needsAttention?: boolean;
+  /** True when at least one worker produced a durable result in this turn. */
+  readonly hasWorkerOutcome?: boolean;
 }
 
 export interface BossModeServiceOptions {
@@ -352,6 +354,7 @@ export class BossModeService {
       relays: coordination.relays,
       reply,
       needsAttention,
+      hasWorkerOutcome: outcomes.some((outcome) => outcome.taskState === 'succeeded'),
     });
     if (this.store.get().events.some((event) =>
       event.type === 'organization.intent_recorded' && event.data.intentId === resolvedIntentId) === false) {
