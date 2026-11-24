@@ -76,7 +76,7 @@ export function createApp(options: CreateAppOptions = {}) {
               perProjectActive: options.config.perProjectActiveWork,
             },
             workerSliceIterations: options.config.workerSliceIterations,
-            sequentialWorkers: options.config.workerSliceIterations > 0,
+            sequentialWorkers: true,
           } : {}),
           conversation: {
             recordIntentText: (intentId, text) => conversation.recordIntentText(intentId, text),
@@ -91,7 +91,7 @@ export function createApp(options: CreateAppOptions = {}) {
               perProjectActive: options.config.perProjectActiveWork,
             },
             workerSliceIterations: options.config.workerSliceIterations,
-            sequentialWorkers: options.config.workerSliceIterations > 0,
+            sequentialWorkers: true,
           } : {}),
         })
       : undefined);

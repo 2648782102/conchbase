@@ -183,7 +183,7 @@ export class BossModeService {
     });
     this.schedulerLimits = options.schedulerLimits;
     this.workerSliceIterations = options.workerSliceIterations ?? 0;
-    this.sequentialWorkers = options.sequentialWorkers === true;
+    this.sequentialWorkers = options.sequentialWorkers !== false;
     this.restoreRecords();
     this.coordinator = new OrganizationCoordinator(store, {
       listWorkState: () => this.listWorkState(),

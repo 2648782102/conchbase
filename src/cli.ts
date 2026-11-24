@@ -119,7 +119,7 @@ function createBossModeService(
       perProjectActive: config.perProjectActiveWork,
     },
     workerSliceIterations: config.workerSliceIterations,
-    sequentialWorkers: config.workerSliceIterations > 0,
+    sequentialWorkers: true,
     workerCapabilityGrants: () => defaultWorkerGrants(toolRuntime.tools, toolRuntime.skills.skills, { allowWrites: config.allowToolWrites === true }),
     conversation: { recordIntentText: (intentId, text) => conversation.recordIntentText(intentId, text) },
   });

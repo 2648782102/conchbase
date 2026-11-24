@@ -81,6 +81,9 @@ async function withBoss(
   const taskService = makeTaskService(directory, slowTasks, maxConcurrentTasks);
   const service = new BossModeService(new InMemoryOrganizationStore(), taskService, {
     parser: multiWorkerParser(projects), waitForTasks, schedulerLimits,
+    // These tests measure the work scheduler's admission decisions. Sequential
+    // orchestration defers later workers before the scheduler sees them.
+    sequentialWorkers: false,
   });
   try {
     await run(service, taskService);

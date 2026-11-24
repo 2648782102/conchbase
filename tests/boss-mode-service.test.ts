@@ -1011,7 +1011,7 @@ test('workers in one plan are awaited concurrently and reported in dispatch orde
         });
       },
     };
-    const service = new BossModeService(store, taskService, { parser, waitForTasks: true });
+    const service = new BossModeService(store, taskService, { parser, waitForTasks: true, sequentialWorkers: false });
     const result = await service.submit({ text: '并发做两件事', idempotencyKey: 'concurrency-1' });
     const fast = spans.get('wrk_fast');
     const slow = spans.get('wrk_slow');
