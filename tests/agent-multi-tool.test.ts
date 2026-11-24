@@ -217,3 +217,47 @@ test('a turn above the tool-call cap is rejected', async () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('a mixed multi-turn chain feeds earlier tool evidence into later decisions', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-mixed-chain-'));
+  mkdirSync(path.join(directory, 'notes'));
+  const { writeFileSync } = await import('node:fs');
+  writeFileSync(path.join(directory, 'notes', 'a.txt'), 'alpha target\n');
+  writeFileSync(path.join(directory, 'notes', 'b.txt'), 'other\n');
+  const seenBodies: string[] = [];
+  const fetchImpl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = typeof init?.body === 'string' ? init.body : '';
+    seenBodies.push(body);
+    if (seenBodies.length === 1) return calls([{ name: 'workspace_list', args: { path: 'notes' } }]);
+    if (seenBodies.length === 2) return calls([{ name: 'workspace_read', args: { path: 'notes/a.txt' } }]);
+    if (seenBodies.length === 3) return calls([{ name: 'text_search', args: { path: 'notes', pattern: 'alpha' } }]);
+    return text('alpha target is in notes/a.txt');
+  }) as typeof globalThis.fetch;
+  const service = createService(directory, fetchImpl);
+  try {
+    const agent = await service.createAgent({
+      name: '链路员', instructions: 'Use tools.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [
+        { kind: 'tool', name: 'workspace_list' },
+        { kind: 'tool', name: 'workspace_read' },
+        { kind: 'tool', name: 'text_search' },
+      ],
+    });
+    const created = await service.createAgentTask({ prompt: 'find alpha', agentId: agent.id });
+    service.startTask(created.id);
+    const task = await service.waitForTask(created.id);
+    assert.equal(task.state, 'succeeded');
+    assert.match(task.output ?? '', /notes\/a\.txt/);
+    const executed = service.store.listEvents(null)
+      .filter((event) => event.taskId === created.id && event.type === ('agent_loop.tool_executed' as never));
+    assert.deepEqual(executed.map((event) => event.data.toolId), [
+      'workspace_list', 'workspace_read', 'text_search',
+    ]);
+    assert.equal(seenBodies.length, 4);
+    assert.match(seenBodies[2]!, /a\.txt/);
+    assert.match(seenBodies[3]!, /alpha target/);
+  } finally {
+    service.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
