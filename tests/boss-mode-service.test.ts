@@ -8,6 +8,8 @@ import { InMemoryOrganizationStore } from '../src/runtime/organization-store.js'
 import { createTaskService } from '../src/runtime/task-service.js';
 import type { OrganizationIntentParser } from '../src/runtime/organization-intent-parser.js';
 import { parseOrganizationAction, type OrganizationAction } from '../src/runtime/organization-contract.js';
+import { defaultWorkerGrants } from '../src/runtime/capability-grants.js';
+import type { ToolProvider } from '../src/runtime/tool-provider.js';
 
 function fixtureParser(): OrganizationIntentParser {
   return {
@@ -671,6 +673,56 @@ test('a worker prompt tells the worker to read real data with tools instead of g
     assert.match(workerPrompt!, /需要文件内容、目录列表或匹配项时，用可用的读取工具取得/);
     assert.match(workerPrompt!, /必须来自工具结果；取不到就说明原因，不要推测/);
     assert.doesNotMatch(workerPrompt!, /不要为找它们去翻文件。\n请直接/);
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('a worker prompt advertises enabled web tools it can actually use', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-web-prompt-'));
+  const prompts: string[] = [];
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture-model',
+    fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/v1/models')) {
+        return new Response(JSON.stringify({ data: [{ id: 'fixture-model' }] }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      }
+      const body = JSON.parse(String(init?.body ?? '{}')) as {
+        messages?: readonly { role: string; content: string }[];
+      };
+      const user = body.messages?.find((message) => message.role === 'user');
+      if (user) prompts.push(user.content);
+      return new Response(
+        `data: ${JSON.stringify({ choices: [{ delta: { content: '完成' } }] })}\n\ndata: [DONE]\n\n`,
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      );
+    }) as typeof globalThis.fetch,
+  });
+  try {
+    const store = new InMemoryOrganizationStore();
+    const webTools: ToolProvider = {
+      list: () => Object.freeze([
+        { id: 'workspace_list', version: 1 as const, description: 'list', sideEffect: 'read' as const },
+        { id: 'web_extract', version: 1 as const, description: 'extract web', sideEffect: 'external' as const },
+      ]),
+      has: (id) => id === 'workspace_list' || id === 'web_extract',
+      invoke: () => ({ ok: true, summary: 'ok', digest: 'sha256:ok', bytes: 2 }),
+    };
+    const service = new BossModeService(store, taskService, {
+      parser: fixtureParser(),
+      waitForTasks: false,
+      workerCapabilityGrants: () => defaultWorkerGrants(webTools, []),
+    });
+    await service.submit({ text: '开项目并派活', idempotencyKey: 'worker-web-prompt-1' });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const workerPrompt = prompts.find((prompt) => prompt.includes('为项目'));
+    assert.ok(workerPrompt);
+    assert.match(workerPrompt!, /web_extract/);
+    assert.match(workerPrompt!, /外部网页|网页读取|联网/);
   } finally {
     await taskService.stop();
     rmSync(directory, { recursive: true, force: true });
