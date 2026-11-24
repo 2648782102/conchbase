@@ -174,3 +174,20 @@ test('held workers are re-admitted after capacity frees and all complete', async
       assert.equal(snapshot.workers.some((worker) => worker.state === 'running'), false);
     }, true);
 });
+
+test('mixed project limits hold some workers while admitting others', async () => {
+  await withBoss(
+    ['project_a', 'project_a', 'project_b', 'project_b', 'project_b'],
+    { globalActive: 1, perProjectActive: 2 },
+    async (service) => {
+      const result = await service.submit({ text: 'hire mixed', idempotencyKey: 'mixed-limits' });
+      const started = result.executions.filter((entry) => entry.status === 'created-agent');
+      assert.equal(started.length, 1, 'global capacity admits one worker');
+      assert.equal(result.holds.length, 4);
+      const reasons = result.holds.map((hold) => hold.reason).sort();
+      assert.ok(reasons.includes('global-limit'));
+    },
+    false,
+    true,
+  );
+});
