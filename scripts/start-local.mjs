@@ -44,6 +44,7 @@ start('Runtime', process.execPath, ['scripts/dev.mjs'], root, { ...process.env }
 start('Pagurus', 'npm', ['run', 'dev'], path.join(root, 'pagurus'), {
   ...process.env,
   CONCHBASE_URL: `http://127.0.0.1:${runtimePort}`,
+  PAGURUS_PORT: String(consolePort),
   PORT: String(consolePort),
 });
 

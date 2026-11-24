@@ -45,10 +45,11 @@ Runtime API    http://127.0.0.1:4318/v1/health
 
 ```sh
 npm run smoke
+npm run build
 npm run probe:provider
 ```
 
-`smoke` 验证 Runtime 的启动、发现、任务创建与干净退出；`probe:provider` 用 Runtime 自己的 catalog、streaming 和错误分类跑一遍真实网关。
+`smoke` 验证 Runtime 的启动、发现、任务创建与干净退出；`build` 生成 `dist/`，因为 `probe:provider` 从编译产物读取 Runtime 配置；`probe:provider` 用 Runtime 自己的 catalog、streaming 和错误分类跑一遍真实网关。
 
 ## 高级入口
 
