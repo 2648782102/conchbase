@@ -762,3 +762,21 @@ test('a report action without a reportId gets a Runtime-owned id', async () => {
   assert.match(reportId, /^[a-z][a-z0-9_-]*$/);
   assert.ok(reportId.length > 0);
 });
+
+test('the boss parser uses its configured timeout for each attempt', async () => {
+  const delays: number[] = [];
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/model',
+    timeoutMs: 1_000,
+    maxAttempts: 1,
+    fetch: (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      delays.push(init?.signal ? 1 : 0);
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({ reply: '在线', actions: [] }) } }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof globalThis.fetch,
+  });
+  await parser.parse({ text: '在线吗', intentId: 'int_timeout', expectedSequence: 0 });
+  assert.deepEqual(delays, [1]);
+});
