@@ -86,6 +86,28 @@ test('stopping with no pid file reports nothing to stop', async () => {
   }
 });
 
+test('a stale pid file is cleared and does not block a new start', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-proc-stale-'));
+  const paths = runtimeProcessPaths(path.join(directory, 'runtime.sqlite'));
+  try {
+    writeFileSync(paths.pidFile, '99999999\n', 'utf8');
+    const stop = await stopBackground({ paths, timeoutMs: 100, pollMs: 10 });
+    assert.equal(stop.stopped, false);
+    assert.equal(existsSync(paths.pidFile), false);
+
+    const started = startBackground({
+      executable: process.execPath,
+      args: ['-e', 'setInterval(() => {}, 1000)'],
+      cwd: directory, env: process.env, paths,
+    });
+    assert.ok(started.pid > 0);
+    assert.equal(readPid(paths.pidFile), started.pid);
+    await stopBackground({ paths, timeoutMs: 5_000, pollMs: 25 });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('tailLog returns the last lines and tolerates a missing file', () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-proc-'));
   try {
