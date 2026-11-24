@@ -101,3 +101,42 @@ test('an auth failure is not retried and fails once', async () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('a malformed stream after a retryable failure fails with a bounded category', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-retry-malformed-'));
+  let calls = 0;
+  const fetchImpl = (async () => {
+    calls += 1;
+    if (calls === 1) {
+      return new Response(JSON.stringify({ error: { message: 'rate limit' } }), {
+        status: 429, headers: { 'content-type': 'application/json' },
+      });
+    }
+    return new Response('not-sse', { status: 200, headers: { 'content-type': 'text/event-stream' } });
+  }) as typeof globalThis.fetch;
+  const service = new TaskService(
+    new SqliteTaskStore(path.join(directory, 'runtime.sqlite')),
+    {
+      magpieBaseUrl: 'http://127.0.0.1:3425',
+      defaultModel: 'fixture/chat-model',
+      fetch: fetchImpl,
+    },
+    catalog,
+  );
+  try {
+    const task = service.createTask({ prompt: 'hi' });
+    service.startTask(task.id);
+    const finished = await service.waitForTask(task.id);
+    assert.equal(finished.state, 'failed');
+    assert.ok(calls >= 2);
+    const events = service.store.listTaskEvents(task.id);
+    assert.ok(events.some((event) => event.type === 'agent_loop.provider_retry'));
+    const failed = events.find((event) => event.type === 'task.failed');
+    assert.equal(failed?.data.category, 'provider');
+    assert.ok((finished.error ?? '').length > 0);
+    assert.ok((finished.error ?? '').length <= 500);
+  } finally {
+    await service.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
