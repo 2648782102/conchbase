@@ -1919,7 +1919,7 @@ export class AgentChatService {
         unsubscribeApprovalWatch();
         // The submission settled: worker tasks have been awaited, so the reply
         // can now reflect the real outcome instead of the accepted snapshot.
-        const waiting = settled.relays.some((relay) => relay.kind === 'attention');
+        const waiting = settled.needsAttention === true;
         const failed = settled.executions.some((execution) => execution.status === 'failed');
         this.replaceMessage(record, assistantMessage.id, {
           ...this.getMessage(record, assistantMessage.id)!,
