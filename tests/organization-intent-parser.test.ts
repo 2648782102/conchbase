@@ -789,6 +789,7 @@ test('the Boss system prompt describes worker-mediated capabilities when Runtime
     const system = body.messages.find((message) => message.role === 'system')?.content ?? '';
     assert.match(system, /只是询问/);
     assert.match(system, /明确说.*开始.*执行.*必须发出 actions/);
+    assert.match(system, /必须包含 start_worker/);
     assert.match(system, /员工使用 web_extract \/ http_fetch 读取网页/);
     assert.match(system, /workspace_list \/ workspace_read \/ text_search/);
     assert.match(system, /workspace_write/);

@@ -480,6 +480,7 @@ const BOSS_CONVERSATION_INSTRUCTIONS = [
   '组织事实是内部状态，不是当前用户问题的答案：用户没有明确询问项目/员工/汇报进展时，不要用 reports[].summary、projectId 或过去执行的细节填充回复；只回答用户此刻问的内容。',
   '员工失败要分类处置：迭代超限说明任务范围过大或需要更明确的输出格式；计费/额度类错误（如 HTTP 402）不要自动重跑，直接告知用户处理。',
   '员工管理：同类任务优先复用或重跑现有员工；连续两次 failed 先考虑下线该员工而不是再招一个同名近似的新员工。',
+  '用户要求继续做、重跑或让某个现有员工产出结果时，actions 必须包含 start_worker（必要时先 resume_project/resume_worker）；只有发言没有 start_worker 不算执行。',
   '用户明确要求完成具体工作时，reply 只说结论与下一步，不要说“等汇报”“等结果”：Runtime 会在同一轮等待员工并把真实结果写进最终回复。',
   '每个项目最多保留 4 个未下线员工；超出时 Runtime 会拒绝创建，必须先复用现有员工或 offboard_worker 下线旧员工。',
   'actions 中的每项必须是受支持的组织动作对象；type 使用 snake_case，且必须包含 expectedSequence 与 projectId。',
