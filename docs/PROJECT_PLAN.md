@@ -283,8 +283,8 @@ coding model does not redo finished work.
   classified into provider kinds with retryability; a deterministic
   `FakeProvider` exists; the catalog publishes capability metadata and
   `diagnose` shows gateway latency/model count. `openai-compatible` now routes
-  to its own endpoint and credential, verified against a local fixture
-  gateway; only a run against a live third-party service is outstanding.
+  to its own endpoint and credential, verified against a local fixture gateway,
+  a loopback HTTP server, and the local Magpie service using its test models.
 - **Phase 3 — done.** Read tools are bounded (depth, time, UTF-8-safe
   truncation, evidence); writes require explicit overwrite and report evidence;
   approvals name tool/target/risk; capability presets exist; untrusted-output
@@ -323,7 +323,7 @@ coding model does not redo finished work.
 
 ## Current next task
 
-### T1 — Prove the `openai-compatible` adapter against a real endpoint — probe landed, live run pending
+### T1 — Prove the `openai-compatible` adapter against a real endpoint — done
 
 **Goal:** One documented command takes a real OpenAI-compatible endpoint and
 proves the adapter works end to end, so `openai-compatible` stops being a
@@ -347,9 +347,18 @@ one, the adapter is leaking provider detail and that is the finding.
 
 **Landed:** `scripts/provider-contract.mjs` uses the compiled Runtime config,
 registry, catalog, and streaming adapter, with an injected-fetch test covering
-the complete catalog/stream/failure path and CLI tests covering missing config
-and redaction. The only outstanding acceptance step is the manual run against
-an actual endpoint, which this checkout does not have configured.
+the complete catalog/stream/failure path, a real loopback HTTP round-trip test,
+and CLI tests covering missing config and redaction.
+
+**Live verification (2026-11-24):** the local Magpie gateway was used as the
+real OpenAI-compatible endpoint. `CONCHBASE_MODEL=workbuddy/blind-model-a npm
+run probe:provider` exited `0` with 21 models, a 1699 ms streaming reply of
+`PROBE_OK`, and a classified `validation` failure for the unknown model. The
+same probe with `CONCHBASE_PROBE_PROVIDER=openai-compatible`,
+`CONCHBASE_PROVIDER_ENDPOINTS` pointing that provider id at
+`http://127.0.0.1:3425`, and `CONCHBASE_MODEL=workbuddy/blind-model-b` also
+exited `0`, proving the non-default adapter's own endpoint resolution and
+credential boundary on a real HTTP service.
 
 **Tests first:** a test that the script refuses a missing endpoint with an
 actionable message and redacts a token-shaped value from every output line;

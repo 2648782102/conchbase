@@ -86,12 +86,10 @@ Updated: 2026-11-24
   previous database file.
 - SQLite has a single runtime owner. Multi-process operation and broad crash
   testing are not complete product features.
-- Magpie is the only gateway exercised against a real service. The provider
-  contract, registry, error classification, capability metadata, and fake
-  provider exist. `openai-compatible` has its own endpoint and catalog via
-  `CONCHBASE_PROVIDER_ENDPOINTS`; `npm run probe:provider` checks its catalog,
-  streaming, and failure classification with injected-fetch tests. A live run
-  is still pending.
+- Provider adapters are verified: `openai-compatible` uses its own endpoint and
+  catalog via `CONCHBASE_PROVIDER_ENDPOINTS`, and `npm run probe:provider`
+  passed catalog, streaming, and failure checks against the local Magpie test
+  models over real HTTP.
 - External side effects are intentionally narrow. Do not assume that a
   capability record or approval record means arbitrary host execution is safe.
 - Pagurus is feature-rich but still exposes too many operator-oriented screens
