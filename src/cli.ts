@@ -96,6 +96,11 @@ function createBossModeService(
       ? createOpenAiCompatibleBossConversationParser({
         baseUrl: config.magpieBaseUrl,
         model: config.bossModel ?? config.defaultModel,
+        capabilityManifest: {
+          externalWeb: config.enableHttpTools === true,
+          localFiles: true,
+          localWrites: config.allowToolWrites === true,
+        },
         ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
       })
       : undefined;

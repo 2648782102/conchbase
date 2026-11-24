@@ -780,3 +780,29 @@ test('the boss parser uses its configured timeout for each attempt', async () =>
   await parser.parse({ text: '在线吗', intentId: 'int_timeout', expectedSequence: 0 });
   assert.deepEqual(delays, [1]);
 });
+
+test('the Boss system prompt describes worker-mediated capabilities when Runtime enables them', async () => {
+  const fetchImpl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as {
+      messages: readonly { role: string; content: string }[];
+    };
+    const system = body.messages.find((message) => message.role === 'system')?.content ?? '';
+    assert.match(system, /员工使用 web_extract \/ http_fetch 读取网页/);
+    assert.match(system, /workspace_list \/ workspace_read \/ text_search/);
+    assert.match(system, /workspace_write/);
+    return Promise.resolve(new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({ reply: '可以。', actions: [] }) } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+  }) as typeof globalThis.fetch;
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425',
+    model: 'fixture/boss-chat',
+    fetch: fetchImpl,
+    capabilityManifest: {
+      externalWeb: true,
+      localFiles: true,
+      localWrites: true,
+    },
+  });
+  await parser.parse({ text: '你能做什么', intentId: 'int_caps', expectedSequence: 0 });
+});
