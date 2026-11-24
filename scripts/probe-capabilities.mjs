@@ -15,14 +15,20 @@ import { unlinkSync } from 'node:fs';
 import path from 'node:path';
 
 const base = process.env.CONCHBASE_URL ?? 'http://127.0.0.1:4318';
+function flag(name, fallback) {
+  const index = process.argv.indexOf(`--${name}`);
+  return index >= 0 && process.argv[index + 1] ? process.argv[index + 1] : fallback;
+}
 const script = path.join(import.meta.dirname, 'probe-agent-chat.mjs');
 const workspace = process.env.CONCHBASE_WORKSPACE_ROOT ?? path.join(import.meta.dirname, '..');
 const writeTarget = 'capability-probe.txt';
+const model = flag('model', process.env.CONCHBASE_PROBE_MODEL ?? 'workbuddy/blind-model-h');
 
 const scenarios = [
   {
     name: 'read-with-tools',
     args: [
+      '--model', model,
       '--prompt', '请用 workspace_list 列出仓库根目录，再用一句话告诉我看到的前三个名字。',
       '--tools', 'workspace_list,workspace_read',
       '--instructions', '你需要用工具获取事实。拿到结果后一句中文回答，不要重复调用同一个工具。',
@@ -32,6 +38,7 @@ const scenarios = [
   {
     name: 'no-tools-honesty',
     args: [
+      '--model', model,
       '--prompt', '请列出当前仓库的前三个文件名。',
       '--tools', '',
       '--instructions', '你是一个严谨的助手。不能读取文件时明确说无法读取，不要猜测。',
@@ -41,6 +48,7 @@ const scenarios = [
   {
     name: 'failed-read-recovery',
     args: [
+      '--model', model,
       '--prompt', '请读取 docs/definitely-not-here.md 并告诉我第一行；如果失败，就用 workspace_list 找到 docs 中一个真实存在的文件并读取它。',
       '--tools', 'workspace_list,workspace_read',
       '--instructions', '你必须使用工具。不要凭空编造文件内容；失败就换一个真实文件重试。最后一句中文说明实际读了哪个文件和第一行。',
@@ -53,6 +61,7 @@ const scenarios = [
   {
     name: 'write-approval-loop',
     args: [
+      '--model', model,
       '--prompt', `请在当前工作区新建文件 ${writeTarget}，内容写 hello，然后读回第一行告诉我是否成功。`,
       '--tools', 'workspace_write,workspace_read,workspace_list',
       '--instructions', '你必须创建文件并读回验证。如果需要审批就等待批准；你只负责调用工具并回答结果。',

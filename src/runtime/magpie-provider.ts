@@ -89,12 +89,28 @@ export class ModelProviderError extends Error {
   /** Provider-neutral failure class; see model-provider.ts ProviderErrorKind. */
   readonly kind: import('./model-provider.js').ProviderErrorKind;
   readonly retryable: boolean;
-  constructor(message: string, kind: import('./model-provider.js').ProviderErrorKind = 'upstream-failure') {
+  readonly retryAfterMs: number | undefined;
+  constructor(
+    message: string,
+    kind: import('./model-provider.js').ProviderErrorKind = 'upstream-failure',
+    options: { readonly retryable?: boolean; readonly retryAfterMs?: number } = {},
+  ) {
     super(message);
     this.name = 'ModelProviderError';
     this.kind = kind;
-    this.retryable = kind === 'rate-limit' || kind === 'timeout' || kind === 'unavailable';
+    this.retryable = options.retryable
+      ?? (kind === 'rate-limit' || kind === 'timeout' || kind === 'unavailable');
+    this.retryAfterMs = options.retryAfterMs ?? undefined;
   }
+}
+
+function retryDelayMs(text: string, headers: Headers): number {
+  const retryAfter = headers.get('retry-after');
+  const seconds = retryAfter === null ? Number.NaN : Number(retryAfter);
+  if (Number.isFinite(seconds)) return Math.max(0, Math.min(20_000, seconds * 1000));
+  const match = /(\d+(?:\.\d+)?)\s*(ms|s)\b/i.exec(text);
+  if (!match) return 0;
+  return Math.max(0, Math.min(20_000, Number(match[1]) * (match[2]?.toLowerCase() === 'ms' ? 1 : 1000)));
 }
 
 /**
@@ -285,9 +301,16 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
 
       if (!response.ok) {
         const body = await response.text().catch(() => '');
+        const busy = response.status === 400 && /temporarily unavailable|busy|retry later/i.test(body);
+        if (busy && attempt === 0) {
+          const delay = retryDelayMs(body, response.headers);
+          if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
         throw new ModelProviderError(
           `Model provider returned HTTP ${response.status}.`,
           classifyProviderFailure(response.status, body),
+          busy ? { retryable: true, retryAfterMs: retryDelayMs(body, response.headers) } : {},
         );
       }
 
@@ -368,9 +391,16 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
 
       if (!response.ok) {
         const body = await response.text().catch(() => '');
+        const busy = response.status === 400 && /temporarily unavailable|busy|retry later/i.test(body);
+        if (busy && attempt === 0) {
+          const delay = retryDelayMs(body, response.headers);
+          if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
         throw new ModelProviderError(
           `Model provider returned HTTP ${response.status}.`,
           classifyProviderFailure(response.status, body),
+          busy ? { retryable: true, retryAfterMs: retryDelayMs(body, response.headers) } : {},
         );
       }
       if (!response.body) {

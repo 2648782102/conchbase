@@ -186,6 +186,15 @@ test('every script is wired to a command or a document', () => {
   }
 });
 
+test('capability probes can target any published model', () => {
+  const agentProbe = read('scripts/probe-agent-chat.mjs');
+  const capabilityProbe = read('scripts/probe-capabilities.mjs');
+  assert.match(agentProbe, /--model/);
+  assert.match(agentProbe, /modelId,/);
+  assert.match(capabilityProbe, /flag\('model'/);
+  assert.match(capabilityProbe, /'--model', model/);
+});
+
 /**
  * Digest shapes must not fork again.
  *

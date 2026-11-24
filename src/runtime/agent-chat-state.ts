@@ -53,12 +53,13 @@ export function taskStateToMessageState(task: TaskSnapshot): AgentChatMessageSta
 }
 
 export function unavailableError(message: string | null): boolean {
-  return /model catalog is unavailable|provider model catalog is unavailable|upstream|not valid JSON|empty completion|invalid JSON|not bounded|unknown fields|secret-like|selected model is not available/i.test(message ?? '');
+  return /model catalog is unavailable|provider model catalog is unavailable|upstream|not valid JSON|empty completion|invalid JSON|not bounded|unknown fields|secret-like|selected model is not available|HTTP 400/i.test(message ?? '');
 }
 
 export function unavailableBody(cause: unknown): string {
   const text = cause instanceof Error ? cause.message : '';
   if (/HTTP 429|rate limit/i.test(text)) return '模型服务当前请求过多，请稍后重试。';
+  if (/HTTP 400.*已尝试/i.test(text)) return '该模型暂时不可用，请稍后重试或切换模型。';
   if (/HTTP 5\d\d|upstream/i.test(text)) return '模型服务暂不可用，请检查 Magpie 配置或稍后重试。';
   if (/not valid JSON|invalid JSON|not bounded|unknown fields|empty completion/i.test(text)) {
     return '模型返回格式不符合 Runtime 契约，本次回复未采用。';

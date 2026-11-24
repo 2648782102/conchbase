@@ -175,3 +175,23 @@ test('an empty streamed completion is retried within one bounded provider turn',
   assert.deepEqual(turn, { kind: 'final', output: 'answer' });
   assert.equal(calls, 2);
 });
+
+test('a transient busy HTTP 400 is retried with the gateway retry delay', async () => {
+  let calls = 0;
+  const provider = new OpenAiChatCompletionsProvider({
+    ...config,
+    fetch: async () => {
+      calls += 1;
+      if (calls === 1) {
+        return new Response(JSON.stringify({ error: { message: 'temporarily unavailable; retry in 0s' } }), {
+          status: 400,
+          headers: { 'content-type': 'application/json', 'retry-after': '0' },
+        });
+      }
+      return jsonResponse({ choices: [{ message: { content: 'answer' } }] });
+    },
+  });
+  const turn = await provider.nextTurn({ taskId: 'task_fixture', prompt: 'hello', turnIndex: 0 });
+  assert.deepEqual(turn, { kind: 'final', output: 'answer' });
+  assert.equal(calls, 2);
+});

@@ -77,6 +77,12 @@ test('provider failures are classified, not collapsed', () => {
   assert.match(unavailableBody(new Error('contains secret-like content')), /敏感内容/);
 });
 
+test('an exhausted transient-busy error tells the reader to retry or switch models', () => {
+  const error = new Error('Model provider returned HTTP 400.（已尝试 3 次）');
+  assert.equal(unavailableError(error.message), true);
+  assert.match(unavailableBody(error), /稍后重试|切换模型/);
+});
+
 test('reasoning effort has no default and accepts whatever a model publishes', () => {
   /*
    * The old rule answered `medium` for an absent value and threw for anything

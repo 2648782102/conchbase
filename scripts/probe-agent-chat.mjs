@@ -6,6 +6,7 @@
  * Usage:
  *   node scripts/probe-agent-chat.mjs --prompt "..." [--tools workspace_read,workspace_list]
  *                                     [--agent boss] [--base http://127.0.0.1:4318]
+ *                                     [--model workbuddy/blind-model-b]
  *                                     [--effort low|medium|high|...]
  *                                     [--auto-approve]
  *   --tools '' explicitly creates an Agent with no tools; omit --tools for the default pair.
@@ -23,6 +24,7 @@ const base = flag('base', 'http://127.0.0.1:4318').replace(/\/$/, '');
 const prompt = flag('prompt', '');
 const agentKind = flag('agent', 'custom');
 const toolList = (args.includes('--tools') ? flag('tools', '') : 'workspace_list,workspace_read').split(',').filter(Boolean);
+const modelId = flag('model', 'workbuddy/blind-model-h');
 const instructions = flag(
   'instructions',
   '你是文件助手。需要信息时用工具，拿到结果后立即回答，不要重复调用同一个工具。',
@@ -56,7 +58,7 @@ try {
         name: `压测探针-${Date.now().toString(36)}`,
         instructions,
         providerId: 'magpie',
-        modelId: 'workbuddy/blind-model-h',
+        modelId,
         grantedCapabilities: toolList.map((name) => ({ kind: 'tool', name })),
       });
       return { id: response.agent.id, name: response.agent.current.name, created: true };
