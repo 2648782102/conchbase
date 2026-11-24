@@ -475,6 +475,28 @@ export class AgentChatService {
   private settleRecord(record: ConversationRecord, settledOnly = false): void {
     let changed = false;
     for (const message of [...record.messages]) {
+      /*
+       * Old Boss messages were sometimes persisted as failed when the model
+       * emitted an extra, invalid organization action alongside a successful
+       * worker. Their body carries the Runtime-authored `hasWorkerOutcome`
+       * marker through `员工执行完成…名成功`; the durable worker report is the
+       * authority. Correct only that narrow historical signature.
+       */
+      if (record.isBoss && message.author === 'assistant'
+        && message.state === 'failed' && message.error === 'Boss Agent execution failed.'
+        && /员工执行完成：\d+ 名中 [1-9]\d* 名成功/.test(message.body)
+        && /· 已完成/.test(message.body)
+        && !/失败/.test(message.body)) {
+        this.replaceMessage(record, message.id, Object.freeze({
+          ...message,
+          state: 'replied',
+          phase: 'terminal',
+          error: null,
+          updatedAt: this.now(),
+        }));
+        changed = true;
+        continue;
+      }
       const task = message.taskId ? this.taskService.store.getTask(message.taskId) : null;
       const projected = projectMessage({
         message,
