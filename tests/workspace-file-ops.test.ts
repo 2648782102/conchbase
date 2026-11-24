@@ -23,6 +23,19 @@ function fixture() {
   };
 }
 
+test('the published workspace_write schema exposes overwrite', () => {
+  const f = fixture();
+  try {
+    const writeTool = f.tools.list().find((tool) => tool.id === 'workspace_write');
+    assert.ok(writeTool?.parameters, 'workspace_write must publish a parameter schema');
+    assert.equal((writeTool!.parameters as {
+      properties?: Record<string, { type?: string }>;
+    }).properties?.overwrite?.type, 'boolean');
+  } finally {
+    f.cleanup();
+  }
+});
+
 test('a file is deleted, and the evidence says what went', () => {
   const f = fixture();
   try {

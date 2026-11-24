@@ -30,6 +30,7 @@ function flag(name, fallback) {
 const hasFlag = (name) => process.argv.includes(`--${name}`);
 
 const model = flag('model', process.env.CONCHBASE_EVAL_MODEL ?? 'workbuddy/blind-model-h');
+const effort = flag('effort', '');
 const only = flag('task', '');
 const maxIterations = Number(flag('max-iterations', '40'));
 const deadlineMs = Number(flag('deadline-ms', '900000'));
@@ -128,9 +129,13 @@ async function runTask({ base, workspace, task }) {
     grantedCapabilities: (task.tools ?? ['workspace_list', 'workspace_read']).map((name) => ({ kind: 'tool', name })),
   });
   const agentId = agent.agent.id;
+  const catalog = await call(base, 'GET', '/v1/model-catalog');
+  const selected = catalog.models?.find((entry) => entry.modelId === model);
+  const levels = selected?.reasoningLevels ?? [];
+  const preferred = effort || (levels.includes('medium') ? 'medium' : levels.at(-1));
   const conversation = await call(base, 'POST', '/v1/agent-chat/conversations', {
     agentId,
-    reasoningEffort: 'medium',
+    ...(preferred ? { reasoningEffort: preferred } : {}),
   });
   const conversationId = conversation.id ?? conversation.conversation?.id;
   const started = Date.now();
@@ -184,6 +189,7 @@ async function main() {
     CONCHBASE_WORKSPACE_ROOT: workspace,
     CONCHBASE_ALLOW_TOOL_WRITES: '1',
     CONCHBASE_EXECUTION_MODE: 'unrestricted',
+    CONCHBASE_PERMISSION_LEVEL: 'trusted',
     CONCHBASE_MAX_ITERATIONS: String(maxIterations),
     CONCHBASE_LOOP_DEADLINE_MS: String(deadlineMs),
     CONCHBASE_MODEL: model,

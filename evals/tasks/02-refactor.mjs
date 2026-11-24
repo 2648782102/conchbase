@@ -42,6 +42,7 @@ export default {
     '2. 对 [] 返回 0；',
     '3. 数组中的 NaN 被跳过，不计入总和；',
     '4. 循环不越界。',
+    '覆盖已存在文件时，workspace_write 必须传 overwrite: true；只写新文件不算完成。',
     '修改后用工具读回文件确认内容，再回答。',
   ].join('\n'),
   async assert({ run, read }) {

@@ -59,8 +59,18 @@ export function createBuiltinWriteTools(options: {
     Object.freeze({
       id: 'workspace_write',
       version: 1,
-      description: 'Write bounded UTF-8 text to an existing directory under the workspace root.',
+      description: 'Write bounded UTF-8 text under the workspace root. Existing files require overwrite: true.',
       sideEffect: 'write',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'File path relative to the workspace root.' },
+          content: { type: 'string', description: 'UTF-8 text to write.' },
+          overwrite: { type: 'boolean', description: 'Required when the target file already exists.' },
+        },
+        required: ['path', 'content'],
+        additionalProperties: false,
+      },
     }),
     Object.freeze({
       id: 'workspace_delete',
