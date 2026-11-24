@@ -889,3 +889,103 @@ test('workers in one plan are awaited concurrently and reported in dispatch orde
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('a boss plan can carry two projects, mixed reports, attention, archive, and resume', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-complex-'));
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture-model',
+    fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/v1/models')) {
+        return new Response(JSON.stringify({ data: [{ id: 'fixture-model' }] }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      }
+      const body = JSON.parse(String(init?.body ?? '{}')) as { messages?: readonly { content?: string }[] };
+      const prompt = JSON.stringify(body.messages ?? '');
+      const output = prompt.includes('wrk·alpha')
+        ? 'ATTENTION: alpha needs a decision'
+        : prompt.includes('wrk·beta')
+          ? 'beta complete'
+          : 'gamma complete';
+      return new Response(
+        `data: ${JSON.stringify({ choices: [{ delta: { content: output } }] })}\n\ndata: [DONE]\n\n`,
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      );
+    }) as typeof globalThis.fetch,
+  });
+  try {
+    const store = new InMemoryOrganizationStore();
+    const parser: OrganizationIntentParser = {
+      async parse(input) {
+        const seq = input.expectedSequence;
+        const worker = (offset: number, id: string, projectId: string): OrganizationAction =>
+          parseOrganizationAction({
+            type: 'create_agent', expectedSequence: seq + offset,
+            projectId, workerId: id, delegationId: `del_${id}`, agentRevisionId: 'agr_placeholder',
+            displayName: id.replaceAll('_', '·'), instructionsDigest: 'sha256_instructions',
+            scope: [`project:${projectId}`], capabilities: ['cap_read_context'],
+            model: { providerId: 'magpie', modelId: 'fixture-model' },
+            maxDelegationDepth: 0, ttlEvents: 100,
+          });
+        const resumeStore = store.get();
+        const resumeTarget = resumeStore.projects.find((project) => project.state === 'archived');
+        return Object.freeze({
+          version: 1 as const,
+          intentId: input.intentId,
+          actions: Object.freeze([
+            parseOrganizationAction({ type: 'open_project', expectedSequence: seq, projectId: 'project_alpha', originTriggerId: input.intentId }),
+            parseOrganizationAction({ type: 'activate_project', expectedSequence: seq + 1, projectId: 'project_alpha' }),
+            parseOrganizationAction({ type: 'open_project', expectedSequence: seq + 2, projectId: 'project_beta', originTriggerId: `${input.intentId}_beta` }),
+            parseOrganizationAction({ type: 'activate_project', expectedSequence: seq + 3, projectId: 'project_beta' }),
+            worker(4, 'wrk_alpha', 'project_alpha'),
+            worker(5, 'wrk_beta', 'project_beta'),
+            worker(6, 'wrk_gamma', 'project_beta'),
+            ...(resumeTarget ? [parseOrganizationAction({
+              type: 'resume_project', expectedSequence: seq + 7,
+              projectId: resumeTarget.id, revalidatedDelegationId: `del_${resumeTarget.id}`,
+            })] : []),
+          ]),
+          relay: '两个项目、三个员工已编排。',
+        });
+      },
+    };
+    const service = new BossModeService(store, taskService, { parser, waitForTasks: true });
+
+    const first = await service.submit({ text: '开两个项目并派三个员工', idempotencyKey: 'complex-1' });
+    assert.equal(first.executions.some((execution) => execution.status === 'failed'), false);
+    let snapshot = store.get();
+    assert.equal(snapshot.projects.filter((project) => project.state === 'active').length, 2);
+    assert.equal(snapshot.workers.length, 3);
+    assert.ok(snapshot.attentionRequests.some((request) => request.state === 'open'));
+    assert.equal(snapshot.reports.filter((report) => report.state === 'attention').length, 1);
+    assert.equal(snapshot.reports.filter((report) => report.state === 'ready').length, 2);
+
+    const attention = snapshot.attentionRequests.find((request) => request.state === 'open')!;
+    store.apply(parseOrganizationAction({
+      type: 'answer_attention', expectedSequence: snapshot.events.length,
+      projectId: attention.projectId, attentionId: attention.id,
+      decisionDigest: `sha256:${'a'.repeat(64)}`,
+    }));
+    snapshot = store.get();
+    for (const worker of snapshot.workers.filter((entry) => entry.projectId === 'project_beta')) {
+      store.apply(parseOrganizationAction({
+        type: 'offboard_worker', expectedSequence: store.get().events.length,
+        projectId: worker.projectId, workerId: worker.id,
+      }));
+    }
+    snapshot = store.get();
+    store.apply(parseOrganizationAction({
+      type: 'archive_project', expectedSequence: snapshot.events.length,
+      projectId: 'project_beta',
+    }));
+
+    snapshot = store.get();
+    assert.ok(snapshot.projects.some((project) => project.id === 'project_beta' && project.state === 'archived'));
+    assert.ok(store.get().events.some((event) => event.type === 'organization.attention_answered'));
+    assert.ok(store.get().events.some((event) => event.type === 'organization.project_archived'));
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
