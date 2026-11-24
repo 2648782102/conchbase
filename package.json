@@ -15,6 +15,7 @@
   ],
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "start:local": "node scripts/start-local.mjs",
     "cli": "tsx src/cli.ts",
     "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",

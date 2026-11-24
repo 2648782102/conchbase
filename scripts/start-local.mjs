@@ -1,0 +1,64 @@
+#!/usr/bin/env node
+/**
+ * Launches the local Runtime and Pagurus together for a first-time user.
+ *
+ * Both processes are children of this command: one Ctrl-C stops both, and the
+ * chosen ports are printed once so the user knows exactly what to open.
+ */
+import { spawn } from 'node:child_process';
+import path from 'node:path';
+import { resolveWorktreeEnv } from './worktree-env.mjs';
+
+const root = path.join(import.meta.dirname, '..');
+const session = resolveWorktreeEnv(process.cwd(), process.env);
+const runtimePort = Number(session.port);
+const consolePort = 5173 + (runtimePort - 4318);
+const children = [];
+let stopping = false;
+
+function start(label, command, args, cwd, env) {
+  const child = spawn(command, args, { cwd, env, stdio: 'inherit' });
+  children.push(child);
+  child.once('exit', (code, signal) => {
+    if (stopping) return;
+    stopping = true;
+    process.stderr.write(`\n${label} stopped (${signal ?? `exit ${code}`}); stopping the other process.\n`);
+    for (const other of children) {
+      if (other !== child && other.exitCode === null) other.kill('SIGTERM');
+    }
+    process.exit(code ?? 0);
+  });
+  return child;
+}
+
+process.stdout.write([
+  '',
+  '  Conchbase + Pagurus',
+  `  Agent console  http://127.0.0.1:${consolePort}/`,
+  `  Runtime API    http://127.0.0.1:${runtimePort}/v1/health`,
+  '  Ctrl-C stops both processes.',
+  '',
+].join('\n'));
+
+start('Runtime', process.execPath, ['scripts/dev.mjs'], root, { ...process.env });
+start('Pagurus', 'npm', ['run', 'dev'], path.join(root, 'pagurus'), {
+  ...process.env,
+  CONCHBASE_URL: `http://127.0.0.1:${runtimePort}`,
+  PORT: String(consolePort),
+});
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    if (stopping) return;
+    stopping = true;
+    for (const child of children) {
+      if (child.exitCode === null) child.kill('SIGTERM');
+    }
+    setTimeout(() => {
+      for (const child of children) {
+        if (child.exitCode === null) child.kill('SIGKILL');
+      }
+      process.exit(0);
+    }, 5_000).unref();
+  });
+}
