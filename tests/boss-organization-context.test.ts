@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildBossOrganizationFacts } from '../src/runtime/boss-organization-context.js';
+import { buildBossOrganizationFacts, runtimeCapabilityFacts } from '../src/runtime/boss-organization-context.js';
 import { InMemoryOrganizationStore } from '../src/runtime/organization-store.js';
 import { parseOrganizationAction } from '../src/runtime/organization-contract.js';
 
@@ -42,4 +42,15 @@ test('boss organization facts project readable project purpose, workers, reports
   assert.equal(facts.reports[0]?.state, 'blocked');
   assert.equal(facts.capabilities.find((item) => item.id === 'external-web')?.available, false);
   assert.equal(facts.capabilities.find((item) => item.id === 'local-files')?.available, false);
+});
+
+test('boss capability facts reflect external web tools enabled for workers', () => {
+  const withoutWeb = runtimeCapabilityFacts(['workspace_list', 'workspace_read', 'text_search']);
+  assert.equal(withoutWeb.find((item) => item.id === 'external-web')?.available, false);
+
+  const withWeb = runtimeCapabilityFacts([
+    'workspace_list', 'workspace_read', 'text_search', 'web_extract',
+  ]);
+  assert.equal(withWeb.find((item) => item.id === 'external-web')?.available, true);
+  assert.match(withWeb.find((item) => item.id === 'external-web')?.description ?? '', /员工/);
 });

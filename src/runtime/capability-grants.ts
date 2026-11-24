@@ -58,6 +58,7 @@ export function projectSkills<T extends SkillGrantCandidate>(
 
 const WORKER_BUILTIN_TOOLS = Object.freeze(['text_search', 'workspace_list', 'workspace_read'] as const);
 const WORKER_WRITE_TOOLS = Object.freeze(['workspace_write'] as const);
+const WORKER_EXTERNAL_READ_TOOLS = Object.freeze(['web_extract', 'http_fetch'] as const);
 
 /**
  * Conservative grant set for dynamically hired worker Agents: the Runtime's
@@ -71,8 +72,8 @@ export function defaultWorkerGrants(
 ): readonly CapabilityGrant[] {
   const available = new Set(tools?.list().map((tool) => tool.id) ?? []);
   const candidates = options.allowWrites
-    ? [...WORKER_BUILTIN_TOOLS, ...WORKER_WRITE_TOOLS]
-    : [...WORKER_BUILTIN_TOOLS];
+    ? [...WORKER_BUILTIN_TOOLS, ...WORKER_EXTERNAL_READ_TOOLS, ...WORKER_WRITE_TOOLS]
+    : [...WORKER_BUILTIN_TOOLS, ...WORKER_EXTERNAL_READ_TOOLS];
   const toolGrants: CapabilityGrant[] = candidates
     .filter((name) => available.has(name))
     .map((name) => Object.freeze({ kind: 'tool' as const, name }));
