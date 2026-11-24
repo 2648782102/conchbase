@@ -16,6 +16,12 @@ npm ci
 npm run start:local
 ```
 
+默认启动只提供只读工作区工具，写文件需要显式开启：
+
+```sh
+CONCHBASE_ALLOW_TOOL_WRITES=1 CONCHBASE_WORKSPACE_ROOT="$PWD" npm run start:local
+```
+
 命令会打印两个地址：
 
 ```text
