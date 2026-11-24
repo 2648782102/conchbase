@@ -108,3 +108,28 @@ test('the catalog carries the effort levels each model publishes', async () => {
   assert.equal(levels('plain/model'), undefined, 'a model without reasoning advertises no list');
   assert.equal(models.find((model) => model.id === 'plain/model')?.supportsReasoning, false);
 });
+
+test('catalog capabilities survive long realistic gateway responses', async () => {
+  const data = Array.from({ length: 120 }, (_, index) => ({
+    id: `fixture/model-${index}`,
+    display_name: `Model ${index}`,
+    context_length: 32_000 + index,
+    modalities: { input: ['text', 'image'] },
+    reasoning: index % 2 === 0,
+    reasoning_levels: index % 2 === 0 ? ['none', 'low', 'high', 'max'] : undefined,
+  }));
+  const catalog = new MagpieModelCatalog({
+    baseUrl: 'http://127.0.0.1:3425',
+    fetch: (async () => new Response(JSON.stringify({ data }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    })) as typeof globalThis.fetch,
+  });
+  const models = await catalog.listModels();
+  assert.equal(models.length, 120);
+  assert.equal(models.filter((model) => model.supportsReasoning).length, 60);
+  assert.equal(models.filter((model) => model.reasoningLevels?.length === 4).length, 60);
+  assert.equal(models.every((model) => model.supportsTools), true);
+  const last = models.find((model) => model.id === 'fixture/model-119');
+  assert.equal(last?.contextTokens, 32_119);
+  assert.equal(last?.suitableForBoss, true);
+});
