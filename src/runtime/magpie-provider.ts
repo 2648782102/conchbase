@@ -253,61 +253,65 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
       throw new ModelProviderError('Task prompt must not be empty.');
     }
 
-    const headers: Record<string, string> = {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      'User-Agent': 'Conchbase/1.0.0',
-    };
-    if (this.appKey) headers.Authorization = `Bearer ${this.appKey}`;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const headers: Record<string, string> = {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'Conchbase/1.0.0',
+      };
+      if (this.appKey) headers.Authorization = `Bearer ${this.appKey}`;
 
-    const timeout = AbortSignal.timeout(this.timeoutMs);
-    const signal = input.signal
-      ? AbortSignal.any([input.signal, timeout])
-      : timeout;
+      const timeout = AbortSignal.timeout(this.timeoutMs);
+      const signal = input.signal
+        ? AbortSignal.any([input.signal, timeout])
+        : timeout;
 
-    let response: Response;
-    try {
-      response = await this.fetchImpl(this.endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model: this.model,
-          stream: false,
-          messages: input.messages ?? [{ role: 'user', content: input.prompt }],
-        }),
-        signal,
-      });
-    } catch (cause) {
-      if (input.signal?.aborted) throw cause;
-      throw transportFailure(cause);
+      let response: Response;
+      try {
+        response = await this.fetchImpl(this.endpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            model: this.model,
+            stream: false,
+            messages: input.messages ?? [{ role: 'user', content: input.prompt }],
+          }),
+          signal,
+        });
+      } catch (cause) {
+        if (input.signal?.aborted) throw cause;
+        throw transportFailure(cause);
+      }
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        throw new ModelProviderError(
+          `Model provider returned HTTP ${response.status}.`,
+          classifyProviderFailure(response.status, body),
+        );
+      }
+
+      let payload: unknown;
+      try {
+        payload = await response.json();
+      } catch {
+        throw new ModelProviderError('Model provider returned invalid JSON.');
+      }
+
+      const observation = this.parseToolCallObservation(payload);
+      if (observation) {
+        return Object.freeze({ kind: 'tool_call_observation', observation });
+      }
+      const choice = (payload as ChatCompletionResponse | null)?.choices?.[0];
+      const message = choice?.message;
+      if (typeof message?.content !== 'string' || message.content.trim().length === 0) {
+        if (attempt === 0) continue;
+        throw new ModelProviderError('Model provider returned an empty completion.');
+      }
+
+      return Object.freeze({ kind: 'final', output: message.content });
     }
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      throw new ModelProviderError(
-        `Model provider returned HTTP ${response.status}.`,
-        classifyProviderFailure(response.status, body),
-      );
-    }
-
-    let payload: unknown;
-    try {
-      payload = await response.json();
-    } catch {
-      throw new ModelProviderError('Model provider returned invalid JSON.');
-    }
-
-    const observation = this.parseToolCallObservation(payload);
-    if (observation) {
-      return Object.freeze({ kind: 'tool_call_observation', observation });
-    }
-    const choice = (payload as ChatCompletionResponse | null)?.choices?.[0];
-    const message = choice?.message;
-    if (typeof message?.content !== 'string' || message.content.trim().length === 0) {
-      throw new ModelProviderError('Model provider returned an empty completion.');
-    }
-
-    return Object.freeze({ kind: 'final', output: message.content });
+    throw new ModelProviderError('Model provider returned an empty completion.');
   }
 
   async streamTurn(input: StreamingTurnInput): Promise<StreamingModelTurn> {
@@ -319,69 +323,70 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
     }
     if (input.signal?.aborted) throw input.signal.reason;
 
-    const headers: Record<string, string> = {
-      Accept: 'text/event-stream',
-      'Content-Type': 'application/json',
-      'User-Agent': 'Conchbase/1.0.0',
-    };
-    if (this.appKey) headers.Authorization = `Bearer ${this.appKey}`;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const headers: Record<string, string> = {
+        Accept: 'text/event-stream',
+        'Content-Type': 'application/json',
+        'User-Agent': 'Conchbase/1.0.0',
+      };
+      if (this.appKey) headers.Authorization = `Bearer ${this.appKey}`;
 
-    const timeout = AbortSignal.timeout(this.timeoutMs);
-    const signal = input.signal
-      ? AbortSignal.any([input.signal, timeout])
-      : timeout;
+      const timeout = AbortSignal.timeout(this.timeoutMs);
+      const signal = input.signal
+        ? AbortSignal.any([input.signal, timeout])
+        : timeout;
 
-    let response: Response;
-    try {
-      response = await this.fetchImpl(this.endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model: this.model,
-          stream: true,
-          messages: toOpenAiMessages(input.messages ?? [{ role: 'user', content: input.prompt }]),
-          ...(input.reasoningEffort ? { reasoning_effort: input.reasoningEffort } : {}),
-          ...(input.tools && input.tools.length > 0
-            ? {
-              tools: input.tools.map((tool) => ({
-                type: 'function',
-                function: {
-                  name: tool.id,
-                  description: tool.description,
-                  parameters: tool.parameters,
-                },
-              })),
-            }
-            : {}),
-        }),
-        signal,
-      });
-    } catch (cause) {
-      if (input.signal?.aborted) throw cause;
-      throw transportFailure(cause);
-    }
+      let response: Response;
+      try {
+        response = await this.fetchImpl(this.endpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            model: this.model,
+            stream: true,
+            messages: toOpenAiMessages(input.messages ?? [{ role: 'user', content: input.prompt }]),
+            ...(input.reasoningEffort ? { reasoning_effort: input.reasoningEffort } : {}),
+            ...(input.tools && input.tools.length > 0
+              ? {
+                tools: input.tools.map((tool) => ({
+                  type: 'function',
+                  function: {
+                    name: tool.id,
+                    description: tool.description,
+                    parameters: tool.parameters,
+                  },
+                })),
+              }
+              : {}),
+          }),
+          signal,
+        });
+      } catch (cause) {
+        if (input.signal?.aborted) throw cause;
+        throw transportFailure(cause);
+      }
 
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      throw new ModelProviderError(
-        `Model provider returned HTTP ${response.status}.`,
-        classifyProviderFailure(response.status, body),
-      );
-    }
-    if (!response.body) {
-      throw new ModelProviderError('Model provider returned no response stream.');
-    }
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        throw new ModelProviderError(
+          `Model provider returned HTTP ${response.status}.`,
+          classifyProviderFailure(response.status, body),
+        );
+      }
+      if (!response.body) {
+        throw new ModelProviderError('Model provider returned no response stream.');
+      }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let output = '';
-    let observation: StreamingModelTurn | null = null;
-    const toolCalls: { id: string; name: string; arguments: string }[] = [];
-    let deltaCount = 0;
-    let sawDone = false;
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let output = '';
+      let observation: StreamingModelTurn | null = null;
+      const toolCalls: { id: string; name: string; arguments: string }[] = [];
+      let deltaCount = 0;
+      let sawDone = false;
 
-    const processLine = (line: string): void => {
+      const processLine = (line: string): void => {
       const trimmed = line.trim();
       if (trimmed.length === 0 || trimmed.startsWith(':')) return;
       if (!trimmed.startsWith('data:')) {
@@ -448,62 +453,65 @@ export class OpenAiChatCompletionsProvider implements StructuredModelAdapter, St
       input.onOutputDelta(delta.content);
     };
 
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let newline = buffer.indexOf('\n');
-        while (newline >= 0) {
-          const line = buffer.slice(0, newline).replace(/\r$/, '');
-          buffer = buffer.slice(newline + 1);
-          processLine(line);
-          newline = buffer.indexOf('\n');
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let newline = buffer.indexOf('\n');
+          while (newline >= 0) {
+            const line = buffer.slice(0, newline).replace(/\r$/, '');
+            buffer = buffer.slice(newline + 1);
+            processLine(line);
+            newline = buffer.indexOf('\n');
+          }
+          if (sawDone) break;
         }
-        if (sawDone) break;
+        buffer += decoder.decode();
+        if (buffer.trim().length > 0) processLine(buffer.replace(/\r$/, ''));
+      } catch (cause) {
+        if (input.signal?.aborted) throw cause;
+        if (cause instanceof ModelProviderError) throw cause;
+        throw new ModelProviderError('Model provider stream failed.');
+      } finally {
+        if (!sawDone) await reader.cancel().catch(() => undefined);
       }
-      buffer += decoder.decode();
-      if (buffer.trim().length > 0) processLine(buffer.replace(/\r$/, ''));
-    } catch (cause) {
-      if (input.signal?.aborted) throw cause;
-      if (cause instanceof ModelProviderError) throw cause;
-      throw new ModelProviderError('Model provider stream failed.');
-    } finally {
-      if (!sawDone) await reader.cancel().catch(() => undefined);
-    }
 
-    if (input.signal?.aborted) {
-      throw new ModelProviderError('Model provider stream was interrupted.');
-    }
-    if (!sawDone) {
-      throw new ModelProviderError('Model provider stream ended before completion.');
-    }
-    if (toolCalls.length > 0) {
-      if (observation) throw new ModelProviderError('Model provider returned a mixed tool-call response.');
-      const parsedCalls = toolCalls.filter((call) => call.name.length > 0);
-      if (parsedCalls.length === 0) {
-        throw new ModelProviderError('Model provider returned an unsupported tool call.');
-      }
-      return Object.freeze({
-        kind: 'tool_calls',
-        content: output,
-        calls: Object.freeze(parsedCalls.map((call, index) => Object.freeze({
-          id: call.id.length > 0 ? call.id : `call_${index}`,
-          name: call.name,
-          arguments: parseToolArguments(call.arguments),
-        }))),
-      });
-    }
-    if (observation) {
       if (input.signal?.aborted) {
         throw new ModelProviderError('Model provider stream was interrupted.');
       }
-      return observation;
+      if (!sawDone) {
+        throw new ModelProviderError('Model provider stream ended before completion.');
+      }
+      if (toolCalls.length > 0) {
+        if (observation) throw new ModelProviderError('Model provider returned a mixed tool-call response.');
+        const parsedCalls = toolCalls.filter((call) => call.name.length > 0);
+        if (parsedCalls.length === 0) {
+          throw new ModelProviderError('Model provider returned an unsupported tool call.');
+        }
+        return Object.freeze({
+          kind: 'tool_calls',
+          content: output,
+          calls: Object.freeze(parsedCalls.map((call, index) => Object.freeze({
+            id: call.id.length > 0 ? call.id : `call_${index}`,
+            name: call.name,
+            arguments: parseToolArguments(call.arguments),
+          }))),
+        });
+      }
+      if (observation) {
+        if (input.signal?.aborted) {
+          throw new ModelProviderError('Model provider stream was interrupted.');
+        }
+        return observation;
+      }
+      if (output.trim().length === 0) {
+        if (attempt === 0) continue;
+        throw new ModelProviderError('Model provider returned an empty completion.');
+      }
+      return Object.freeze({ kind: 'final', output });
     }
-    if (output.trim().length === 0) {
-      throw new ModelProviderError('Model provider returned an empty completion.');
-    }
-    return Object.freeze({ kind: 'final', output });
+    throw new ModelProviderError('Model provider returned an empty completion.');
   }
 
   private parseToolCallObservation(payload: unknown) {

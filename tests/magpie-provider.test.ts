@@ -140,3 +140,38 @@ test('the provider rejects non-loopback URLs and later turns before fetching', (
     ModelProviderError,
   );
 });
+
+test('an empty completion is retried within one bounded provider turn', async () => {
+  let calls = 0;
+  const provider = new OpenAiChatCompletionsProvider({
+    ...config,
+    fetch: async () => {
+      calls += 1;
+      return jsonResponse(calls === 1
+        ? { choices: [{ message: { content: '' } }] }
+        : { choices: [{ message: { content: 'answer' } }] });
+    },
+  });
+  const turn = await provider.nextTurn({ taskId: 'task_fixture', prompt: 'hello', turnIndex: 0 });
+  assert.deepEqual(turn, { kind: 'final', output: 'answer' });
+  assert.equal(calls, 2);
+});
+
+test('an empty streamed completion is retried within one bounded provider turn', async () => {
+  let calls = 0;
+  const provider = new OpenAiChatCompletionsProvider({
+    ...config,
+    fetch: async () => {
+      calls += 1;
+      const body = calls === 1
+        ? 'data: [DONE]\n\n'
+        : `data: ${JSON.stringify({ choices: [{ delta: { content: 'answer' }, finish_reason: null }] })}\n\ndata: [DONE]\n\n`;
+      return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+    },
+  });
+  const turn = await provider.streamTurn({
+    taskId: 'task_fixture', prompt: 'hello', turnIndex: 0, onOutputDelta: () => undefined,
+  });
+  assert.deepEqual(turn, { kind: 'final', output: 'answer' });
+  assert.equal(calls, 2);
+});
