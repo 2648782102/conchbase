@@ -388,3 +388,35 @@ test('a mixed batch keeps exact call order and reports an unknown tool inline', 
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('an invalid tool argument fails closed and never reaches the tool', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-invalid-args-'));
+  const invoked: string[] = [];
+  const service = createService(directory, scripted([
+    () => new Response(`data: ${JSON.stringify({
+      choices: [{ delta: { tool_calls: [{
+        index: 0, id: 'call_bad_args', type: 'function',
+        function: { name: 'workspace_read', arguments: '{not-json' },
+      }] } }],
+    })}\n\ndata: [DONE]\n\n`, { status: 200, headers: { 'content-type': 'text/event-stream' } }),
+    () => text('could not read'),
+  ]));
+  try {
+    const agent = await service.createAgent({
+      name: '参数员', instructions: 'Use tools.', providerId: 'magpie', modelId: 'fixture/model',
+      grantedCapabilities: [{ kind: 'tool', name: 'workspace_read' }],
+    });
+    const created = await service.createAgentTask({ prompt: 'bad args', agentId: agent.id });
+    service.startTask(created.id);
+    const task = await service.waitForTask(created.id);
+    assert.equal(task.state, 'failed');
+    const failed = service.store.listEvents(null)
+      .filter((event) => event.taskId === created.id && event.type === ('task.failed' as never));
+    assert.equal(failed.length, 1);
+    assert.equal(failed[0]?.data.category, 'provider');
+    assert.equal(invoked.length, 0);
+  } finally {
+    service.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
