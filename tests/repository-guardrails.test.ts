@@ -194,6 +194,7 @@ test('capability probes can target any published model', () => {
   assert.match(capabilityProbe, /flag\('model'/);
   assert.match(capabilityProbe, /'--model', model/);
   assert.match(agentProbe, /--auto-approve/);
+  assert.equal(agentProbe.match(/last\?\.state === 'waiting_approval'/g)?.length, 1);
 });
 
 /**
