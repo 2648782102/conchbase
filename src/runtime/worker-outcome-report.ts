@@ -11,6 +11,7 @@ export interface WorkerOutcome {
   readonly displayName: string;
   readonly taskState: 'succeeded' | 'failed' | 'cancelled' | 'interrupted';
   readonly body: string;
+  readonly needsAttention?: boolean;
 }
 
 const MAX_BODY = 1_200;

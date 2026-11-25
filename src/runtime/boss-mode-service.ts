@@ -1411,12 +1411,14 @@ export class BossModeService {
       if (!task) continue;
       const terminalState = task.state as WorkerOutcome['taskState'];
       const output = task.state === 'succeeded' ? task.output ?? '' : task.error ?? task.state;
+      const needsAttention = /(?:^|\n)\s*ATTENTION:/i.test(output);
       const outcome = Object.freeze({
         workerId: record.workerId,
         displayName: this.store.get().workers.find((worker) => worker.id === record.workerId)?.displayName
           ?? record.workerId,
         taskState: terminalState,
         body: output,
+        needsAttention,
       });
       outcomes.push(outcome);
       // A re-run binds a fresh task, so both the report id and the wait must be
@@ -1435,7 +1437,6 @@ export class BossModeService {
       } catch {
         // Report text is best-effort; the digest remains authoritative for the ledger.
       }
-      const needsAttention = /(?:^|\n)\s*ATTENTION:/i.test(output);
       // An interrupted task that kept a versioned loop checkpoint is
       // a cooperative slice yield, not a failure. Report progress and release
       // the scheduling slot by pausing its WorkItem.
@@ -1471,7 +1472,7 @@ export class BossModeService {
         });
       }
       this.outcomeByTaskId.set(record.taskId, summaryDigest);
-      if (!isSliceYield && !needsAttention) onOutcome?.(outcome);
+      if (!isSliceYield) onOutcome?.(outcome);
       if (!isSliceYield && !needsAttention && task.state !== 'succeeded') {
         this.autoRetireFailingWorker(record, output);
       }

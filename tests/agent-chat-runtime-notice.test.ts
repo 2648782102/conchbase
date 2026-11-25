@@ -178,7 +178,7 @@ test('the orchestrator callback reports terminal worker outcomes', async () => {
   };
   const bossMode = new BossModeService(new InMemoryOrganizationStore(), taskService, {
     parser, waitForTasks: true, settleBeforeWorkers: true,
-    onWorkerOutcome: (outcome) => outcomes.push(`${outcome.workerId}:${outcome.taskState}`),
+    onWorkerOutcome: (outcome) => outcomes.push(`${outcome.workerId}:${outcome.taskState}:${outcome.needsAttention === true}`),
   });
   try {
     const result = await bossMode.submit({ text: '开始', idempotencyKey: 'outcome-cb-1' });
@@ -188,7 +188,7 @@ test('the orchestrator callback reports terminal worker outcomes', async () => {
     for (let attempt = 0; attempt < 1000 && outcomes.length === 0; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    assert.deepEqual(outcomes, ['wrk_outcome_cb:succeeded']);
+    assert.deepEqual(outcomes, ['wrk_outcome_cb:succeeded:false']);
   } finally {
     await taskService.stop();
     rmSync(directory, { recursive: true, force: true });

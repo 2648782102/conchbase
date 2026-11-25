@@ -289,10 +289,13 @@ async function main(argv: readonly string[]): Promise<void> {
             : outcome.taskState === 'failed' ? '失败'
               : outcome.taskState === 'cancelled' ? '已取消' : '已中断';
           const detail = outcome.body.trim().slice(0, 500);
+          const prefix = outcome.needsAttention
+            ? `员工 ${outcome.displayName}（${outcome.workerId}）需要你的确认。`
+            : `员工 ${outcome.displayName}（${outcome.workerId}）${state}。`;
           agentChat.announceBossNotice({
             conversationId,
-            body: [`员工 ${outcome.displayName}（${outcome.workerId}）${state}。`, detail].filter(Boolean).join('\n'),
-            idempotencyKey: `worker-outcome:${outcome.workerId}:${outcome.taskState}:${detail.length}:${detail.slice(0, 32)}`,
+            body: [prefix, detail].filter(Boolean).join('\n'),
+            idempotencyKey: `worker-outcome:${outcome.workerId}:${outcome.needsAttention ? 'attention' : outcome.taskState}:${detail.length}:${detail.slice(0, 32)}`,
           });
         } catch {
           // Durable organization reports remain authoritative even if no Boss
