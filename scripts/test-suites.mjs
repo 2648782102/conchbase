@@ -25,7 +25,7 @@ const TESTS = path.join(process.cwd(), 'tests');
  */
 const SUITES = Object.freeze({
   domain: [
-    'organization-contract.test.ts', 'organization-store.test.ts', 'organization-execution.test.ts',
+    'organization-contract.test.ts', 'project-facts.test.ts', 'organization-store.test.ts', 'organization-execution.test.ts',
     'organization-coordinator.test.ts', 'work-hold-projection.test.ts', 'work-hold-route.test.ts', 'organization-action-contract.test.ts', 'organization-validators.test.ts', 'composition-document.test.ts',
     'configuration-document.test.ts', 'configuration-revision.test.ts',
     'composition-execution.test.ts', 'work-contract.test.ts', 'platform-contract.test.ts',
