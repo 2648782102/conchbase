@@ -1,6 +1,6 @@
 # Current state
 
-Updated: 2026-11-24
+Updated: 2026-11-25
 
 ## Working today
 
@@ -12,6 +12,7 @@ Updated: 2026-11-24
   provider/model, bounded loop budgets, cancellation, retry, and restart
   recovery/checkpoint behavior.
 - Boss Mode plans projects, delegates bounded work, collects reports, and closes idle projects. Workers run in dispatch order by default so later workers receive earlier reports; `sequentialWorkers: false` is available for independent work that needs concurrency.
+- Boss prompt prefers user-visible goals and role names over internal IDs, dispatches explicit start/continue requests despite similar past work, and `npm run probe:boss-work` checks a live delegate/chat/report session.
 - Agent Chat with persisted messages, streaming projection, resumable SSE, and
   inline approval for the supported tool path. A waiting approval carries the
   Runtime-computed summary, risk, and bounded preview, so the client can show

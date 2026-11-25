@@ -32,6 +32,7 @@
     "smoke": "node scripts/smoke.mjs",
     "soak": "node scripts/soak.mjs",
     "probe:agent-chat": "node scripts/probe-agent-chat.mjs",
+    "probe:boss-work": "node scripts/probe-boss-work-session.mjs",
     "probe:capabilities": "node scripts/probe-capabilities.mjs",
     "probe:provider": "node scripts/provider-contract.mjs"
   },

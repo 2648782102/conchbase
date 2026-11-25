@@ -835,3 +835,22 @@ test('Boss model request includes bounded active project facts', async () => {
   });
   assert.match(captured, /采用本地优先架构/);
 });
+
+test('the Boss system prompt keeps internal ids out of user-facing replies', async () => {
+  let system = '';
+  const fetchImpl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? '{}')) as {
+      messages?: readonly { role: string; content: string }[];
+    };
+    system = (body.messages ?? []).find((message) => message.role === 'system')?.content ?? '';
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({ reply: '好的。', actions: [] }) } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }) as typeof globalThis.fetch;
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425', model: 'fixture/boss-chat', fetch: fetchImpl,
+  });
+  await parser.parse({ text: '开始查热点', intentId: 'int_ids', expectedSequence: 0 });
+  assert.match(system, /不要主动暴露 project_/);
+  assert.match(system, /用用户能理解的目标与角色名称汇报/);
+});
