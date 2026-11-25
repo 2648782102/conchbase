@@ -12,6 +12,7 @@ did.
    missing.
 3. [`PROJECT_PLAN.md`](PROJECT_PLAN.md) — the ordered product plan and the
    next executable tasks.
+4. [`docs/superpowers/specs/2026-11-25-boss-agent-continuous-orchestration-design.md`](superpowers/specs/2026-11-25-boss-agent-continuous-orchestration-design.md) — the current Boss Agent target architecture.
 
 Read [`DEVELOPMENT.md`](DEVELOPMENT.md) before changing code. When a task
 touches both repositories, also read

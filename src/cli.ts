@@ -114,6 +114,7 @@ function createBossModeService(
       ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
     }),
     bossModelReference: { providerId: BOSS_UPSTREAM_PROVIDER_ID, modelId: config.bossModel ?? config.defaultModel },
+    settleBeforeWorkers: true,
     schedulerLimits: {
       globalActive: config.globalActiveWork,
       perProjectActive: config.perProjectActiveWork,

@@ -89,6 +89,8 @@ export interface BossModeServiceOptions {
   readonly parser?: OrganizationIntentParser;
   readonly now?: () => string;
   readonly waitForTasks?: boolean;
+  /** Resolve and publish the accepted result before workers finish. */
+  readonly settleBeforeWorkers?: boolean;
   /**
    * The model the Boss conversation is configured to use. When present it wins
    * over the provider catalog order, so the Boss never silently runs on a model
@@ -147,6 +149,7 @@ export class BossModeService {
   private readonly parser: OrganizationIntentParser;
   private readonly now: () => string;
   private readonly waitForTasks: boolean;
+  private readonly settleBeforeWorkers: boolean;
   private readonly bossModelReference: { readonly providerId: string; readonly modelId: string } | undefined;
   private readonly workerCapabilityGrants: () => readonly CapabilityGrant[];
   private readonly conversation: BossModeServiceOptions['conversation'];
@@ -174,6 +177,7 @@ export class BossModeService {
     this.parser = options.parser ?? createDeterministicOrganizationIntentParser();
     this.now = options.now ?? (() => new Date().toISOString());
     this.waitForTasks = options.waitForTasks ?? true;
+    this.settleBeforeWorkers = options.settleBeforeWorkers === true;
     this.bossModelReference = options.bossModelReference;
     this.workerCapabilityGrants = options.workerCapabilityGrants
       ?? (() => Object.freeze([]));
@@ -329,6 +333,23 @@ export class BossModeService {
       this.onAccepted?.(accepted);
     };
     publishAccepted();
+    if (this.settleBeforeWorkers) {
+      const accepted: BossModeSubmitResult = Object.freeze({
+        version: BOSS_MODE_SERVICE_VERSION,
+        intentId: resolvedIntentId,
+        state: 'accepted' as const,
+        expectedSequence: this.store.get().events.length,
+        actions,
+        executions,
+        holds: Object.freeze([]),
+        relays: Object.freeze([]),
+        reply: parsed.relay,
+      });
+      if (createdWorkers.length > 0 && this.waitForTasks) {
+        void this.collectWorkerOutcomes(createdWorkers).catch(() => undefined);
+      }
+      return accepted;
+    }
     let outcomes: readonly WorkerOutcome[] = Object.freeze([]);
     if (createdWorkers.length > 0 && this.waitForTasks) {
       outcomes = await this.collectWorkerOutcomes(createdWorkers);

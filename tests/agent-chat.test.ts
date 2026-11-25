@@ -267,6 +267,105 @@ test('boss agent appears in Agent Chat and routes messages through Boss Mode', a
   }
 });
 
+test('boss chat stays usable while a delegated worker is still running', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-nonblocking-'));
+  let releaseWorker: (() => void) | undefined;
+  const workerBlocked = new Promise<void>((resolve) => { releaseWorker = resolve; });
+  const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith('/v1/models')) {
+      return new Response(JSON.stringify({ data: [{ id: 'fixture/chat-model', display_name: 'Fixture' }] }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    }
+    if (url.endsWith('/v1/chat/completions')) {
+      const body = JSON.parse(String(init?.body ?? '{}')) as { messages?: readonly { role?: string; content?: string }[] };
+      const system = (body.messages ?? []).find((message) => message.role === 'system')?.content ?? '';
+      if (system.includes('你是 Conchbase 的老板 Agent')) {
+        return new Response('data: {"choices":[{"delta":{"content":"done"},"finish_reason":null}]}\n\ndata: [DONE]\n\n', {
+          status: 200, headers: { 'content-type': 'text/event-stream' },
+        });
+      }
+      {
+        await workerBlocked;
+      }
+      return new Response('data: {"choices":[{"delta":{"content":"done"},"finish_reason":null}]}\n\ndata: [DONE]\n\n', {
+        status: 200, headers: { 'content-type': 'text/event-stream' },
+      });
+    }
+    return new Response(JSON.stringify({ error: 'not found' }), { status: 404 });
+  }) as typeof globalThis.fetch;
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: fetchImpl,
+  });
+  const organization = new InMemoryOrganizationStore();
+  const parser: OrganizationIntentParser = {
+    async parse(input) {
+      return Object.freeze({
+        version: 1 as const,
+        intentId: input.intentId,
+        actions: Object.freeze([
+          parseOrganizationAction({
+            type: 'open_project', expectedSequence: input.expectedSequence,
+            projectId: 'project_nonblocking', originTriggerId: input.intentId,
+          }),
+          parseOrganizationAction({
+            type: 'activate_project', expectedSequence: input.expectedSequence + 1,
+            projectId: 'project_nonblocking',
+          }),
+          parseOrganizationAction({
+            type: 'create_agent', expectedSequence: input.expectedSequence + 2,
+            projectId: 'project_nonblocking', workerId: 'wrk_nonblocking',
+            delegationId: 'del_nonblocking', agentRevisionId: 'agr_placeholder',
+            displayName: 'delegated worker', instructionsDigest: 'sha256_instructions',
+            scope: ['project:nonblocking'], capabilities: ['cap_read_context'],
+            model: { providerId: 'magpie', modelId: 'fixture/chat-model' },
+            maxDelegationDepth: 0, ttlEvents: 50,
+          }),
+        ]),
+        relay: 'Boss accepted the work.',
+      });
+    },
+  };
+  const bossMode = new BossModeService(organization, taskService, {
+    parser, waitForTasks: true, settleBeforeWorkers: true,
+  });
+  const agentChat = new AgentChatService(taskService, bossMode);
+  const app = createApp({ logger: false, taskService, organizationStore: organization, bossModeService: bossMode, agentChatService: agentChat });
+  try {
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId: 'boss-agent' },
+    });
+    const conversationId = created.json().id as string;
+    const first = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: { text: '做一件事', idempotencyKey: 'boss-nonblocking-1' },
+    });
+    assert.equal(first.statusCode, 202);
+    let view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+    for (let attempt = 0; attempt < 100 && view.json().messages[1]?.phase !== 'terminal'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+    }
+    assert.equal(view.json().messages[1]?.phase, 'terminal', 'boss reply must settle while worker runs');
+    const second = await app.inject({
+      method: 'POST',
+      url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: { text: '继续安排另一件事', idempotencyKey: 'boss-nonblocking-2' },
+    });
+    assert.equal(second.statusCode, 202);
+    assert.notEqual(second.json().assistantMessage.error, 'Boss turn is already running.', 'second turn must not be queued behind the worker');
+  } finally {
+    releaseWorker?.();
+    await app.close();
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('agent chat publishes thinking, streaming, and replied states', async () => {
   await withApp(async (app, agentId) => {
     const created = await app.inject({

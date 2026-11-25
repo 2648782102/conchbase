@@ -70,6 +70,7 @@ export function createApp(options: CreateAppOptions = {}) {
       ? new BossModeService(organization, options.taskService, conversation
         ? {
           workerCapabilityGrants: options.workerCapabilityGrants ?? (() => Object.freeze([])),
+          settleBeforeWorkers: true,
           ...(options.config ? {
             schedulerLimits: {
               globalActive: options.config.globalActiveWork,
@@ -85,6 +86,7 @@ export function createApp(options: CreateAppOptions = {}) {
         }
         : {
           workerCapabilityGrants: options.workerCapabilityGrants ?? (() => Object.freeze([])),
+          settleBeforeWorkers: true,
           ...(options.config ? {
             schedulerLimits: {
               globalActive: options.config.globalActiveWork,

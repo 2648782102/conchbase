@@ -1940,13 +1940,16 @@ export class AgentChatService {
         },
       }, onAccepted).then((settled) => {
         unsubscribeApprovalWatch();
-        // The submission settled: worker tasks have been awaited, so the reply
-        // can now reflect the real outcome instead of the accepted snapshot.
+        // In the default blocking mode the accepted snapshot may be superseded
+        // by real worker outcomes. In settle-before-workers mode this resolves
+        // immediately, so the guard below avoids overwriting the terminal ack.
         const waiting = settled.needsAttention === true;
         const failed = settled.executions.some((execution) => execution.status === 'failed')
           && settled.hasWorkerOutcome !== true;
+        const current = this.getMessage(record, assistantMessage.id);
+        if (!current || current.phase === 'terminal') return;
         this.replaceMessage(record, assistantMessage.id, {
-          ...this.getMessage(record, assistantMessage.id)!,
+          ...current,
           body: settled.reply ?? this.getMessage(record, assistantMessage.id)!.body,
           state: failed ? 'failed' : waiting ? 'waiting_attention' : 'done',
           phase: waiting ? 'human' : 'terminal',
