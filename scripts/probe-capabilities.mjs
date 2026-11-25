@@ -22,7 +22,7 @@ function flag(name, fallback) {
 const script = path.join(import.meta.dirname, 'probe-agent-chat.mjs');
 const workspace = process.env.CONCHBASE_WORKSPACE_ROOT ?? path.join(import.meta.dirname, '..');
 const writeTarget = 'capability-probe.txt';
-const model = flag('model', process.env.CONCHBASE_PROBE_MODEL ?? 'workbuddy/blind-model-h');
+const model = flag('model', process.env.CONCHBASE_PROBE_MODEL ?? 'workbuddy/blind-model-c');
 
 const scenarios = [
   {

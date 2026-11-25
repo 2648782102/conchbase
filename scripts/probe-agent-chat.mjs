@@ -24,7 +24,7 @@ const base = flag('base', 'http://127.0.0.1:4318').replace(/\/$/, '');
 const prompt = flag('prompt', '');
 const agentKind = flag('agent', 'custom');
 const toolList = (args.includes('--tools') ? flag('tools', '') : 'workspace_list,workspace_read').split(',').filter(Boolean);
-const modelId = flag('model', 'workbuddy/blind-model-h');
+const modelId = flag('model', 'workbuddy/blind-model-c');
 const instructions = flag(
   'instructions',
   '你是文件助手。需要信息时用工具，拿到结果后立即回答，不要重复调用同一个工具。',

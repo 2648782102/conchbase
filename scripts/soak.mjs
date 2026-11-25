@@ -21,7 +21,7 @@ const arg = (name, fallback) => {
   return index >= 0 && process.argv[index + 1] ? process.argv[index + 1] : fallback;
 };
 const iterations = Number(arg('iterations', '100'));
-const model = arg('model', process.env.CONCHBASE_SOAK_MODEL ?? 'workbuddy/blind-model-h');
+const model = arg('model', process.env.CONCHBASE_SOAK_MODEL ?? 'workbuddy/blind-model-c');
 // A slow model is not a Runtime bug: give a task a generous ceiling and report
 // a timeout distinctly from a wrong terminal state.
 const taskTimeoutMs = Number(arg('task-timeout-ms', '300000'));

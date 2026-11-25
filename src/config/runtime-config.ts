@@ -331,7 +331,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     magpieBaseUrl,
     ...(magpieAppKey ? { magpieAppKey } : {}),
     ...(providerEndpoints ? { providerEndpoints } : {}),
-    defaultModel: env.CONCHBASE_MODEL ?? 'workbuddy/blind-model-h',
+    defaultModel: env.CONCHBASE_MODEL ?? 'workbuddy/blind-model-c',
     ...(env.CONCHBASE_ORGANIZATION_INTENT_MODEL
       ? { organizationIntentModel: env.CONCHBASE_ORGANIZATION_INTENT_MODEL }
       : {}),

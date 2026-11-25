@@ -15,7 +15,7 @@ import path from 'node:path';
 
 const root = path.join(import.meta.dirname, '..');
 const gateway = process.env.CONCHBASE_MAGPIE_URL ?? 'http://127.0.0.1:3425';
-const model = process.env.CONCHBASE_MODEL ?? 'workbuddy/blind-model-h';
+const model = process.env.CONCHBASE_MODEL ?? 'workbuddy/blind-model-c';
 const steps = [];
 
 function freePort() {
