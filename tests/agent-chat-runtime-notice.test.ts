@@ -8,6 +8,8 @@ import { AgentChatService } from '../src/runtime/agent-chat.js';
 import { BossModeService } from '../src/runtime/boss-mode-service.js';
 import { InMemoryOrganizationStore } from '../src/runtime/organization-store.js';
 import { createOpenAiCompatibleBossConversationParser } from '../src/runtime/organization-intent-parser.js';
+import type { OrganizationIntentParser } from '../src/runtime/organization-intent-parser.js';
+import { parseOrganizationAction } from '../src/runtime/organization-contract.js';
 
 /**
  * A Runtime notice is not an Assistant turn.
@@ -95,6 +97,102 @@ test('a Runtime notice is authored as runtime, not assistant', async () => {
     assert.equal(notice.taskId, null);
     assert.equal(notice.body, NOTICE);
   });
+});
+
+test('terminal worker reports become bounded boss notices without changing assistant turns', async () => {
+  await withBossChat(async ({ chat, conversationId }) => {
+    const before = chat.view(conversationId);
+    const initialCount = before.messages.length;
+    const reportId = 'rpt_async_worker_done';
+    const workerId = 'wrk_async_worker';
+    const body = [
+      `员工 ${workerId} 已完成，reportId ${reportId}。`,
+      '摘要：完成了一项后台工作。',
+    ].join('\n');
+
+    chat.announceBossNotice({
+      conversationId,
+      body,
+      idempotencyKey: `worker-report:${reportId}:ready`,
+    });
+    chat.announceBossNotice({
+      conversationId,
+      body,
+      idempotencyKey: `worker-report:${reportId}:ready`,
+    });
+
+    const after = chat.view(conversationId);
+    const notices = after.messages.filter((message) => message.author === 'runtime');
+    assert.equal(after.messages.length, initialCount + 1, 'duplicate report notice must be ignored');
+    assert.equal(notices.length, 1);
+    assert.match(notices[0]?.body ?? '', /reportId rpt_async_worker_done/);
+    assert.equal(notices[0]?.taskId ?? null, null);
+  });
+});
+
+test('the orchestrator callback reports terminal worker outcomes', async () => {
+  const outcomes: string[] = [];
+  const directory = mkdtempSync(path.join(tmpdir(), 'conchbase-boss-outcome-cb-'));
+  const fetchImpl = (async (input: RequestInfo | URL) => {
+    if (String(input).endsWith('/v1/models')) {
+      return new Response(JSON.stringify({ data: [{ id: 'fixture/chat-model' }] }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    }
+    return new Response('data: {"choices":[{"delta":{"content":"done"},"finish_reason":null}]}\n\ndata: [DONE]\n\n', {
+      status: 200, headers: { 'content-type': 'text/event-stream' },
+    });
+  }) as typeof globalThis.fetch;
+  const taskService = createTaskService(path.join(directory, 'runtime.sqlite'), {
+    magpieBaseUrl: 'http://127.0.0.1:3425',
+    defaultModel: 'fixture/chat-model',
+    fetch: fetchImpl,
+  });
+  const parser: OrganizationIntentParser = {
+    async parse(input) {
+      return Object.freeze({
+        version: 1 as const,
+        intentId: input.intentId,
+        actions: Object.freeze([
+          parseOrganizationAction({
+            type: 'open_project', expectedSequence: input.expectedSequence,
+            projectId: 'project_outcome_cb', originTriggerId: input.intentId,
+          }),
+          parseOrganizationAction({
+            type: 'activate_project', expectedSequence: input.expectedSequence + 1,
+            projectId: 'project_outcome_cb',
+          }),
+          parseOrganizationAction({
+            type: 'create_agent', expectedSequence: input.expectedSequence + 2,
+            projectId: 'project_outcome_cb', workerId: 'wrk_outcome_cb',
+            delegationId: 'del_outcome_cb', agentRevisionId: 'agr_placeholder',
+            displayName: 'outcome worker', instructionsDigest: 'sha256_instructions',
+            scope: ['project:outcome'], capabilities: ['cap_read_context'],
+            model: { providerId: 'magpie', modelId: 'fixture/chat-model' },
+            maxDelegationDepth: 0, ttlEvents: 50,
+          }),
+        ]),
+        relay: 'Boss accepted the work.',
+      });
+    },
+  };
+  const bossMode = new BossModeService(new InMemoryOrganizationStore(), taskService, {
+    parser, waitForTasks: true, settleBeforeWorkers: true,
+    onWorkerOutcome: (outcome) => outcomes.push(`${outcome.workerId}:${outcome.taskState}`),
+  });
+  try {
+    const result = await bossMode.submit({ text: '开始', idempotencyKey: 'outcome-cb-1' });
+    assert.equal(result.executions.filter((item) => item.status === 'created-agent').length, 1);
+    const taskStates = () => taskService.store.listTasks().map((task) => task.state);
+    assert.deepEqual(taskStates(), ['running'], `worker must be started after submit, got ${taskStates()}`);
+    for (let attempt = 0; attempt < 1000 && outcomes.length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.deepEqual(outcomes, ['wrk_outcome_cb:succeeded']);
+  } finally {
+    await taskService.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('a Runtime notice is never replayed to the model as an Assistant turn', async () => {

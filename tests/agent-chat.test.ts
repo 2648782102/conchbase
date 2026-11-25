@@ -358,6 +358,12 @@ test('boss chat stays usable while a delegated worker is still running', async (
     });
     assert.equal(second.statusCode, 202);
     assert.notEqual(second.json().assistantMessage.error, 'Boss turn is already running.', 'second turn must not be queued behind the worker');
+    releaseWorker?.();
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const tasks = taskService.store.listTasks();
+      if (tasks.every((task) => ['succeeded', 'failed', 'cancelled', 'interrupted'].includes(task.state))) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
   } finally {
     releaseWorker?.();
     await app.close();

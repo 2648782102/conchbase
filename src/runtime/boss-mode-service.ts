@@ -91,6 +91,8 @@ export interface BossModeServiceOptions {
   readonly waitForTasks?: boolean;
   /** Resolve and publish the accepted result before workers finish. */
   readonly settleBeforeWorkers?: boolean;
+  /** Called for every terminal worker outcome when Boss turns settle early. */
+  readonly onWorkerOutcome?: (outcome: WorkerOutcome) => void;
   /**
    * The model the Boss conversation is configured to use. When present it wins
    * over the provider catalog order, so the Boss never silently runs on a model
@@ -150,6 +152,7 @@ export class BossModeService {
   private readonly now: () => string;
   private readonly waitForTasks: boolean;
   private readonly settleBeforeWorkers: boolean;
+  private onWorkerOutcome: ((outcome: WorkerOutcome) => void) | undefined;
   private readonly bossModelReference: { readonly providerId: string; readonly modelId: string } | undefined;
   private readonly workerCapabilityGrants: () => readonly CapabilityGrant[];
   private readonly conversation: BossModeServiceOptions['conversation'];
@@ -178,6 +181,7 @@ export class BossModeService {
     this.now = options.now ?? (() => new Date().toISOString());
     this.waitForTasks = options.waitForTasks ?? true;
     this.settleBeforeWorkers = options.settleBeforeWorkers === true;
+    this.onWorkerOutcome = options.onWorkerOutcome;
     this.bossModelReference = options.bossModelReference;
     this.workerCapabilityGrants = options.workerCapabilityGrants
       ?? (() => Object.freeze([]));
@@ -346,7 +350,7 @@ export class BossModeService {
         reply: parsed.relay,
       });
       if (createdWorkers.length > 0 && this.waitForTasks) {
-        void this.collectWorkerOutcomes(createdWorkers).catch(() => undefined);
+        void this.runWorkersInBackground(createdWorkers);
       }
       return accepted;
     }
@@ -393,6 +397,14 @@ export class BossModeService {
       throw new BossModeServiceError(`Boss mode execution failed${reason}`);
     }
     return result;
+  }
+
+  private async runWorkersInBackground(records: readonly WorkerExecutionRecord[]): Promise<void> {
+    const outcomes: WorkerOutcome[] = [];
+    const report = (outcome: WorkerOutcome) => this.onWorkerOutcome?.(outcome);
+    if (records.length > 0) outcomes.push(...await this.collectWorkerOutcomes(records, report));
+    if (this.waitForTasks) outcomes.push(...await this.drainHeldWorkers(report));
+    void outcomes;
   }
 
   private async applyParsedAction(
@@ -532,6 +544,11 @@ export class BossModeService {
 
   get organizationStore(): OrganizationStore {
     return this.store;
+  }
+
+  /** Install a reporter after chat construction; Runtime builds Boss before chat. */
+  setWorkerOutcomeReporter(reporter: (outcome: WorkerOutcome) => void): void {
+    this.onWorkerOutcome = reporter;
   }
 
   getDynamicAgentRevisionId(workerId: string): string | undefined {
@@ -1182,7 +1199,9 @@ export class BossModeService {
    * capacity. Each round starts whatever the scheduler now admits, waits for
    * those workers, and repeats until nothing new can start.
    */
-  private async drainHeldWorkers(): Promise<readonly WorkerOutcome[]> {
+  private async drainHeldWorkers(
+    onOutcome?: (outcome: WorkerOutcome) => void,
+  ): Promise<readonly WorkerOutcome[]> {
     const outcomes: WorkerOutcome[] = [];
     if (!this.waitForTasks) {
       // Without awaiting, start whatever the scheduler admits right now. A later
@@ -1199,7 +1218,7 @@ export class BossModeService {
         if (this.tryStartHeldWorker(record)) admittedRecords.push(record);
       }
       if (admittedRecords.length === 0) break;
-      outcomes.push(...await this.collectWorkerOutcomes(admittedRecords));
+      outcomes.push(...await this.collectWorkerOutcomes(admittedRecords, onOutcome));
     }
     return Object.freeze(outcomes);
   }
@@ -1328,6 +1347,7 @@ export class BossModeService {
 
   private async collectWorkerOutcomes(
     records: readonly WorkerExecutionRecord[],
+    onOutcome?: (outcome: WorkerOutcome) => void,
   ): Promise<readonly WorkerOutcome[]> {
     const taskService = this.taskService;
     if (!taskService) return Object.freeze([]);
@@ -1367,13 +1387,14 @@ export class BossModeService {
       if (!task) continue;
       const terminalState = task.state as WorkerOutcome['taskState'];
       const output = task.state === 'succeeded' ? task.output ?? '' : task.error ?? task.state;
-      outcomes.push(Object.freeze({
+      const outcome = Object.freeze({
         workerId: record.workerId,
         displayName: this.store.get().workers.find((worker) => worker.id === record.workerId)?.displayName
           ?? record.workerId,
         taskState: terminalState,
         body: output,
-      }));
+      });
+      outcomes.push(outcome);
       // A re-run binds a fresh task, so both the report id and the wait must be
       // keyed by task. An already-recorded outcome is still returned so a
       // repeated submit can restate the result instead of dropping it.
@@ -1426,6 +1447,7 @@ export class BossModeService {
         });
       }
       this.outcomeByTaskId.set(record.taskId, summaryDigest);
+      if (!isSliceYield && !needsAttention) onOutcome?.(outcome);
       if (!isSliceYield && !needsAttention && task.state !== 'succeeded') {
         this.autoRetireFailingWorker(record, output);
       }

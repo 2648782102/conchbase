@@ -16,7 +16,7 @@ import {
 import { createToolRuntime } from './runtime/tool-runtime.js';
 import { defaultWorkerGrants } from './runtime/capability-grants.js';
 import { createConvergenceRuntime } from './runtime/organization-convergence-runtime.js';
-import { AgentChatService } from './runtime/agent-chat.js';
+import { AgentChatService, BOSS_AGENT_ID } from './runtime/agent-chat.js';
 import { createOpenAiCompatibleMemoryReviewer } from './runtime/memory-review.js';
 import { AgentChatMemory, createOpenAiCompatibleMemoryProposer } from './runtime/agent-chat-memory.js';
 import { createScheduleRunner } from './runtime/schedule-runner.js';
@@ -279,6 +279,27 @@ async function main(argv: readonly string[]): Promise<void> {
         ...(config.magpieAppKey ? { appKey: config.magpieAppKey } : {}),
       }),
     );
+    bossMode.setWorkerOutcomeReporter((outcome) => {
+      void (async () => {
+        try {
+          const listed = await agentChat.listConversations(50);
+          const conversationId = listed.conversations.find((conversation) => conversation.agentId === BOSS_AGENT_ID)?.id;
+          if (!conversationId) return;
+          const state = outcome.taskState === 'succeeded' ? '已完成'
+            : outcome.taskState === 'failed' ? '失败'
+              : outcome.taskState === 'cancelled' ? '已取消' : '已中断';
+          const detail = outcome.body.trim().slice(0, 500);
+          agentChat.announceBossNotice({
+            conversationId,
+            body: [`员工 ${outcome.displayName}（${outcome.workerId}）${state}。`, detail].filter(Boolean).join('\n'),
+            idempotencyKey: `worker-outcome:${outcome.workerId}:${outcome.taskState}:${detail.length}:${detail.slice(0, 32)}`,
+          });
+        } catch {
+          // Durable organization reports remain authoritative even if no Boss
+          // conversation is open to receive the notice.
+        }
+      })();
+    });
     const convergence = createConvergenceRuntime({
       store: service.store.organization,
       taskService: service,
