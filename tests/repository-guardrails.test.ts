@@ -217,6 +217,19 @@ test('user-facing copy says Boss Agent', () => {
   assert.match(read('src/runtime/agent-chat.ts'), /BOSS_AGENT_ID = 'boss-agent'/);
 });
 
+test('the runtime has no fixed PM hierarchy', () => {
+  for (const file of [
+    'src/runtime/organization-intent-parser.ts',
+    'src/runtime/boss-mode-service.ts',
+    'src/runtime/organization-coordinator.ts',
+  ]) {
+    assert.doesNotMatch(read(file), /must (?:create|hire|use) (?:a )?(?:PM|project manager)/i,
+      `${file} must not require a fixed PM role`);
+    assert.doesNotMatch(read(file), /(?:requires?|assumes?|expects?) (?:a )?(?:PM|project manager)/i,
+      `${file} must not assume a fixed PM role`);
+  }
+});
+
 /**
  * Digest shapes must not fork again.
  *

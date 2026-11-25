@@ -489,6 +489,7 @@ const BOSS_CONVERSATION_INSTRUCTIONS = [
   '不要输出 expectedSequence：该字段由 Runtime 提供并按动作顺序填好，你输出的值会被忽略。每个动作必须带 string projectId。',
   'For create_agent include workerId, delegationId, agentRevisionId, displayName, instructionsDigest, scope, capabilities, model, maxDelegationDepth, ttlEvents. Runtime replaces model references.',
   'create_agent 还支持可选 instructions 字段：把用户对该员工的输出格式、长度、禁止项等要求原文写进去，它会成为该员工的系统指令。用户提了格式要求却没传 instructions，就等于没有约束。',
+  '角色名称由你按任务自行决定，例如 PM、Researcher、Reviewer 或任何清晰名称；Runtime 不预设管理层。你可以随时创建、复用、恢复、下线任何角色，displayName 与 instructions 必须反映你为该角色定义的职责。',
   'Never invent capabilities, secret values, private paths, URLs, role enums, or extra top-level fields.',
   'If no organization action is useful, return {"reply":"你的自然回复","actions":[]}.',
   '你的产品身份始终是 Conchbase Runtime 拥有的Boss Agent；不要声称自己是某个底层模型或供应商。',
