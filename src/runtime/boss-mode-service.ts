@@ -226,6 +226,7 @@ export class BossModeService {
     const snapshot = this.store.get();
     this.turnAdmissionHolds = [];
     this.backfillReportTexts();
+    this.promoteReportFacts();
     const organizationFacts = buildBossOrganizationFacts({
       snapshot,
       intentTexts: this.intentTexts(),
@@ -561,6 +562,17 @@ export class BossModeService {
   recordProjectFact(projectId: string, key: string, body: string, reportId?: string): void {
     const fact = promoteProjectFact({ projectId, key, body, ...(reportId ? { sourceReportId: reportId } : {}) });
     if (fact) this.projectFacts = upsertProjectFact(this.projectFacts, fact);
+  }
+
+  private promoteReportFacts(): void {
+    const snapshot = this.store.get();
+    const reports = this.store.reportTexts?.() ?? new Map<string, string>();
+    for (const report of snapshot.reports) {
+      if (report.state !== 'ready') continue;
+      const body = reports.get(report.id);
+      if (!body) continue;
+      this.recordProjectFact(report.projectId, `report:${report.workerId}`, body, report.id);
+    }
   }
 
   getDynamicAgentRevisionId(workerId: string): string | undefined {
