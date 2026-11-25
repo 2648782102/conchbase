@@ -56,7 +56,7 @@ Configuration:
   CONCHBASE_MAGPIE_APP_KEY       Optional app-naming key (magpie-<app-id>)
   CONCHBASE_MODEL                Model id; run and models do not require it
   CONCHBASE_ORGANIZATION_INTENT_MODEL   Optional structured model for Boss-mode intents
-  CONCHBASE_BOSS_MODEL                  Optional model for natural 老板 Agent conversation
+  CONCHBASE_BOSS_MODEL                  Optional model for natural Boss Agent conversation
   CONCHBASE_DB                   Runtime SQLite path (default .conchbase/runtime.sqlite)
   CONCHBASE_ALLOW_AUTHENTICATED_REMOTE_BINDING=1   Enable reviewed non-loopback binding
   CONCHBASE_AUTH_TOKEN_DIGEST    sha256 digest of an approved bearer token

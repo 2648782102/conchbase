@@ -307,7 +307,7 @@ test('Boss conversation parser normalizes false upstream identity and unsupporte
     text: '你是谁，能查网页和本机文件吗',
     expectedSequence: 0,
   });
-  assert.match(result.relay ?? '', /老板 Agent/);
+  assert.match(result.relay ?? '', /Boss Agent/);
   assert.doesNotMatch(result.relay ?? '', /腾讯混元|Hy\b/);
   assert.match(result.relay ?? '', /没有|暂不|不能/);
   assert.match(result.relay ?? '', /网页|本机|文件/);

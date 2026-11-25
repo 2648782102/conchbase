@@ -218,7 +218,7 @@ test('boss agent appears in Agent Chat and routes messages through Boss Mode', a
           projectId: 'project_boss_chat',
         }),
       ]);
-      return Object.freeze({ version: 1 as const, intentId: input.intentId, actions, relay: '老板已建立项目。' });
+      return Object.freeze({ version: 1 as const, intentId: input.intentId, actions, relay: 'Boss 已建立项目。' });
     },
   };
   const bossMode = new BossModeService(organization, taskService, { parser, waitForTasks: false });
@@ -227,7 +227,7 @@ test('boss agent appears in Agent Chat and routes messages through Boss Mode', a
   try {
     const agents = await app.inject({ method: 'GET', url: '/v1/agent-chat/agents' });
     assert.equal(agents.json().agents[0].id, 'boss-agent');
-    assert.equal(agents.json().agents[0].name, '老板 Agent');
+    assert.equal(agents.json().agents[0].name, 'Boss Agent');
     assert.equal(agents.json().agents[0].providerId, 'runtime');
     const created = await app.inject({
       method: 'POST',
@@ -255,7 +255,7 @@ test('boss agent appears in Agent Chat and routes messages through Boss Mode', a
         url: `/v1/agent-chat/conversations/${created.json().id}`,
       });
     }
-    assert.equal(bossView.json().messages[1]?.body, '老板已建立项目。');
+    assert.equal(bossView.json().messages[1]?.body, 'Boss 已建立项目。');
     assert.equal(bossView.json().messages[1]?.state, 'replied');
     assert.equal(bossView.json().messages[1]?.taskId, null);
     const session = await app.inject({ method: 'GET', url: '/v1/organization/session' });
@@ -281,7 +281,7 @@ test('boss chat stays usable while a delegated worker is still running', async (
     if (url.endsWith('/v1/chat/completions')) {
       const body = JSON.parse(String(init?.body ?? '{}')) as { messages?: readonly { role?: string; content?: string }[] };
       const system = (body.messages ?? []).find((message) => message.role === 'system')?.content ?? '';
-      if (system.includes('你是 Conchbase 的老板 Agent')) {
+      if (system.includes('你是 Conchbase 的Boss Agent')) {
         return new Response('data: {"choices":[{"delta":{"content":"done"},"finish_reason":null}]}\n\ndata: [DONE]\n\n', {
           status: 200, headers: { 'content-type': 'text/event-stream' },
         });
@@ -466,7 +466,7 @@ test('boss mode invokes the accepted callback before returning its final result'
           projectId: 'project_slow',
         }),
       ]);
-      return Object.freeze({ version: 1 as const, intentId: input.intentId, actions, relay: '老板已接受。' });
+      return Object.freeze({ version: 1 as const, intentId: input.intentId, actions, relay: 'Boss 已接受。' });
     },
   };
   const bossMode = new BossModeService(organization, taskService, { parser, waitForTasks: true });
@@ -476,7 +476,7 @@ test('boss mode invokes the accepted callback before returning its final result'
       accepted = true;
     });
     assert.equal(accepted, true);
-    assert.equal(result.reply, '老板已接受。');
+    assert.equal(result.reply, 'Boss 已接受。');
   } finally {
     await taskService.stop();
     rmSync(directory, { recursive: true, force: true });

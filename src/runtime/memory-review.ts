@@ -51,7 +51,7 @@ const MAX_REASON = 200;
 export function memoryReviewInstructions(): string {
   return [
     '你是 Conchbase 的记忆审核员，只做一件事：判断候选记忆是否值得长期保留。',
-    '候选记忆来自老板 Agent 的提议。老板容易把“这一次的要求”误当作“以后都要这样”。',
+    '候选记忆来自Boss Agent 的提议。Boss 容易把“这一次的要求”误当作“以后都要这样”。',
     '只有满足以下全部条件才 accept：',
     '1. 用户表达了跨轮次仍然成立的偏好、约定或事实，而不是只针对本轮回复的格式要求；',
     '2. 内容具体、可执行，不是对当次任务结果的复述；',

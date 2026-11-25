@@ -52,7 +52,7 @@ async function call(method, path, body) {
 const created = [];
 try {
   const agent = agentKind === 'boss'
-    ? { id: 'boss-agent', name: '老板 Agent', created: false }
+    ? { id: 'boss-agent', name: 'Boss Agent', created: false }
     : await (async () => {
       const response = await call('POST', '/v1/agents', {
         name: `压测探针-${Date.now().toString(36)}`,

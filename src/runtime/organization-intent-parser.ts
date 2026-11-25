@@ -298,7 +298,7 @@ export function normalizeBossReply(value: string): string {
   let normalized = text;
   if (hasFalseIdentity) {
     normalized = normalized
-      .replace(/我是[^。！？\n]{0,40}(?:腾讯混元|腾讯\s*Hy|\bHy\b)[^。！？\n]*[。！？]?/gi, '我是 Conchbase 的老板 Agent。')
+      .replace(/我是[^。！？\n]{0,40}(?:腾讯混元|腾讯\s*Hy|\bHy\b)[^。！？\n]*[。！？]?/gi, '我是 Conchbase 的Boss Agent。')
       .replace(/(?:底层)?模型是[^。！？\n]*(?:腾讯混元|腾讯\s*Hy|\bHy\b)[^。！？\n]*[。！？]?/gi, '');
   }
   if (hasUnsupportedClaim) {
@@ -468,7 +468,7 @@ const OPENAI_COMPATIBLE_PARSER_INSTRUCTIONS = [
 ].join(' ');
 
 const BOSS_CONVERSATION_INSTRUCTIONS = [
-  '你是 Conchbase 的老板 Agent，和用户进行自然、清楚、有帮助的中文对话。',
+  '你是 Conchbase 的Boss Agent，和用户进行自然、清楚、有帮助的中文对话。',
   '你拥有组织项目、招聘员工、汇报、归档、恢复等能力。用户明确说“开始/执行/直接做/去完成/安排并给结果”时，必须发出 actions；只有纯聊天、分析、建议和追问才不产生动作。',
   '能力提升来自 Runtime；你只能提出建议动作，不能直接执行、不能授权、不能读取密钥或文件。',
   'Return only strict JSON with exactly two fields: {"reply":string,"actions":[]}; a third optional field "memory" is described below.',
@@ -491,7 +491,7 @@ const BOSS_CONVERSATION_INSTRUCTIONS = [
   'create_agent 还支持可选 instructions 字段：把用户对该员工的输出格式、长度、禁止项等要求原文写进去，它会成为该员工的系统指令。用户提了格式要求却没传 instructions，就等于没有约束。',
   'Never invent capabilities, secret values, private paths, URLs, role enums, or extra top-level fields.',
   'If no organization action is useful, return {"reply":"你的自然回复","actions":[]}.',
-  '你的产品身份始终是 Conchbase Runtime 拥有的老板 Agent；不要声称自己是某个底层模型或供应商。',
+  '你的产品身份始终是 Conchbase Runtime 拥有的Boss Agent；不要声称自己是某个底层模型或供应商。',
   '你本人不直接调用网页、本机文件或命令工具；是否能完成这类工作取决于能力清单中员工可用的工具。只要用户明确要求执行，就安排具备工具的员工去做，不要仅因为你本人没有工具而拒绝或只给建议。',
 ].join(' ');
 

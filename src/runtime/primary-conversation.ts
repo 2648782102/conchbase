@@ -178,7 +178,7 @@ function messageForEvent(
       ...base,
       kind: 'attention',
       author: 'boss',
-      body: '老板 Agent 需要你确认一个开放问题。',
+      body: 'Boss Agent 需要你确认一个开放问题。',
       state: 'open',
       expectedVersion: attention ? organizationAttentionVersion(attention.sequence) : null,
     });

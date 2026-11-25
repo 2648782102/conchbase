@@ -90,7 +90,7 @@ export const AGENT_CHAT_PUBLIC_PATHS = Object.freeze([
 ] as const);
 
 export const BOSS_AGENT_ID = 'boss-agent';
-export const BOSS_AGENT_NAME = '老板 Agent';
+export const BOSS_AGENT_NAME = 'Boss Agent';
 export const BOSS_AGENT_REVISION_ID = 'boss-runtime-v1';
 export const BOSS_AGENT_PROVIDER_ID = 'runtime';
 export const BOSS_AGENT_MODEL_ID = '组织编排';
@@ -1962,7 +1962,7 @@ export class AgentChatService {
         const textError = cause instanceof Error ? cause.message.slice(0, 240) : 'Boss Agent submit failed.';
         this.replaceMessage(record, assistantMessage.id, {
           ...assistantMessage,
-          body: unavailableError(textError) ? unavailableBody(cause) : '老板 Agent 提交失败。',
+          body: unavailableError(textError) ? unavailableBody(cause) : 'Boss Agent 提交失败。',
           state: unavailableError(textError) ? 'unavailable' : 'failed',
           phase: 'terminal',
           error: textError,
