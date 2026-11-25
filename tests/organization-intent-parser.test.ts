@@ -346,6 +346,7 @@ test('Boss conversation request includes readable organization facts and capabil
     expectedSequence: 0,
     organizationFacts: {
       bossSessionId: 'boss_fixture',
+      projectFacts: [],
       projects: [{
         id: 'project_alpha',
         state: 'active',
@@ -809,4 +810,28 @@ test('the Boss system prompt describes worker-mediated capabilities when Runtime
     },
   });
   await parser.parse({ text: '你能做什么', intentId: 'int_caps', expectedSequence: 0 });
+});
+
+test('Boss model request includes bounded active project facts', async () => {
+  let captured = '';
+  const fetchImpl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    captured = String(init?.body ?? '');
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({ reply: '已了解项目事实。', actions: [] }) } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }) as typeof globalThis.fetch;
+  const parser = createOpenAiCompatibleBossConversationParser({
+    baseUrl: 'http://127.0.0.1:3425', model: 'fixture/boss-chat', fetch: fetchImpl,
+  });
+  await parser.parse({
+    intentId: 'int_facts_2',
+    text: '继续',
+    expectedSequence: 0,
+    organizationFacts: {
+      bossSessionId: 'boss_fixture',
+      projectFacts: [{ projectId: 'project_alpha', key: 'decision', body: '采用本地优先架构' }],
+      projects: [], workers: [], delegations: [], reports: [], attention: [], capabilities: [],
+    },
+  });
+  assert.match(captured, /采用本地优先架构/);
 });

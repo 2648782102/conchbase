@@ -32,6 +32,7 @@ import { MEMORY_LIMITS, renderMemoryIndex, type AgentMemoryInput, type AgentMemo
 import type { MemoryReviewInput, MemoryReviewResult } from './memory-review.js';
 import { defaultProviderId } from './provider-registry.js';
 import { BossMemory } from './boss-memory.js';
+import { projectFactsFor, promoteProjectFact, upsertProjectFact, type ProjectFact } from './project-facts.js';
 import { restoreWorkerExecutions, type WorkerExecutionRecord } from './worker-execution-restore.js';
 import { composeOutcomeReply, type WorkerOutcome } from './worker-outcome-report.js';
 
@@ -153,6 +154,7 @@ export class BossModeService {
   private readonly waitForTasks: boolean;
   private readonly settleBeforeWorkers: boolean;
   private onWorkerOutcome: ((outcome: WorkerOutcome) => void) | undefined;
+  private projectFacts: readonly ProjectFact[] = Object.freeze([]);
   private readonly bossModelReference: { readonly providerId: string; readonly modelId: string } | undefined;
   private readonly workerCapabilityGrants: () => readonly CapabilityGrant[];
   private readonly conversation: BossModeServiceOptions['conversation'];
@@ -230,6 +232,11 @@ export class BossModeService {
       ...(this.store.reportTexts?.() ? { reportTexts: this.store.reportTexts!() } : {}),
       agentInstructions: (worker) => this.instructionsForRevision(worker.agentRevisionId),
       capabilities: runtimeCapabilityFacts(this.workerCapabilityGrants().map((grant) => grant.name)),
+      projectFacts: projectFactsFor(
+        this.projectFacts,
+        snapshot.projects.filter((project) => project.state === 'active' || project.state === 'resumed')
+          .map((project) => project.id),
+      ).map((fact) => ({ projectId: fact.projectId, key: fact.key, body: fact.body })),
     });
     const parseInput = {
       intentId: resolvedIntentId,
@@ -549,6 +556,11 @@ export class BossModeService {
   /** Install a reporter after chat construction; Runtime builds Boss before chat. */
   setWorkerOutcomeReporter(reporter: (outcome: WorkerOutcome) => void): void {
     this.onWorkerOutcome = reporter;
+  }
+
+  recordProjectFact(projectId: string, key: string, body: string, reportId?: string): void {
+    const fact = promoteProjectFact({ projectId, key, body, ...(reportId ? { sourceReportId: reportId } : {}) });
+    if (fact) this.projectFacts = upsertProjectFact(this.projectFacts, fact);
   }
 
   getDynamicAgentRevisionId(workerId: string): string | undefined {

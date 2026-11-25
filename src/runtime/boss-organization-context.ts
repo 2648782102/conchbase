@@ -66,12 +66,22 @@ export interface BossOrganizationFacts {
   readonly reports: readonly BossReportFact[];
   readonly attention: readonly BossAttentionFact[];
   readonly capabilities: readonly BossCapabilityFact[];
+  readonly projectFacts: readonly {
+    readonly projectId: string;
+    readonly key: string;
+    readonly body: string;
+  }[];
 }
 
 export interface BuildBossOrganizationFactsInput {
   readonly snapshot: OrganizationSnapshot;
   readonly intentTexts?: ReadonlyMap<string, string>;
   readonly reportTexts?: ReadonlyMap<string, string>;
+  readonly projectFacts?: readonly {
+    readonly projectId: string;
+    readonly key: string;
+    readonly body: string;
+  }[];
   readonly agentInstructions?: (worker: OrganizationWorker) => string | undefined;
   /**
    * What this Runtime can actually do right now. Without this the Boss reads a
@@ -186,5 +196,6 @@ export function buildBossOrganizationFacts(
       questionDigest: request.questionDigest,
     }))),
     capabilities: input.capabilities ?? DEFAULT_CAPABILITIES,
+    projectFacts: input.projectFacts ?? Object.freeze([]),
   });
 }
