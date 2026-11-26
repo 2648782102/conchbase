@@ -1,6 +1,6 @@
 # Current state
 
-Updated: 2026-11-25
+Updated: 2026-11-27
 
 ## Working today
 
@@ -44,6 +44,8 @@ Updated: 2026-11-25
 - Tools cover read, search, write, delete, move, copy, git, opt-in `http_fetch`,
   bounded `web_extract`, and `git_push`, each bounded to the workspace or an
   explicit target; see `ARCHITECTURE.md#tools`.
+- `GET /v1/workspace/files` is a bounded, read-only workspace index (paths and
+  sizes only) for a client's `@` picker; advertised as `workspace-index`.
 - Runtime notices are authored `runtime`, not `assistant`, and are excluded from
   model context: they are the Runtime speaking and must not be replayed as one
   of the Agent's own turns. Only user turns and non-empty assistant turns reach

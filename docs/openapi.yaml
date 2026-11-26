@@ -2532,8 +2532,66 @@ paths:
         '503':
           description: Memory is not configured
 
+  /v1/workspace/files:
+    get:
+      operationId: listWorkspaceFiles
+      summary: List workspace files for a client picker
+      description: >-
+        Bounded, read-only index of the configured workspace root. Returns paths and sizes only — never
+        contents — so a client can offer an `@` file reference without walking the filesystem or bypassing
+        the tool approval ledger. The walk is breadth-first, skips dependency and build directories, and
+        stops at fixed entry, depth, and file-size caps. It is published only when the Runtime has a
+        workspace root.
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        '200':
+          description: Bounded file entries
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [version, files, truncated]
+                properties:
+                  version:
+                    type: integer
+                    const: 1
+                  files:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkspaceFileEntry'
+                  truncated:
+                    type: boolean
+        '503':
+          description: The workspace root is missing or not a directory
+
 components:
   schemas:
+    WorkspaceFileEntry:
+      type: object
+      additionalProperties: false
+      required: [path, bytes, directory]
+      properties:
+        path:
+          type: string
+        bytes:
+          type: integer
+        directory:
+          type: string
     Health:
       type: object
       additionalProperties: false

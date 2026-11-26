@@ -45,6 +45,7 @@ export function registerRuntimeRoute(
   memoryEnabled = false,
   schedulesEnabled = false,
   scheduler?: { readonly globalActiveWork: number; readonly perProjectActiveWork: number },
+  workspaceIndexEnabled = false,
 ): void {
   /*
    * `permissionLevel` is the decision; `executionMode` is only how it was
@@ -107,8 +108,9 @@ export function registerRuntimeRoute(
         perProjectActiveWork: scheduler.perProjectActiveWork,
       },
     } : {}),
-    capabilities: tasksEnabled
-      ? [
+    capabilities: (() => {
+      const capabilities = tasksEnabled
+        ? [
         'tasks',
         'events',
         'models',
@@ -126,7 +128,15 @@ export function registerRuntimeRoute(
         'capability-directory',
         'write-only-secret-handles',
         'execution-modes',
-      ]
-      : [],
+        ]
+        : [];
+      /*
+       * The workspace index is not part of the task surface: it answers one
+       * read even when task execution is off, so it is appended outside the
+       * `tasksEnabled` branch rather than hiding behind it.
+       */
+      if (workspaceIndexEnabled) capabilities.push('workspace-index');
+      return capabilities;
+    })(),
   }));
 }

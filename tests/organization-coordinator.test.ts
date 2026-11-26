@@ -103,7 +103,7 @@ test('coordinator has no HTTP, Agent store, model, tool, or public contract depe
    * here rather than a silent change to what the coordinator is measured against.
    */
   const publishedPaths = [...spec.matchAll(/^  (\/v1\/[^:]+):$/gm)].length;
-  assert.equal(publishedPaths, 100, `expected 100 published paths, found ${publishedPaths}`);
+  assert.equal(publishedPaths, 101, `expected 101 published paths, found ${publishedPaths}`);
   assert.doesNotMatch(source, /organization\/session/);
 });
 

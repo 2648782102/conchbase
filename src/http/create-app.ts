@@ -28,6 +28,7 @@ import { registerToolRequestRoutes } from './routes/v1/tool-requests.js';
 import { registerAgentRoutes } from './routes/v1/agents.js';
 import { registerWorkRoutes } from './routes/v1/work.js';
 import { registerScheduleRoutes } from './routes/v1/schedules.js';
+import { registerWorkspaceRoutes } from './routes/v1/workspace.js';
 
 export interface CreateAppOptions {
   logger?: boolean;
@@ -132,6 +133,7 @@ export function createApp(options: CreateAppOptions = {}) {
         perProjectActiveWork: options.config.perProjectActiveWork,
       }
       : undefined,
+    Boolean(options.config?.workspaceRoot),
   );
   registerConfigurationRoutes(app, options.taskService);
   registerEventRoutes(app, options.taskService);
@@ -155,6 +157,13 @@ export function createApp(options: CreateAppOptions = {}) {
   registerExecutionRoutes(app, execution);
   registerExecutionRunRoutes(app, executionRuns);
   registerScheduleRoutes(app, options.taskService);
+  /*
+   * The `@` picker's index. Kept behind the configured workspace root: a
+   * Runtime that has no workspace has nothing to offer, and the route is
+   * absent rather than answering with an empty list that looks like "no
+   * files exist".
+   */
+  registerWorkspaceRoutes(app, options.config?.workspaceRoot);
 
   // Service discovery for a human or agent arriving at the Runtime without
   // prior knowledge of the route surface. This is a non-versioned convenience

@@ -276,8 +276,14 @@ test('docs/openapi.yaml declares the versioned task, event, and status contract'
       '/v1/schedules/{scheduleId}',
       '/v1/memory',
       '/v1/memory/{memoryId}',
+      /*
+       * The `@` picker's data source. Read-only paths and sizes; registered
+       * only when the Runtime has a workspace root.
+       */
+      '/v1/workspace/files',
     ],
   );
+  assertSchemaFields('WorkspaceFileEntry', ['path', 'bytes', 'directory']);
   assert.match(spec, /\$ref: '#\/components\/schemas\/Health'/);
   assert.match(spec, /\$ref: '#\/components\/schemas\/RuntimeStatus'/);
   assertSchemaFields('Health', ['status', 'service', 'apiVersion']);

@@ -72,7 +72,7 @@ const SUITES = Object.freeze({
     'git-commit.test.ts',
   ],
   api: [
-    'http-api.test.ts', 'http-auth.test.ts', 'openapi-contract.test.ts', 'task-api.test.ts',
+    'http-api.test.ts', 'workspace-index.test.ts', 'http-auth.test.ts', 'openapi-contract.test.ts', 'task-api.test.ts',
     'agent-api.test.ts', 'capability-audit.test.ts', 'configuration-api.test.ts', 'organization-api.test.ts',
     'platform-api.test.ts', 'tool-request-api.test.ts', 'memory-api.test.ts',
     'operations-api.test.ts', 'support-bundle.test.ts',
