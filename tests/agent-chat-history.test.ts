@@ -74,6 +74,28 @@ test('agent chat lists recent conversations and a default chat model', async () 
   });
 });
 
+test('the conversation list names a thread by its first user message, not its reply', async () => {
+  await withApp(async (app, service, agentId) => {
+    const created = await app.inject({
+      method: 'POST', url: '/v1/agent-chat/conversations', payload: { agentId },
+    });
+    const conversationId = created.json().id as string;
+    void service;
+    await app.inject({
+      method: 'POST', url: `/v1/agent-chat/conversations/${conversationId}/messages`,
+      payload: { text: '整理本周发布记录', idempotencyKey: 'title-1' },
+    });
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const view = await app.inject({ method: 'GET', url: `/v1/agent-chat/conversations/${conversationId}` });
+      if (view.json().messages?.some((m: { author: string; state?: string }) => m.author === 'assistant' && m.state !== 'pending')) break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    const list = await app.inject({ method: 'GET', url: '/v1/agent-chat/conversations' });
+    const entry = list.json().conversations.find((item: { id: string }) => item.id === conversationId);
+    assert.equal(entry.title, '整理本周发布记录');
+  });
+});
+
 test('agent chat conversation pins reasoning effort and exposes it in the list', async () => {
   await withApp(async (app, service, agentId) => {
     const created = await app.inject({

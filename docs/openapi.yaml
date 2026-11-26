@@ -5378,7 +5378,7 @@ components:
           items:
             type: object
             additionalProperties: false
-            required: [id, agentId, reasoningEffort, createdAt, messageCount, lastMessagePreview, unread, lastState]
+            required: [id, agentId, reasoningEffort, createdAt, messageCount, title, lastMessagePreview, unread, lastState]
             properties:
               id:
                 type: string
@@ -5393,6 +5393,9 @@ components:
                 type: string
               messageCount:
                 type: integer
+              title:
+                type: string
+                description: First user message, normalised and bounded.
               lastMessagePreview:
                 type: string
                 maxLength: 120

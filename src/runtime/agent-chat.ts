@@ -134,6 +134,8 @@ export interface AgentChatConversationSummary {
   readonly reasoningEffort: AgentChatReasoningEffort | null;
   readonly createdAt: string;
   readonly messageCount: number;
+  /** A stable name for the thread: its first user message, bounded. */
+  readonly title: string;
   readonly lastMessagePreview: string;
   /**
    * True when this conversation has a finished reply the user has not opened.
@@ -1743,6 +1745,8 @@ export class AgentChatService {
       version: AGENT_CHAT_CONTRACT_VERSION,
       conversations: Object.freeze(records.map((record) => {
         const last = [...record.messages].reverse().find((entry) => entry.body.length > 0);
+        const firstUser = record.messages.find((entry) => entry.author === 'user' && entry.body.trim().length > 0);
+        const title = (firstUser?.body ?? '').replace(/\s+/g, ' ').trim().slice(0, 80) || '（无标题对话）';
         const unread = record.messages.some((entry) => entry.author === 'assistant' && entry.state === 'done');
         return Object.freeze({
           id: record.id,
@@ -1752,6 +1756,7 @@ export class AgentChatService {
           messageCount: record.messages.length,
           unread,
           lastState: last?.state ?? null,
+          title,
           lastMessagePreview: (last?.body ?? '').slice(0, 120),
         });
       })),
