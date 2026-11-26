@@ -83,6 +83,12 @@ test('duplicate grants are reported once', () => {
   assert.equal(audit.agents[0]!.grants.length, 1);
 });
 
+test('the audit publishes registered tool and skill names for a configuration UI', () => {
+  const audit = auditCapabilityGrants(store([]), ['workspace_read', 'web_extract'], ['writing']);
+  assert.deepEqual(audit.available.tools, ['workspace_read', 'web_extract']);
+  assert.deepEqual(audit.available.skills, ['writing']);
+});
+
 test('the HTTP route exposes the audit without mutating agents', async () => {
   const detail = agent('agt_http', [{ kind: 'tool', name: 'git_status' }]);
   const fixture = store([detail]);

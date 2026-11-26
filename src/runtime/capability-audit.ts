@@ -25,6 +25,11 @@ export interface AgentCapabilityAudit {
 export interface CapabilityAudit {
   readonly version: 1;
   readonly agents: readonly AgentCapabilityAudit[];
+  /** Registered names a configuration UI may offer. */
+  readonly available: {
+    readonly tools: readonly string[];
+    readonly skills: readonly string[];
+  };
   /** Grants whose target is not registered in the current Runtime. */
   readonly staleGrants: readonly {
     readonly agentId: string;
@@ -98,5 +103,9 @@ export function auditCapabilityGrants(
     version: 1 as const,
     agents: Object.freeze(agents),
     staleGrants: Object.freeze(staleGrants),
+    available: Object.freeze({
+      tools: Object.freeze([...availableTools]),
+      skills: Object.freeze([...availableSkills]),
+    }),
   });
 }
