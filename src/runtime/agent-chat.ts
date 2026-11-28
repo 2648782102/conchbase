@@ -109,6 +109,14 @@ export interface AgentChatConversationView {
   readonly version: typeof AGENT_CHAT_CONTRACT_VERSION;
   readonly id: string;
   readonly agentId: string;
+  /**
+   * The thread's name, derived the same way the list derives it.
+   *
+   * A reader that opens a conversation has to name it in the header; without
+   * this the opened view is anonymous even though the row that opened it had a
+   * name. Derived from the first user message, bounded, never stored.
+   */
+  readonly title: string;
   readonly agentRevisionId: string;
   readonly providerId: string;
   readonly modelId: string;
@@ -1604,6 +1612,7 @@ export class AgentChatService {
       version: AGENT_CHAT_CONTRACT_VERSION,
       id: record.id,
       agentId: record.agentId,
+      title: this.titleOf(record),
       agentRevisionId: record.agentRevisionId,
       providerId: record.providerId,
       modelId: record.modelId,
@@ -1612,6 +1621,18 @@ export class AgentChatService {
       permissionLevel: record.permissionLevel ?? this.taskService.effectivePermissionLevel,
       messages: Object.freeze(seen.map((message) => Object.freeze({ ...message }))),
     });
+  }
+
+  /**
+   * The one name a conversation has, wherever it is published.
+   *
+   * The list and the opened view used to derive this separately, which is how
+   * a row could be named while the conversation it opened read "（无标题对话）".
+   * The rule lives here so both read the same words.
+   */
+  private titleOf(record: { readonly messages: readonly AgentChatMessage[] }): string {
+    const firstUser = record.messages.find((entry) => entry.author === 'user' && entry.body.trim().length > 0);
+    return (firstUser?.body ?? '').replace(/\s+/g, ' ').trim().slice(0, 80) || '（无标题对话）';
   }
 
   /**
@@ -1745,8 +1766,7 @@ export class AgentChatService {
       version: AGENT_CHAT_CONTRACT_VERSION,
       conversations: Object.freeze(records.map((record) => {
         const last = [...record.messages].reverse().find((entry) => entry.body.length > 0);
-        const firstUser = record.messages.find((entry) => entry.author === 'user' && entry.body.trim().length > 0);
-        const title = (firstUser?.body ?? '').replace(/\s+/g, ' ').trim().slice(0, 80) || '（无标题对话）';
+        const title = this.titleOf(record);
         const unread = record.messages.some((entry) => entry.author === 'assistant' && entry.state === 'done');
         return Object.freeze({
           id: record.id,

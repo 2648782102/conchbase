@@ -159,6 +159,17 @@ test('agent chat starts a configured Agent conversation and publishes a real mod
     assert.equal(conversation.json().messages.length, 2);
     assert.equal(conversation.json().messages[1]?.state, 'replied');
     assert.match(conversation.json().messages[1]?.body ?? '', /配置好的 Agent/);
+    /*
+     * The row that opens a thread names it, and so must the thread itself. The
+     * opened view used to omit a title, so a header showed nothing even though
+     * the row beside it had a name.
+     */
+    assert.equal(conversation.json().title, '你好');
+    const listed = await app.inject({ method: 'GET', url: '/v1/agent-chat/conversations?limit=5' });
+    assert.equal(
+      listed.json().conversations.find((row: { id: string }) => row.id === conversationId)?.title,
+      conversation.json().title,
+    );
     // The key set a client sees must match what `docs/openapi.yaml` documents;
     // `modelReference` was added for mid-conversation model switches.
     assert.deepEqual(

@@ -138,6 +138,17 @@ test('organization reads, attention decisions, and events expose only bounded pu
     assert.match(proposals.json().proposals[0].instructionsDigest, /^[a-z0-9_.:-]+$/);
     assert.doesNotMatch(JSON.stringify(proposals.json()), /"instructions"|Bearer|sk-|privateKey/);
 
+    /*
+     * The board a person reads shows the sentence a worker reported, not just
+     * its digest. A record whose body was never retained stays without one, so
+     * the reader can tell "no body" from an invented placeholder.
+     */
+    store.recordReportText?.('report_alpha', '抓取完成，得到三行标题。');
+    const session = await request(app, 'GET', '/v1/organization/session');
+    assert.equal(session.statusCode, 200);
+    const reported = session.json().reports.find((report: { id: string }) => report.id === 'report_alpha');
+    assert.equal(reported.summary, '抓取完成，得到三行标题。');
+
     const attention = await request(app, 'GET', `/v1/organization/attention/${attentionId}`);
     assert.equal(attention.statusCode, 200);
     const expectedVersion = attention.json().attentionRequest.expectedVersion;

@@ -44,14 +44,24 @@ function attentionView(request: OrganizationSnapshot['attentionRequests'][number
   });
 }
 
-function publishedSession(snapshot: OrganizationSnapshot) {
+function publishedSession(snapshot: OrganizationSnapshot, store: OrganizationStore) {
+  /*
+   * A report record carries only a digest of what the worker said. The board a
+   * person reads has to show the sentence itself, so the retained body is
+   * joined here. A body that was never retained stays absent rather than being
+   * replaced by an invented placeholder — the reader can tell the difference.
+   */
+  const reportTexts = store.reportTexts?.() ?? new Map<string, string>();
   return {
     version: ORGANIZATION_PUBLIC_CONTRACT_VERSION,
     bossSession: snapshot.bossSession,
     projects: snapshot.projects,
     delegations: snapshot.delegations,
     workers: snapshot.workers,
-    reports: snapshot.reports,
+    reports: snapshot.reports.map((report) => {
+      const summary = reportTexts.get(report.id);
+      return summary === undefined ? report : Object.freeze({ ...report, summary });
+    }),
     attentionRequests: snapshot.attentionRequests.map(attentionView),
   };
 }
@@ -103,7 +113,7 @@ export function registerOrganizationRoutes(
 
     scope.get('/v1/organization/session', async (_request, reply) => {
       if (!organizationStore) return unavailable(reply);
-      return reply.send(publishedSession(organizationStore.get()));
+      return reply.send(publishedSession(organizationStore.get(), organizationStore));
     });
 
     const intentResults = new Map<string, {
