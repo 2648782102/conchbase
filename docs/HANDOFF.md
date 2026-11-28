@@ -22,23 +22,29 @@ npm run start:local
 CONCHBASE_ALLOW_TOOL_WRITES=1 CONCHBASE_WORKSPACE_ROOT="$PWD" npm run start:local
 ```
 
-命令会打印两个地址：
+命令会打印两个地址。控制台自己的地址随后由它打印，并带一个登录用的 token：
 
 ```text
-Agent console  http://127.0.0.1:5173/
 Runtime API    http://127.0.0.1:4318/v1/health
+Agent console  http://127.0.0.1:5173/   (随后打印带 token 的完整地址)
+...
+dsh web: http://127.0.0.1:5173/?token=...
 ```
 
-打开 Agent console 即可。Ctrl-C 会同时关闭 Runtime 和控制台。
+打开控制台打印的那个带 token 地址即可。Ctrl-C 会同时关闭 Runtime 和控制台。
+
+控制台的部署层在 `deploy/pagurus-overlay.yml`：它把会话层指向本机 Runtime，
+去掉这个产品没有的插件市场、定时任务和账号界面，并打开 Boss 指挥台。启动脚本
+会把它作为 `--patch` 传入，所以不需要手工配置。
 
 如果你使用 linked worktree，端口会按分支自动错开；始终以命令行打印的地址为准。
 
 ## 第一次打开后做什么
 
-1. 页面中央的首启引导会显示本机 Runtime、模型、Agent 三项真实状态；任何一项没准备好，点「查看诊断」。
-2. 三个都就绪后，点「用这条开始」，直接发送第一条消息。
-3. 默认 Agent 是Boss Agent。它负责理解目标、组织工作、收集报告；写文件和外部动作仍由 Runtime 审批。
-4. 需要看显示过的工具调用、审批、错误和决策，点顶栏「上下文」里的「发生了什么」。
+1. 左侧栏是「对话 / 项目 / 员工 / 汇报」，底部是「设置」。会话行会显示未读标记。
+2. 右侧栏默认打开 Boss 指挥台：执行中的员工、进行中的项目、待你处理、最近汇报。
+3. 默认 Agent 是 Boss Agent。它负责理解目标、组织工作、收集报告；写文件和外部动作仍由 Runtime 审批。
+4. 需要看显示过的工具调用、审批、错误和决策，点会话顶部的「会话面板」。
 5. 需要把问题发给别人，点顶栏「诊断」→「生成支持包」→「复制」。支持包不含提示词、对话内容和文件正文。
 
 ## 键盘与窄屏
