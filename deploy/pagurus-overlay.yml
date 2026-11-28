@@ -39,3 +39,9 @@
 # Settings button at the sidebar foot.
 - id: ui-settings-account
   disabled: true
+
+# The MCP account connector waits on the account service the row above removes.
+# In a personal local deployment nothing can ever satisfy it, so it would report
+# a pending activation on every start.
+- id: mcp-account
+  disabled: true
