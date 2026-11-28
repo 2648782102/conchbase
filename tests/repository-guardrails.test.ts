@@ -204,13 +204,13 @@ test('user-facing copy says Boss Agent', () => {
     'src/runtime/primary-conversation.ts',
     'src/runtime/memory-review.ts',
     'src/cli.ts',
-    'pagurus/src/shared/api/conversation.ts',
-    'pagurus/src/agent/AgentApp.tsx',
-    'pagurus/src/agent/AgentContextPanel.tsx',
-    'pagurus/src/agent/AgentModelMenu.tsx',
-    'pagurus/src/features/agent-chat/AgentChatPanel.tsx',
-    'pagurus/src/features/organization/PrimaryConversationPanel.tsx',
-    'pagurus/src/app/workspace-registry.ts',
+    /*
+     * The console is the Pagurus tree now; the hand-written client these paths
+     * named was replaced in `codex/dsh-frontend-base`, so a guard that still
+     * reads them fails on a checkout that is otherwise correct.
+     */
+    'pagurus/packages/client/ui-boss-command/src/client/BossCommandPanel.tsx',
+    'pagurus/packages/client/ui-boss-command/src/client/locales.ts',
   ]) {
     assert.doesNotMatch(read(file), /老板 Agent|老板回执/, `${file} still uses legacy Boss name`);
   }
