@@ -94,19 +94,10 @@ Updated: 2026-11-29
   models over real HTTP.
 - External side effects are intentionally narrow. Do not assume that a
   capability record or approval record means arbitrary host execution is safe.
-- Pagurus is the console, built on the DSH client tree. Its left column is
-  workspace and conversation only (the plugin marketplace and scheduler are
-  disabled by the deployment overlay), and its right column opens on the Boss
-  board: running workers, live projects, open attention, and recent reports,
-  read from `/v1/organization/session` through one same-origin Host path.
-- A Runtime conversation is translated into the journal the console renders:
-  one Turn per user message, one Step per reply, and a live reply streamed as
-  Assistant frames until its durable settlement arrives. A Runtime notice is a
-  collapsed notice row, not a model reply.
-- Report records publish their retained body beside the digest, and a
-  conversation read publishes the same title the list row shows.
-- Real-browser accessibility, packaging, upgrade testing, and long-running
-  soak tests need more coverage.
+- Pagurus is the console: conversations on the left, a Boss board on the right
+  (workers, projects, attention, reports). A Runtime conversation becomes a
+  journal of Turns and Steps, with replies streamed as they arrive.
+- Real-browser accessibility, packaging, and soak tests need more coverage.
 
 ## Source map
 
