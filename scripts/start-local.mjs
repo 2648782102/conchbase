@@ -34,18 +34,26 @@ function start(label, command, args, cwd, env) {
 process.stdout.write([
   '',
   '  Conchbase + Pagurus',
-  `  Agent console  http://127.0.0.1:${consolePort}/`,
   `  Runtime API    http://127.0.0.1:${runtimePort}/v1/health`,
+  `  Agent console  http://127.0.0.1:${consolePort}/   (the console prints its own token URL)`,
   '  Ctrl-C stops both processes.',
   '',
 ].join('\n'));
 
+/** The console's deployment layer: points it at the Runtime and drops the
+ * account, scheduler, and marketplace surfaces this product does not have. */
+const overlay = path.join(root, 'deploy', 'pagurus-overlay.yml');
+
 start('Runtime', process.execPath, ['scripts/dev.mjs'], root, { ...process.env });
-start('Pagurus', 'npm', ['run', 'dev'], path.join(root, 'pagurus'), {
+/*
+ * The console is the Pagurus tree, which is a profile of `dsh web` — not a Vite
+ * dev server. It prints its own token-bearing URL, so the banner above names the
+ * port the profile binds rather than one the probe invented.
+ */
+start('Pagurus', 'npm', ['run', 'start:web', '--', '--patch', overlay, '--port', String(consolePort), '--host', '127.0.0.1'], path.join(root, 'pagurus'), {
   ...process.env,
-  CONCHBASE_URL: `http://127.0.0.1:${runtimePort}`,
-  PAGURUS_PORT: String(consolePort),
-  PORT: String(consolePort),
+  CONCHBASE_PORT: String(runtimePort),
+  CONCHBASE_HOME: root,
 });
 
 for (const signal of ['SIGINT', 'SIGTERM']) {

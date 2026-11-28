@@ -1,0 +1,41 @@
+# Pagurus over a Conchbase Runtime.
+#
+# Two sections:
+#   1. Point the Session layer at the Runtime.
+#   2. Disable the upstream product surfaces this deployment does not have:
+#      a plugin marketplace, an automation scheduler, and account onboarding —
+#      each registers a sidebar entry or a dialog for a product that is not here.
+
+# Both values come from the environment `start:local` exports, so the same file
+# works from any checkout: the Runtime's port and the workspace it groups.
+- id: session-controller
+  config:
+    conchbaseUrl: !!js "`http://127.0.0.1:${process.env.CONCHBASE_PORT}`"
+    conchbaseCwd: !!js process.env.CONCHBASE_HOME
+
+- id: ui-settings-models
+  config:
+    credentialOnboarding: false
+
+- id: ui-plugin-manager
+  disabled: true
+
+- id: ui-schedule
+  disabled: true
+
+- id: ui-connector-account
+  disabled: true
+
+- id: ui-account-notifications
+  disabled: true
+
+# The Boss board is this deployment's right-column home: the Runtime's own
+# projects, workers, attention requests, and reports, beside the conversation.
+- id: ui-boss-command
+
+# No accounts in a personal local deployment: the account menu (avatar, sign-in,
+# contact, sign-out) is the whole surface, and its one relevant entry is
+# Settings. Disabling it leaves the settings shell's own trigger, a plain
+# Settings button at the sidebar foot.
+- id: ui-settings-account
+  disabled: true

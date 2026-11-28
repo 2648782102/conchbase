@@ -66,9 +66,12 @@ export function isMainWorktree(root) {
 export function resolveWorktreeEnv(root = process.cwd(), env = process.env) {
   const main = isMainWorktree(root);
   const slug = worktreeSlug(root);
-  const port = main
-    ? DEFAULT_PORT
-    : Number(env.CONCHBASE_PORT ?? env.PORT ?? hashToPort(slug));
+  /*
+   * The main tree keeps 4318 so bookmarks and the printed URL stay stable, but
+   * an explicit override still wins: a second checkout on the same machine, a
+   * soak run beside the daily one, or a port already taken all need one.
+   */
+  const port = Number(env.CONCHBASE_PORT ?? env.PORT ?? (main ? DEFAULT_PORT : hashToPort(slug)));
   const host = env.CONCHBASE_HOST ?? env.HOST ?? '127.0.0.1';
   const databasePath = env.CONCHBASE_DB
     ?? (main
